@@ -18,6 +18,10 @@ public sealed record RecommendOptions
     public double GraphWeight { get; init; } = 0.5;
     /// <summary>점수에서 "저장함 앨범과 닮은 정도"의 비중</summary>
     public double FavoriteWeight { get; init; } = 1.0;
+    /// <summary>점수에서 "별로 표시한 앨범과 닮은 정도"를 빼는 비중</summary>
+    public double DislikeWeight { get; init; } = 1.0;
+    /// <summary>별로 표시한 앨범의 아티스트 (정규화 이름): 추가 제안에서 뺀다 (내 플리 뮤지션은 그대로)</summary>
+    public IReadOnlySet<string> DislikedArtists { get; init; } = new HashSet<string>();
     /// <summary>추가 제안에서 내 라이브러리에 있는 아티스트는 뺀다 (처음 듣는 사람만)</summary>
     public bool ExcludeKnown { get; init; }
 
@@ -262,7 +266,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             .ToList();
         var mineHits = inPeriod.Where(x => x.c.Mine != null)
             .OrderByDescending(x => x.c.Mine!.Tracks * TypeWeight(x.a.RecordType)).ToList();
-        var others = inPeriod.Where(x => x.c.Mine == null && !(options.ExcludeKnown && owned.HasArtist(x.c.Name)))
+        var others = inPeriod.Where(x => x.c.Mine == null && !(options.ExcludeKnown && owned.HasArtist(x.c.Name))
+                && !options.DislikedArtists.Contains(ListeningAnalyzer.NormalizeArtist(x.c.Name)))
             .OrderByDescending(x => x.c.Score * TypeWeight(x.a.RecordType))
             .Take(options.MaxScored).ToList();
         var hits = mineHits.Concat(others).ToList();
@@ -422,6 +427,10 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         var favIdx = heard.Select((s, i) => (s, i)).Where(x => x.s?.Fav != null).Select(x => x.i).ToList();
         var favZ = ZScores([.. favIdx.Select(i => heard[i]!.Fav!.Value)]);
         var favZOf = favIdx.Select((i, j) => (i, z: favZ[j])).ToDictionary(x => x.i, x => x.z);
+        // 별로 표시한 앨범과 닮은 정도 (닮을수록 뒤로)
+        var disIdx = heard.Select((s, i) => (s, i)).Where(x => x.s?.Dis != null).Select(x => x.i).ToList();
+        var disZ = ZScores([.. disIdx.Select(i => heard[i]!.Dis!.Value)]);
+        var disZOf = disIdx.Select((i, j) => (i, z: disZ[j])).ToDictionary(x => x.i, x => x.z);
         int k = 0;
         var recs = new List<ReleaseRecommendation>();
         for (int i = 0; i < hits.Count; i++)
@@ -439,7 +448,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 fit = snd.Style!.TryGetValue(crate, out var pc) ? pc : null;
                 taste = snd.Taste;
                 score = tasteZ[k++] + 2 * (fit ?? p) + (c.Mine == null ? options.GraphWeight * graphZ[i] : 0)
-                        + options.FavoriteWeight * favZOf.GetValueOrDefault(i);
+                        + options.FavoriteWeight * favZOf.GetValueOrDefault(i)
+                        - options.DislikeWeight * Math.Max(0, disZOf.GetValueOrDefault(i));
             }
             else score = -1 + (c.Mine == null ? options.GraphWeight * graphZ[i] : 0);  // 소리를 못 들은 앨범은 뒤로
 

@@ -45,7 +45,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     // ---- 추천 설정 (양 · 모험 정도 · 아는 아티스트 빼기) ----
     private readonly JsonCache<RecPrefs> _recPrefsStore = new("rec-prefs", TimeSpan.FromDays(36500));
     private RecPrefs _recPrefs = new();
-    private RecommendOptions RecOptions => RecommendOptions.Create(_recPrefs.Amount, _recPrefs.Adventure, _recPrefs.ExcludeKnown);
+    private RecommendOptions RecOptions => RecommendOptions.Create(_recPrefs.Amount, _recPrefs.Adventure, _recPrefs.ExcludeKnown)
+        with { DislikedArtists = DislikedArtists };
 
     [RelayCommand]
     private async Task OpenRecommendSettingsAsync()
@@ -117,6 +118,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>고른 형식 (비어 있으면 전체). 기본: 앨범 + EP</summary>
     private readonly HashSet<string> _types = ["album", "ep"];
     private readonly SavedReleases _saved = new();
+    /// <summary>별로 표시한 앨범: 추천에서 숨기고, 닮은 소리는 점수를 깎고, 그 아티스트는 추가 제안에서 뺀다</summary>
+    private readonly SavedReleases _disliked = new(Path.Combine(JsonCache<object>.Dir, "disliked.json"));
+
+    /// <summary>별로 표시한 앨범의 아티스트 (내 플리 뮤지션은 빼지 않는다)</summary>
+    private HashSet<string> DislikedArtists =>
+        [.. _disliked.All.Where(d => d.Rec.FromPlaylist == null).Select(d => ListeningAnalyzer.NormalizeArtist(d.Rec.Artist))];
 
     public MainViewModel(AppSettings settings)
     {
@@ -637,7 +644,31 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool NoSaved => SavedCount == 0;
 
     private ReleaseItem MakeItem(ReleaseRecommendation r, string? savedNote = null) =>
-        new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId)) { SavedNote = savedNote };
+        new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
+        {
+            SavedNote = savedNote,
+            ToggleDislikeAction = ToggleDislike,
+            IsDisliked = _disliked.Contains(r.DeezerAlbumId),
+        };
+
+    /// <summary>별로 ↔ 되돌리기. 별로로 하면 저장함에서는 뺀다 (둘 다일 수는 없으니)</summary>
+    private void ToggleDislike(ReleaseItem item)
+    {
+        var id = item.Rec.DeezerAlbumId;
+        bool dislike = !_disliked.Contains(id);
+        if (dislike)
+        {
+            _disliked.Add(item.Rec);
+            if (_saved.Contains(id)) _saved.Remove(id);
+        }
+        else _disliked.Remove(id);
+        foreach (var i in _all.Where(i => i.Rec.DeezerAlbumId == id)) { i.IsDisliked = dislike; if (dislike) i.IsSaved = false; }
+        item.IsDisliked = dislike;
+        if (dislike) item.IsSaved = false;
+        ApplyFilters();   // 추천에서 바로 숨긴다
+        RebuildSaved();
+        _ = SyncFavoritesAsync();
+    }
 
     private void ToggleSave(ReleaseItem item)
     {
@@ -661,7 +692,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             var favs = _saved.All.Select(s => (s.Rec.DeezerAlbumId, $"{s.Rec.Artist} – {s.Rec.Album}")).ToList();
-            await _sound.SetFavoritesAsync(favs, _life.Token);
+            await _sound.SetFavoritesAsync(favs, _life.Token, _disliked.All.Select(d => d.Rec.DeezerAlbumId));
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 아직 안 떴으면 시작할 때 다시 보낸다
     }
@@ -683,6 +714,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var list = g.ToList();
             SavedSections.Add(new CrateSection(g.Key, list, list.Count, list.Count(i => i.IsMine), false, _ => { }));
         }
+        // 별로 표시한 앨범은 맨 아래에 따로 (👎를 다시 누르면 되돌린다)
+        var disliked = _disliked.All.Select(d => MakeItem(d.Rec, $"{d.SavedAt:M.d} 별로")).ToList();
+        if (disliked.Count > 0)
+            SavedSections.Add(new CrateSection("별로 표시한 앨범", disliked, disliked.Count, 0, false, _ => { }));
     }
     partial void OnSelectedTabChanged(int value)
     {
@@ -726,7 +761,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var region = RegionKeys.First(r => r.Key == _region).Region;
         // 지역을 고르면 그 지역 플레이리스트에서 출발한 후보만 오므로, 아직 지역을 모르는 아티스트도 함께 보여준다
         bool keepUnknown = _resultsRegion == _region;
-        return _all.Where(i => (_types.Count == 0 || _types.Contains(i.Rec.RecordType))
+        var dislikedArtists = DislikedArtists;
+        // 별로 표시한 앨범은 숨기고, 그 아티스트의 추가 제안도 숨긴다 (내 플리 뮤지션 신보는 그대로)
+        return _all.Where(i => !i.IsDisliked
+            && !(i.Rec.FromPlaylist == null && dislikedArtists.Contains(ListeningAnalyzer.NormalizeArtist(i.Rec.Artist))))
+            .Where(i => (_types.Count == 0 || _types.Contains(i.Rec.RecordType))
             && (region == null || i.Rec.Region == region || keepUnknown && i.Rec.Region == Region.Unknown));
     }
 

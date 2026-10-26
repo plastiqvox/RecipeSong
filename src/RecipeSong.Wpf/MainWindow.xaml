@@ -200,6 +200,13 @@
                                 <Path x:Name="mark" Data="{StaticResource BookmarkIcon}" Width="11" Height="13" Stretch="Uniform"
                                       Stroke="{StaticResource Text2}" StrokeThickness="1.6" Fill="Transparent"/>
                             </Button>
+                            <!-- 별로: 숨기고 학습에 반영 -->
+                            <Button Style="{StaticResource Bare}" Command="{Binding ToggleDislikeCommand}"
+                                    Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding DislikeTip}"
+                                    AutomationProperties.Name="{Binding Album, StringFormat=별로: {0}}">
+                                <Path x:Name="dislike" Data="{StaticResource ThumbDownIcon}" Width="13" Height="13" Stretch="Uniform"
+                                      Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
+                            </Button>
                             <Button x:Name="tracksBtn" Style="{StaticResource Bare}" Command="{Binding ToggleTracksCommand}" Padding="9,5" Margin="0,0,6,0"
                                     ToolTip="{Binding TracksButton}" AutomationProperties.Name="{Binding Album, StringFormat=수록곡: {0}}">
                                 <!-- 목록 아이콘: 펼쳐져 있으면 주황 -->
@@ -231,6 +238,10 @@
                 <DataTrigger Binding="{Binding IsSaved}" Value="True">
                     <Setter TargetName="mark" Property="Fill" Value="{StaticResource Accent}"/>
                     <Setter TargetName="mark" Property="Stroke" Value="{StaticResource Accent}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDisliked}" Value="True">
+                    <Setter TargetName="dislike" Property="Fill" Value="#E06A6A"/>
+                    <Setter TargetName="dislike" Property="Stroke" Value="#E06A6A"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ShowTracks}" Value="True">
                     <Setter TargetName="tracksIcon" Property="Stroke" Value="{StaticResource Accent}"/>

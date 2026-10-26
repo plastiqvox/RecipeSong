@@ -120,7 +120,8 @@ public sealed class SoundService : IAsyncDisposable
                 ok ? [.. a.GetProperty("near").EnumerateArray().Select(e => e.GetString()!)] : [],
                 Str(a, "label"), Str(a, "genre"),
                 a.TryGetProperty("fav", out var fav) ? fav.GetDouble() : null,
-                Str(a, "fav_near"));
+                Str(a, "fav_near"),
+                a.TryGetProperty("dis", out var dis) ? dis.GetDouble() : null);
         }
         return map;
     }
@@ -129,9 +130,14 @@ public sealed class SoundService : IAsyncDisposable
     /// 저장함 앨범을 알려 준다. 이후 신보 점수에 "저장한 앨범과 닮은 정도"(fav)가 붙는다.
     /// 소리를 모르는 저장 앨범은 서비스가 미리듣기로 분석한다.
     /// </summary>
-    public async Task<int> SetFavoritesAsync(IEnumerable<(long Id, string Name)> albums, CancellationToken ct = default)
+    public async Task<int> SetFavoritesAsync(IEnumerable<(long Id, string Name)> albums, CancellationToken ct = default,
+        IEnumerable<long>? dislikes = null)
     {
-        var args = new { albums = albums.Select(a => new { id = a.Id, name = a.Name }).ToList() };
+        var args = new
+        {
+            albums = albums.Select(a => new { id = a.Id, name = a.Name }).ToList(),
+            dislikes = (dislikes ?? []).Select(id => new { id }).ToList(),
+        };
         var r = await CallAsync("favorites", args, null, ct);
         return r.GetProperty("count").GetInt32();
     }

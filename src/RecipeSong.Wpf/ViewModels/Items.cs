@@ -61,6 +61,14 @@ public sealed partial class ReleaseItem : ObservableObject
     [ObservableProperty] private bool _isPlaying;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(SaveTip))] private bool _isSaved;
     public string SaveTip => IsSaved ? "저장함에서 빼기" : "저장함에 넣기 (나중에 디깅)";
+
+    /// <summary>별로: 추천에서 숨기고 학습에 반영 (저장함 탭 아래에서 되돌릴 수 있다)</summary>
+    public Action<ReleaseItem>? ToggleDislikeAction { get; init; }
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DislikeTip))] private bool _isDisliked;
+    public string DislikeTip => IsDisliked ? "별로 취소 (다시 추천에 나와요)" : "별로예요 · 추천에서 숨기고 비슷한 소리·이 아티스트는 덜 추천";
+
+    [RelayCommand]
+    private void ToggleDislike() => ToggleDislikeAction?.Invoke(this);
     /// <summary>저장함 탭에서: 언제 저장했는지</summary>
     public string? SavedNote { get; init; }
 

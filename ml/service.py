@@ -77,6 +77,9 @@ class Service:
         self.fav_keys: list[str] = []
         self.fav_names: dict[str, str] = {}
         self.fav_x: np.ndarray | None = None
+        # 별로 표시한 앨범: 이와 닮은 신보는 점수를 깎는다
+        self.dis_keys: list[str] = []
+        self.dis_x: np.ndarray | None = None
         self.reload()
 
     # ---- 상태 -------------------------------------------------------------
@@ -235,10 +238,18 @@ class Service:
         self.ensure_embedded(items, rid, "저장한 앨범 소리 분석 중")
         self.fav_names = {str(a["id"]): a.get("name", "") for a in items}
         self.fav_keys = [str(a["id"]) for a in items if str(a["id"]) in self.album_cache]
-        self.fav_x = (train.preprocess(np.stack([self.album_cache[k] for k in self.fav_keys]).astype(np.float32), self.mean)
-                      .astype(np.float32) if self.fav_keys else None)
-        log(f"[service] 저장함 앨범 {len(self.fav_keys)}/{len(items)}장 반영")
-        return {"count": len(self.fav_keys)}
+        self.fav_x = self.stack(self.fav_keys)
+        dislikes = args.get("dislikes") or []
+        if dislikes:
+            self.ensure_embedded(dislikes, rid, "별로 표시한 앨범 소리 분석 중")
+        self.dis_keys = [str(a["id"]) for a in dislikes if str(a["id"]) in self.album_cache]
+        self.dis_x = self.stack(self.dis_keys)
+        log(f"[service] 저장함 {len(self.fav_keys)}/{len(items)}장, 별로 {len(self.dis_keys)}/{len(dislikes)}장 반영")
+        return {"count": len(self.fav_keys), "dislikes": len(self.dis_keys)}
+
+    def stack(self, keys: list[str]) -> np.ndarray | None:
+        return (train.preprocess(np.stack([self.album_cache[k] for k in keys]).astype(np.float32), self.mean).astype(np.float32)
+                if keys else None)
 
     def describe(self, e: np.ndarray, key: str | None = None) -> dict:
         x = train.preprocess(e[None, :], self.mean)[0]
@@ -257,6 +268,12 @@ class Service:
             if idx:
                 res["fav"] = round(float(fs[idx].mean()), 4)
                 res["fav_near"] = self.fav_names.get(self.fav_keys[idx[0]], "")
+        # 별로 표시한 앨범과 닮은 정도
+        if self.dis_x is not None:
+            ds = self.dis_x @ x
+            idx = [i for i in np.argsort(-ds) if self.dis_keys[i] != key][:3]
+            if idx:
+                res["dis"] = round(float(ds[idx].mean()), 4)
         return res
 
     def save_album_cache(self) -> None:

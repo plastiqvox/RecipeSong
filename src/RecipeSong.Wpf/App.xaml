@@ -45,6 +45,8 @@
         <!-- Deezer: 높이가 다른 막대 다섯 개 (이퀄라이저 모양) -->
         <Geometry x:Key="DeezerIcon">M0,14 H4 V18 H0 Z M5,10 H9 V18 H5 Z M10,6 H14 V18 H10 Z M15,9 H19 V18 H15 Z M20,2 H24 V18 H20 Z</Geometry>
         <Geometry x:Key="YouTubeIcon">M4,2 H20 A4,4 0 0 1 24,6 V14 A4,4 0 0 1 20,18 H4 A4,4 0 0 1 0,14 V6 A4,4 0 0 1 4,2 Z M9.5,6 V14 L16,10 Z</Geometry>
+        <!-- 별로: 엄지 아래 -->
+        <Geometry x:Key="ThumbDownIcon">M7,3 H17 L21,13 V15 H14 L15,20 C15,21.5 13.5,22 13,21 L8,14 H7 Z M3,3 H6 V14 H3 Z</Geometry>
         <Geometry x:Key="BookmarkIcon">M6,3 H18 V21 L12,16.5 L6,21 Z</Geometry>
         <Geometry x:Key="ChevronLeft">M15,18 L9,12 L15,6</Geometry>
         <Geometry x:Key="ChevronRight">M9,18 L15,12 L9,6</Geometry>
