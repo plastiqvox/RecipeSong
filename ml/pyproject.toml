@@ -1,7 +1,7 @@
 [project]
 name = "crate-ml"
 version = "0.1.0"
-description = "Crate: 라이브러리 음원을 CLAP 임베딩으로 바꾸고 플레이리스트 분류기를 학습한다"
+description = "RecipeSong: 라이브러리 음원을 CLAP 임베딩으로 바꾸고 플레이리스트 분류기를 학습한다"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "torch",

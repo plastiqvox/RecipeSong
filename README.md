@@ -1,14 +1,14 @@
-# Crate
+# RecipeSong
 
 디거를 위한 발매 캘린더. 달력에서 연·월·주를 고르면 그 기간에 **발매된** 앨범·EP·싱글 중
 내 iTunes 플레이리스트(크레이트) 취향에 맞는 것을, 미리듣기 **소리를 듣고** 골라 준다.
 
 ```
 src/
-  Crate.Wpf    데스크톱 앱 (달력 → 크레이트별 추천 신보 / 내 라이브러리, 미리듣기, 자동 재학습)
-  Crate.Core   라이브러리 파싱, 후보 수집(Deezer), 지역 판정(MusicBrainz), 추천 점수, 소리 서비스 클라이언트
-  Crate.Cli    엔진 점검용 콘솔
-  Crate.Mcp    Claude Desktop/Code용 MCP 서버 (나중에 다듬을 예정)
+  RecipeSong.Wpf    데스크톱 앱 (달력 → 크레이트별 추천 신보 / 내 라이브러리, 미리듣기, 자동 재학습)
+  RecipeSong.Core   라이브러리 파싱, 후보 수집(Deezer), 지역 판정(MusicBrainz), 추천 점수, 소리 서비스 클라이언트
+  RecipeSong.Cli    엔진 점검용 콘솔
+  RecipeSong.Mcp    Claude Desktop/Code용 MCP 서버 (나중에 다듬을 예정)
 ml/
   service.py   소리 분석 서비스 (앱이 자동 실행, GPU)
   embed.py     라이브러리 음원 → CLAP 임베딩 (처음 한 번, 약 1시간)
@@ -30,7 +30,7 @@ ml/
 ## 실행
 
 ```powershell
-dotnet run --project src/Crate.Wpf
+dotnet run --project src/RecipeSong.Wpf
 ```
 
 - iTunes 라이브러리(`Music\iTunes\iTunes Music Library.xml`)는 자동으로 찾는다. 없으면 처음에 한 번 묻는다.
@@ -63,11 +63,11 @@ uv run python train.py "C:/Users/<me>/Music/iTunes/iTunes Music Library.xml"   #
 
 ```powershell
 $env:CRATE_ITUNES_XML = "C:\Users\<me>\Music\iTunes\iTunes Music Library.xml"
-dotnet run --project src/Crate.Cli -- status
-dotnet run --project src/Crate.Cli -- recommend 2026-W43 --region 해외 --type album --top 5
+dotnet run --project src/RecipeSong.Cli -- status
+dotnet run --project src/RecipeSong.Cli -- recommend 2026-W43 --region 해외 --type album --top 5
 ```
 
-캐시와 로그: `%LOCALAPPDATA%\Crate\` (`sound-service.log`는 소리 분석 서비스 로그).
+캐시와 로그: `%LOCALAPPDATA%\RecipeSong\` (`sound-service.log`는 소리 분석 서비스 로그).
 
 ## 한계
 

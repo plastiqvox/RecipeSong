@@ -1,0 +1,55 @@
+<Window x:Class="RecipeSong.Wpf.RecommendSettingsWindow" Icon="/Assets/logo.png"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="추천 설정" Width="560" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
+        FontFamily="{StaticResource Sans}">
+    <StackPanel Margin="28,24">
+        <TextBlock Text="추천 설정" FontSize="22" FontWeight="Bold"/>
+        <TextBlock Style="{StaticResource MutedText}" Margin="0,6,0,0" TextWrapping="Wrap"
+                   Text="추가 제안은 Deezer의 비슷한 아티스트 연결망으로 후보를 모으고, 내 PC의 소리 모델이 내 곡과 닮은 정도로 고릅니다. 내 플리 뮤지션의 신보는 이 설정과 상관없이 항상 나와요."/>
+
+        <TextBlock Text="추천 양" Style="{StaticResource Kicker}" Margin="0,24,0,8"/>
+        <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
+            <UniformGrid x:Name="AmountGrid" Rows="1"/>
+        </Border>
+        <TextBlock x:Name="AmountHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
+
+        <TextBlock Text="모험 정도" Style="{StaticResource Kicker}" Margin="0,22,0,8"/>
+        <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
+            <UniformGrid x:Name="AdventureGrid" Rows="1"/>
+        </Border>
+        <TextBlock x:Name="AdventureHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
+
+        <CheckBox x:Name="ExcludeKnownBox" Margin="0,22,0,0" Foreground="{StaticResource Text}" FontSize="14"
+                  Content="추가 제안에서 아는 아티스트 빼기 (처음 듣는 사람만)"/>
+        <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
+                   Text="내 라이브러리에 곡이 있는 아티스트는 추가 제안에 나오지 않아요. 내 플리 뮤지션과 AI 제안은 그대로 나와요."/>
+
+        <!-- 저장 위치와 용량 -->
+        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+        <TextBlock Text="저장 위치와 용량" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Margin="6,0,0,0" Click="MoveCache_Click">
+                <TextBlock Text="위치 바꾸기…" FontSize="12" Foreground="{StaticResource Text2}"/>
+            </Button>
+            <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Click="OpenCache_Click">
+                <TextBlock Text="폴더 열기" FontSize="12" Foreground="{StaticResource Text2}"/>
+            </Button>
+            <TextBlock x:Name="CachePath" FontSize="12" Foreground="{StaticResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+        </DockPanel>
+        <TextBlock x:Name="CacheSizes" Style="{StaticResource MutedText}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" LineHeight="19"/>
+        <TextBlock x:Name="MlSizes" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="19"/>
+        <TextBlock x:Name="MoveResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,26,0,0">
+            <Button Style="{StaticResource Bare}" Padding="18,8" IsCancel="True">
+                <TextBlock Text="취소" Foreground="{StaticResource Text2}"/>
+            </Button>
+            <Button Style="{StaticResource Bare}" Padding="18,8" Margin="8,0,0,0" IsDefault="True" Click="Save_Click"
+                    Background="{StaticResource Accent}" BorderBrush="{StaticResource Accent}">
+                <TextBlock Text="저장하고 다시 찾기" Foreground="{StaticResource OnAccent}" FontWeight="Bold"/>
+            </Button>
+        </StackPanel>
+    </StackPanel>
+</Window>

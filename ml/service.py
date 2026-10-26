@@ -1,4 +1,4 @@
-"""Crate 소리 분석 서비스. WPF 앱이 실행해 두고 표준 입출력으로 JSON을 한 줄씩 주고받는다.
+"""RecipeSong 소리 분석 서비스. WPF 앱이 실행해 두고 표준 입출력으로 JSON을 한 줄씩 주고받는다.
 
 요청:  {"id": 1, "cmd": "status" | "score_albums" | "update", "args": {...}}
 응답:  {"id": 1, "ok": true, "result": {...}}  /  {"id": 1, "ok": false, "error": "..."}
