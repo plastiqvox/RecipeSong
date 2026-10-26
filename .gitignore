@@ -1,0 +1,14 @@
+# .NET 빌드 결과
+bin/
+obj/
+.vs/
+*.user
+
+# Python
+ml/.venv/
+__pycache__/
+
+# 개인 데이터: 내 라이브러리 소리 임베딩·학습 모델·분석 캐시 (내 iTunes 라이브러리에서 만들어짐)
+ml/data/
+
+*.log

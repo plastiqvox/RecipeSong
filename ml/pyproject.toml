@@ -1,0 +1,25 @@
+[project]
+name = "crate-ml"
+version = "0.1.0"
+description = "Crate: 라이브러리 음원을 CLAP 임베딩으로 바꾸고 플레이리스트 분류기를 학습한다"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch",
+    "transformers>=4.45,<5",
+    "av",
+    "numpy",
+    "scikit-learn",
+    "tqdm",
+    "requests>=2.34.2",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

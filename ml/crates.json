@@ -1,0 +1,13 @@
+{
+  "_comment": "iTunes 플레이리스트 → 크레이트(스타일) / 지역 매핑. style이 null이면 스타일 학습에는 쓰지 않고, 스타일은 소리로 추정한다.",
+  "playlists": {
+    "Jpop":     { "style": "일본 인디", "region": "일본" },
+    "Indie":    { "style": "일본 인디", "region": "일본" },
+    "Club":     { "style": "Club",      "region": "일본" },
+    "Jazz":     { "style": "Jazz",      "region": "일본" },
+    "Rock":     { "style": "Rock",      "region": "일본" },
+    "K-indie":  { "style": null,        "region": "한국" },
+    "Overseas": { "style": null,        "region": "해외" }
+  },
+  "ignore": ["Bossa", "Ska"]
+}
