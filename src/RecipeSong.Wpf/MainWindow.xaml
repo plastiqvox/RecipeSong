@@ -300,7 +300,8 @@
                                 <ControlTemplate TargetType="Button"><ContentPresenter/></ControlTemplate>
                             </Button.Template>
                             <TextBlock FontSize="12" Text="{Binding AiReason}" Foreground="{StaticResource AccentText}" TextWrapping="Wrap"
-                                       MaxHeight="34" TextTrimming="CharacterEllipsis" TextDecorations="{x:Null}"/>
+                                       MaxHeight="58" TextTrimming="CharacterEllipsis" TextDecorations="{x:Null}" LineHeight="18" LineStackingStrategy="BlockLineHeight"
+                                       ToolTip="{Binding AiReason}"/>
                         </Button>
                         <!-- 수록곡에 좋아하는 아티스트가 참여 -->
                         <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis"
