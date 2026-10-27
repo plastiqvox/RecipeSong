@@ -180,6 +180,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         else _blocked.BlockArtist(item.Rec, reason);
         ApplyFilters();
         _ = SyncFavoritesAsync();
+        if (reason.Learns()) _ = OfferSimilarAsync(item);
     }
 
     /// <summary>추천 설정 창에서 웹진을 켜고 끈 뒤</summary>
@@ -947,6 +948,51 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyFilters();   // 추천에서 바로 숨긴다
         RebuildSaved();
         _ = SyncFavoritesAsync();
+        if (dislike) _ = OfferSimilarAsync(item);
+    }
+
+    // ---- 별로·'소리 때문' 차단을 누른 자리에서: 이 목록에서 아주 닮은 추천도 같이 숨길지 묻는다 ----
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasSimilarOffer))] private string _similarOfferText = "";
+    public bool HasSimilarOffer => SimilarOfferText.Length > 0;
+    private List<long> _similarOffer = [];
+
+    private async Task OfferSimilarAsync(ReleaseItem item)
+    {
+        if (_sound == null) return;
+        // 내 플리·팔로우·좋아요·저장한 앨범은 묻지 않는다 (그 자체로 원하는 앨범)
+        var candidates = FilteredBase().Where(i => i != item && !i.IsMine && !i.IsLiked && !i.IsSaved && !i.IsDisliked)
+            .Select(i => i.Rec.DeezerAlbumId).Distinct().ToList();
+        if (candidates.Count == 0) return;
+        try
+        {
+            var near = (await _sound.SimilarAlbumsAsync(item.Rec.DeezerAlbumId, candidates, ct: _life.Token)).Take(5).ToList();
+            if (near.Count == 0) return;
+            _similarOffer = [.. near.Select(n => n.Id)];
+            var names = near.Select(n => _all.First(i => i.Rec.DeezerAlbumId == n.Id)).Select(i => $"{i.Artist} – {i.Album}");
+            SimilarOfferText = L.F("'{0}'와 소리가 아주 닮은 추천 {1}장: {2}", item.Album, near.Count, string.Join(", ", names));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 바쁘면 묻지 않는다
+    }
+
+    /// <summary>같이 숨기기: 이 목록과 저장된 결과에서만 뺀다 (별로로 학습하지 않는다 — 한 번 누른 것보다 학습이 커지지 않게)</summary>
+    [RelayCommand]
+    private void HideSimilar()
+    {
+        var ids = _similarOffer.ToHashSet();
+        _all = [.. _all.Where(i => !ids.Contains(i.Rec.DeezerAlbumId))];
+        var key = RecKey(CurrentPeriod, RegionKeys.First(r => r.Key == _region).ConfigRegion);
+        if (_recResults.TryGet(key, out var saved)) { _recResults.Set(key, [.. saved.Where(r => !ids.Contains(r.DeezerAlbumId))]); _recResults.Save(); }
+        var ai = AiPicksFor(CurrentPeriod);
+        if (ai.Any(r => ids.Contains(r.DeezerAlbumId))) { _aiPicks.Set(AiKey(CurrentPeriod), [.. ai.Where(r => !ids.Contains(r.DeezerAlbumId))]); _aiPicks.Save(); }
+        KeepSimilar();
+        ApplyFilters();
+    }
+
+    [RelayCommand]
+    private void KeepSimilar()
+    {
+        _similarOffer = [];
+        SimilarOfferText = "";
     }
 
     private void ToggleSave(ReleaseItem item)

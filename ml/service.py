@@ -442,6 +442,22 @@ class Service:
             ALBUM_INFO.write_text(json.dumps(self.album_info, ensure_ascii=False), encoding="utf-8")
         return {"albums": [{"id": int(i), "pairs": self.album_info.get(i, {}).get("pairs", [])} for i in ids]}
 
+    # ---- 별로·차단한 앨범과 아주 닮은 추천 (그 자리에서 같이 숨길지 묻는다) ----
+    def similar_albums(self, args: dict, rid) -> dict:
+        """target 앨범과 ids 앨범들의 소리 유사도 (평균을 뺀 코사인). min 이상만 높은 순으로.
+        저장된 앨범 약 1만 장끼리 0.85 이상은 상위 0.3% 정도라 '아주 닮음' 기준으로 쓴다."""
+        t = self.album_cache.get(str(args["target"]))
+        if t is None:
+            return {"albums": []}
+        x = train.preprocess(t[None, :], self.mean)[0]
+        ids = [str(i) for i in args.get("ids") or [] if str(i) in self.album_cache and str(i) != str(args["target"])]
+        if not ids:
+            return {"albums": []}
+        sims = train.preprocess(np.stack([self.album_cache[i] for i in ids]), self.mean) @ x
+        lo = float(args.get("min", 0.85))
+        out = sorted(({"id": int(i), "sim": round(float(s), 4)} for i, s in zip(ids, sims) if s >= lo), key=lambda a: -a["sim"])
+        return {"albums": out}
+
     # ---- 수록곡마다 비슷한 내 곡 (수록곡을 펼쳤을 때) ----------------------
     def track_near(self, args: dict, rid) -> dict:
         """[{id, preview}] → 곡마다 미리듣기를 들어 가장 닮은 내 곡 하나. 곡 임베딩은 "t곡id" 로 앨범 캐시에 같이 둔다 (곡 하트와 같은 키)."""
@@ -603,7 +619,7 @@ def main() -> None:
     svc = Service(args.xml)
     send({"event": "ready", "seconds": round(time.time() - t0, 1)})
     handlers = {"status": svc.status, "score_albums": svc.score_albums, "update": svc.update, "favorites": svc.favorites,
-                "track_near": svc.track_near, "album_pairs": svc.album_pairs}
+                "track_near": svc.track_near, "album_pairs": svc.album_pairs, "similar_albums": svc.similar_albums}
 
     for line in sys.stdin:
         line = line.strip().lstrip("﻿")

@@ -791,6 +791,22 @@
                     </StackPanel>
                 </DockPanel>
 
+                <!-- 별로·차단한 앨범과 아주 닮은 추천: 같이 숨길지 -->
+                <Border Margin="0,12,16,0" Padding="14,10" CornerRadius="10" Background="{StaticResource Surface2}" BorderBrush="{StaticResource Line3}" BorderThickness="1"
+                        Visibility="{Binding HasSimilarOffer, Converter={StaticResource BoolVis}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,5" Margin="8,0,0,0" Command="{Binding KeepSimilarCommand}" VerticalAlignment="Center">
+                            <TextBlock Text="{local:Tr '그대로'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                        </Button>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,5" Command="{Binding HideSimilarCommand}" VerticalAlignment="Center"
+                                BorderBrush="{StaticResource Accent}">
+                            <TextBlock Text="{local:Tr '같이 숨기기'}" FontSize="12" Foreground="{StaticResource AccentText}" FontWeight="Medium"/>
+                        </Button>
+                        <TextBlock Text="{Binding SimilarOfferText}" FontSize="12" Foreground="{StaticResource Text}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   ToolTip="{local:Tr '이 목록에서만 숨겨요. 별로로 학습하지는 않아요.'}"/>
+                    </DockPanel>
+                </Border>
+
                 <!-- 연 정밀 분석 진행 -->
                 <StackPanel Margin="0,12,0,0" Orientation="Horizontal" Visibility="{Binding PreciseText, Converter={StaticResource EmptyCollapsed}}">
                     <ProgressBar Style="{StaticResource Progress}" IsIndeterminate="True" Width="80" VerticalAlignment="Center" Margin="0,0,10,0"

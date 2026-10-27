@@ -187,6 +187,13 @@ public sealed class SoundService : IAsyncDisposable
     private static Dictionary<string, double> ToDict(JsonElement e) =>
         e.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetDouble());
 
+    /// <summary>target 앨범과 소리가 min 이상 닮은 앨범 (높은 순)</summary>
+    public async Task<List<(long Id, double Sim)>> SimilarAlbumsAsync(long target, IEnumerable<long> ids, double min = 0.85, CancellationToken ct = default)
+    {
+        var r = await CallAsync("similar_albums", new { target, ids = ids.ToList(), min }, null, ct);
+        return [.. r.GetProperty("albums").EnumerateArray().Select(a => (a.GetProperty("id").GetInt64(), a.GetProperty("sim").GetDouble()))];
+    }
+
     /// <summary>다른 요청을 처리하는 중 (요청은 한 번에 하나씩 — 새 요청은 줄을 선다)</summary>
     public bool IsBusy => _serial.CurrentCount == 0;
 
