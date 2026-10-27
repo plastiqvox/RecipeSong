@@ -20,11 +20,13 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedGroupKFold
 
+import covers
 import library
 
 ROOT = Path(__file__).parent
 DATA = ROOT / "data"
 DEFAULT_EMB = "emb_larger_clap_general"
+COVER_SCALE = 0.7  # 소리+커버 지역 판정에서 커버 부분의 비중
 
 
 def load_embeddings(folder: str = DEFAULT_EMB) -> tuple[list[str], np.ndarray]:
@@ -86,7 +88,7 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
     keys, emb = load_embeddings(emb_folder)
     index = {k: i for i, k in enumerate(keys)}
 
-    rows, styles, regions, groups, weights = [], [], [], [], []
+    rows, styles, regions, groups, weights, album_keys = [], [], [], [], [], []
     for t in tracks.values():
         pls = [p for p in t.playlists if p not in ignore]
         if len(pls) != 1 or pls[0] not in mapping or t.pid not in index:
@@ -97,6 +99,7 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
         va = t.artist.lower() in ("various artists", "va", "v.a.")
         groups.append(f"{t.artist}|{t.album}" if va else t.artist)
         weights.append(t.weight)
+        album_keys.append(covers.album_key(t.artist, t.album))
 
     mean = emb[rows].mean(axis=0)
     x = preprocess(emb[rows], mean)
@@ -115,6 +118,21 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
     yr = np.array([region_classes.index(r) for r in regions])
     region_clf, region_acc = fit_eval(x, yr, groups, region_classes, "지역", C, log, weights)
 
+    def head(clf, classes, acc):
+        return {"classes": classes, "coef": clf.coef_.round(6).tolist(),
+                "intercept": clf.intercept_.round(6).tolist(), "cv_accuracy": round(acc, 4)}
+
+    # 지역: 소리 + 앨범 커버 (커버 글자·디자인이 지역을 잘 알려 준다). 커버가 있는 곡만으로 따로 학습한다.
+    region_cover = None
+    cover = covers.load()
+    has_cover = np.array([k in cover for k in album_keys])
+    if has_cover.sum() > 1000:
+        cv = np.stack([cover[k] for k, h in zip(album_keys, has_cover) if h])
+        cover_mean = cv.mean(axis=0)
+        xc = np.hstack([x[has_cover], COVER_SCALE * preprocess(cv, cover_mean)])
+        rc_clf, rc_acc = fit_eval(xc, yr[has_cover], groups[has_cover], region_classes, "지역 (소리 + 커버)", C, log, weights[has_cover])
+        region_cover = {**head(rc_clf, region_classes, rc_acc), "cover_mean": cover_mean.round(6).tolist(), "cover_scale": COVER_SCALE}
+
     # 스타일 라벨이 없는 곡(해외·한국)에 스타일 추정 결과 분포
     no_style = ~has_style
     if no_style.any():
@@ -125,10 +143,6 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
             dist = Counter(style_classes[g] for g in guess[m])
             log(f"   {r}: " + ", ".join(f"{k} {v / m.sum():.0%}" for k, v in dist.most_common()))
 
-    def head(clf, classes, acc):
-        return {"classes": classes, "coef": clf.coef_.round(6).tolist(),
-                "intercept": clf.intercept_.round(6).tolist(), "cv_accuracy": round(acc, 4)}
-
     return {
         "embeddings": emb_folder,
         "trained_at": datetime.now().isoformat(timespec="seconds"),
@@ -136,6 +150,7 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
         "mean": mean.round(6).tolist(),
         "style": head(style_clf, style_classes, style_acc),
         "region": head(region_clf, region_classes, region_acc),
+        "region_cover": region_cover,
         "config": config,
     }
 

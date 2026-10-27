@@ -33,8 +33,8 @@ def out_dir(model_id: str, tag: str = "") -> Path:
     return DATA_DIR / ("emb_" + model_id.split("/")[-1] + (f"_{tag}" if tag else ""))
 
 
-def decode_clips(path: Path) -> list[np.ndarray] | None:
-    """파일에서 POSITIONS 지점의 10초 구간을 48kHz 모노 float32로 꺼낸다."""
+def decode_clips(path: Path, sr: int = SR) -> list[np.ndarray] | None:
+    """파일에서 POSITIONS 지점의 10초 구간을 모노 float32로 꺼낸다 (CLAP 48kHz, EffNet 16kHz)."""
     try:
         with av.open(str(path)) as c:
             stream = c.streams.audio[0]
@@ -45,8 +45,8 @@ def decode_clips(path: Path) -> list[np.ndarray] | None:
             for pos in (POSITIONS if duration > CLIP_SEC * 2 else (0.0,)):
                 start = max(0.0, min(duration * pos - CLIP_SEC / 2, duration - CLIP_SEC))
                 c.seek(int(start * av.time_base), any_frame=False, backward=True)
-                resampler = av.AudioResampler(format="flt", layout="mono", rate=SR)
-                buf, need = [], SR * CLIP_SEC
+                resampler = av.AudioResampler(format="flt", layout="mono", rate=sr)
+                buf, need = [], sr * CLIP_SEC
                 for frame in c.decode(stream):
                     if frame.time is not None and frame.time + frame.samples / frame.sample_rate < start:
                         continue
@@ -55,7 +55,7 @@ def decode_clips(path: Path) -> list[np.ndarray] | None:
                     if sum(len(b) for b in buf) >= need:
                         break
                 audio = np.concatenate(buf) if buf else np.zeros(0, np.float32)
-                if len(audio) < SR:  # 1초 미만이면 버림
+                if len(audio) < sr:  # 1초 미만이면 버림
                     continue
                 # 스테레오 → 모노 합산에서 ±1을 넘을 수 있어 피크를 맞춘다
                 peak = float(np.abs(audio).max())

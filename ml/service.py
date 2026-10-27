@@ -30,6 +30,8 @@ import numpy as np  # noqa: E402
 import requests  # noqa: E402
 import torch  # noqa: E402
 
+import covers  # noqa: E402
+import effnet  # noqa: E402
 import embed  # noqa: E402
 import library  # noqa: E402
 import train  # noqa: E402
@@ -39,8 +41,9 @@ sys.stdout = sys.stderr  # 라이브러리들이 print 해도 프로토콜이 �
 PROTO.reconfigure(encoding="utf-8", line_buffering=True)
 
 DATA = Path(__file__).parent / "data"
-ALBUM_CACHE = DATA / "album_emb.npz"
+ALBUM_CACHE = DATA / "album_emb.npz"  # CLAP. EffNet은 album_emb_discogs_effnet.npz
 ALBUM_INFO = DATA / "album_info.json"  # 레이블·장르 (바뀌지 않으므로 영구 캐시)
+ALBUM_COVER = DATA / "album_cover.npz"  # 신보 커버 CLIP 임베딩 (앨범 id)
 FAILED = DATA / "failed_tracks.json"  # 디코딩 실패한 곡 → '새 곡'으로 다시 세지 않음
 KNN = 20
 ACCEPT_MARGIN = 0.02  # 재학습 모델이 이보다 더 나빠지면 이전 모델 유지
@@ -63,16 +66,19 @@ class Service:
     def __init__(self, xml: str):
         self.xml = xml
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.out = embed.out_dir(embed.MODEL_ID)
         self._clap = None
+        self._effnet = None
+        self._covers = None
+        self.cover_cache: dict[str, np.ndarray] = {}
+        if ALBUM_COVER.exists():
+            d = np.load(ALBUM_COVER, allow_pickle=False)
+            self.cover_cache = dict(zip(d["keys"].tolist(), d["emb"].astype(np.float32)))
+        self._cache_file: Path | None = None
         self._http = requests.Session()
         self._http.mount("https://", requests.adapters.HTTPAdapter(pool_connections=32, pool_maxsize=32))
         self._dz_lock = threading.Lock()
         self._dz_next = 0.0
         self.album_cache: dict[str, np.ndarray] = {}
-        if ALBUM_CACHE.exists():
-            d = np.load(ALBUM_CACHE, allow_pickle=False)
-            self.album_cache = dict(zip(d["keys"].tolist(), d["emb"].astype(np.float32)))
         self.album_info: dict[str, dict] = json.loads(ALBUM_INFO.read_text(encoding="utf-8")) if ALBUM_INFO.exists() else {}
         # 저장함(즐겨찾기) 앨범: 신보가 이 앨범들과 얼마나 닮았는지도 본다
         self.fav_keys: list[str] = []
@@ -87,6 +93,17 @@ class Service:
     def reload(self) -> None:
         self.tracks, self.playlists = library.load(self.xml)
         self.model = json.loads(train.MODEL_PATH.read_text(encoding="utf-8"))
+        # 소리 모델은 학습한 임베딩 폴더를 따른다: emb_discogs_effnet → EffNet (16kHz), 그 밖 → CLAP (48kHz)
+        self.out = train.DATA / self.model["embeddings"]
+        self.is_effnet = self.model["embeddings"] == f"emb_{effnet.NAME}"
+        self.sr = effnet.SR if self.is_effnet else embed.SR
+        cache_file = DATA / f"album_emb_{effnet.NAME}.npz" if self.is_effnet else ALBUM_CACHE
+        if cache_file != self._cache_file:  # 모델이 바뀌면 앨범 소리 캐시도 그 모델 것으로
+            self._cache_file = cache_file
+            self.album_cache = {}
+            if cache_file.exists():
+                d = np.load(cache_file, allow_pickle=False)
+                self.album_cache = dict(zip(d["keys"].tolist(), d["emb"].astype(np.float32)))
         self.mean = np.array(self.model["mean"], np.float32)
         keys, emb = train.load_embeddings(self.model["embeddings"])
         self.keys = keys
@@ -98,8 +115,12 @@ class Service:
         self.heads = {name: (np.array(self.model[name]["coef"], np.float32),
                              np.array(self.model[name]["intercept"], np.float32),
                              self.model[name]["classes"]) for name in ("style", "region")}
+        # 소리 + 커버 지역 판정 (커버를 아는 신보만)
+        rc = self.model.get("region_cover")
+        self.region_cover = (np.array(rc["coef"], np.float32), np.array(rc["intercept"], np.float32), rc["classes"],
+                             np.array(rc["cover_mean"], np.float32), float(rc["cover_scale"])) if rc else None
         self.xml_mtime = os.path.getmtime(self.xml)
-        log(f"[service] 라이브러리 {len(self.tracks)}곡, 임베딩 {len(keys)}곡, 모델 {self.model['trained_at']}")
+        log(f"[service] 라이브러리 {len(self.tracks)}곡, 임베딩 {len(keys)}곡 ({self.model['embeddings']}), 모델 {self.model['trained_at']}")
 
     def failed(self) -> set[str]:
         return set(json.loads(FAILED.read_text(encoding="utf-8"))) if FAILED.exists() else set()
@@ -114,6 +135,7 @@ class Service:
             self.xml_mtime = os.path.getmtime(self.xml)
         return {
             "device": self.device,
+            "sound_model": "Discogs-EffNet" if self.is_effnet else "CLAP",
             "gpu": torch.cuda.get_device_name(0) if self.device == "cuda" else None,
             "trained_at": self.model["trained_at"],
             "tracks": self.model["tracks"],
@@ -123,6 +145,7 @@ class Service:
             "style_accuracy": self.model["style"]["cv_accuracy"],
             "regions": self.model["region"]["classes"],
             "region_accuracy": self.model["region"]["cv_accuracy"],
+            "region_cover_accuracy": (self.model.get("region_cover") or {}).get("cv_accuracy"),
         }
 
     # ---- 임베딩 -----------------------------------------------------------
@@ -137,6 +160,10 @@ class Service:
 
     def embed_clips(self, groups: list[list[np.ndarray]]) -> list[np.ndarray | None]:
         """곡(앨범)마다 클립 묶음 → 평균 임베딩 (L2 정규화)."""
+        if self.is_effnet:
+            if self._effnet is None:
+                self._effnet = effnet.EffNet()
+            return self._effnet.embed_groups(groups)
         model, proc = self.clap()
         flat, owner = [], []
         for i, clips in enumerate(groups):
@@ -159,6 +186,35 @@ class Service:
             e = f[owner_arr == i].mean(0)
             out[i] = e / (np.linalg.norm(e) + 1e-8)
         return out
+
+    def covers(self) -> covers.CoverModel:
+        if self._covers is None:
+            self._covers = covers.CoverModel(self.device)
+        return self._covers
+
+    def ensure_covers(self, albums: list) -> None:
+        """신보 커버(C#이 보낸 Deezer 주소)를 받아 CLIP으로. 지역 판정에만 쓴다."""
+        if self.region_cover is None:
+            return
+        todo = [(str(a["id"]), a["cover"]) for a in albums
+                if a.get("cover") and str(a["id"]) not in self.cover_cache and not str(a["id"]).startswith("t")]
+        if not todo:
+            return
+
+        def get(url: str):
+            try:
+                return covers.open_image(self._http.get(url, timeout=20).content)
+            except requests.RequestException:
+                return None
+        with ThreadPoolExecutor(16) as pool:
+            imgs = list(pool.map(lambda kv: get(kv[1]), todo))
+        ok = [(k, im) for (k, _), im in zip(todo, imgs) if im is not None]
+        if not ok:
+            return
+        for (k, _), e in zip(ok, self.covers().embed([im for _, im in ok])):
+            self.cover_cache[k] = e
+        ks = list(self.cover_cache)
+        np.savez(ALBUM_COVER, keys=np.array(ks), emb=np.stack([self.cover_cache[k] for k in ks]).astype(np.float16))
 
     def deezer(self, path: str) -> dict:
         """Deezer API (5초당 50회 제한 → 요청 간격 110ms 이상)."""
@@ -196,7 +252,7 @@ class Service:
             urls = self.album_detail(album_id)
         for url in urls:
             try:
-                clips += decode_preview(self._http.get(url, timeout=20).content)
+                clips += decode_preview(self._http.get(url, timeout=20).content, self.sr)
             except requests.RequestException:
                 pass
         return clips
@@ -228,6 +284,10 @@ class Service:
     def score_albums(self, args: dict, rid) -> dict:
         albums = args["albums"]
         self.ensure_embedded(albums, rid)
+        try:
+            self.ensure_covers(albums)
+        except Exception:  # 커버는 보조라 실패해도 소리 점수는 낸다
+            log(traceback.format_exc())
         results = []
         for a in albums:
             key = str(a["id"])
@@ -266,6 +326,10 @@ class Service:
         res = {}
         for name, (coef, icpt, classes) in self.heads.items():
             res[name] = {c: round(float(p), 4) for c, p in zip(classes, softmax(coef @ x + icpt))}
+        if self.region_cover is not None and key is not None and (cv := self.cover_cache.get(key)) is not None:
+            coef, icpt, classes, cmean, scale = self.region_cover
+            xc = np.concatenate([x, scale * train.preprocess(cv[None, :], cmean)[0]])
+            res["region"] = {c: round(float(p), 4) for c, p in zip(classes, softmax(coef @ xc + icpt))}
         sims = (self.lib @ x) * self.lib_w
         near = np.argpartition(-sims, KNN)[:KNN]
         near = near[np.argsort(-sims[near])]
@@ -289,7 +353,7 @@ class Service:
     def save_album_cache(self) -> None:
         if self.album_cache:
             ks = list(self.album_cache)
-            np.savez(ALBUM_CACHE, keys=np.array(ks), emb=np.stack([self.album_cache[k] for k in ks]).astype(np.float16))
+            np.savez(self._cache_file, keys=np.array(ks), emb=np.stack([self.album_cache[k] for k in ks]).astype(np.float16))
 
     # ---- 자동 재학습 ------------------------------------------------------
     def update(self, args: dict, rid) -> dict:
@@ -299,7 +363,7 @@ class Service:
         with ThreadPoolExecutor(10) as pool:
             for s in range(0, len(todo), 24):
                 batch = todo[s:s + 24]
-                clips = list(pool.map(lambda t: embed.decode_clips(t.path) or [], batch))
+                clips = list(pool.map(lambda t: embed.decode_clips(t.path, self.sr) or [], batch))
                 for t, e in zip(batch, self.embed_clips(clips)):
                     if e is not None:
                         keys.append(t.pid)
@@ -311,6 +375,10 @@ class Service:
         failed = self.failed() | ({t.pid for t in todo} - set(keys))
         FAILED.write_text(json.dumps(sorted(failed)), encoding="utf-8")
 
+        try:  # 새 앨범 커버도 (지역 판정용)
+            covers.update_library(self.tracks, self.covers, log=log)
+        except Exception:
+            log(traceback.format_exc())
         send({"id": rid, "event": "progress", "message": "재학습 중…", "done": 0, "total": 0})
         old = self.model
         new = train.run(self.xml, self.model["embeddings"], log=log)
@@ -339,11 +407,11 @@ def collaborators(album: dict) -> list[str]:
     return list(dict.fromkeys(names))[:8]
 
 
-def decode_preview(data: bytes) -> list[np.ndarray]:
-    """30초 미리듣기 MP3 → 48kHz 모노, 앞/중간/뒤 10초 구간."""
+def decode_preview(data: bytes, sr: int = embed.SR) -> list[np.ndarray]:
+    """30초 미리듣기 MP3 → 모노 (소리 모델의 샘플레이트), 앞/중간/뒤 10초 구간."""
     try:
         with av.open(io.BytesIO(data)) as c:
-            rs = av.AudioResampler(format="flt", layout="mono", rate=embed.SR)
+            rs = av.AudioResampler(format="flt", layout="mono", rate=sr)
             buf = [o.to_ndarray()[0] for f in c.decode(c.streams.audio[0]) for o in rs.resample(f)]
     except Exception:
         return []
@@ -353,9 +421,9 @@ def decode_preview(data: bytes) -> list[np.ndarray]:
     peak = float(np.abs(x).max())
     if peak > 1:
         x /= peak
-    n = embed.SR * embed.CLIP_SEC
+    n = sr * embed.CLIP_SEC
     if len(x) < n:
-        return [x] if len(x) > embed.SR else []
+        return [x] if len(x) > sr else []
     return [x[s:s + n] for s in np.linspace(0, len(x) - n, 3).astype(int)]
 
 
