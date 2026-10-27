@@ -849,8 +849,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
         {
             SavedNote = savedNote,
-            // 카드: 앨범 전체와 닮은 내 곡 3개 (곡마다의 짝은 수록곡 목록에서 곡 아래 하위 줄로)
-            NearItems = [.. r.NearTracks.Take(3).Select(n => new NearTrackItem(n, FindLocalFile(n), PlayNear))],
+            // 카드의 비슷한 내 곡: 수록곡을 곡마다 분석해 둔 앨범이면 그 결과(수록곡 목록과 같은 곡), 아니면 앨범 전체와 닮은 곡 3개
+            NearItems = [.. (_trackNear.TryGet(r.DeezerAlbumId.ToString(), out var tp) && tp.Count > 0 ? tp.Select(p => p.Near) : r.NearTracks.Take(3))
+                .Select(n => new NearTrackItem(n, FindLocalFile(n), PlayNear))],
             ToggleDislikeAction = ToggleDislike,
             IsDisliked = _disliked.Contains(r.DeezerAlbumId),
             IsNew = _newThisRun.Contains(r.DeezerAlbumId),
@@ -1656,6 +1657,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>수록곡마다 비슷한 내 곡 (곡 미리듣기를 소리 서비스가 듣는다, 한 번 들은 곡은 캐시)</summary>
+    private readonly JsonCache<List<TrackPair>> _trackNear = new("track-near", TimeSpan.FromDays(365));
+
     private async Task LoadTrackNearAsync(ReleaseItem item)
     {
         if (_sound == null) return;
@@ -1665,16 +1668,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var near = await _sound.TrackNearAsync(tracks.Select(t => (t.Id, t.Preview)), _life.Token);
             if (near.Count == 0) return;
-            // 모든 곡에 붙이면 목록이 번잡하다 → 가장 닮은 곡, 그리고 그와 거의 같은 곡(0.02 이내)만, 최대 2곡
+            // 많이 닮은 곡만: 가장 닮은 곡과 0.03 이내, 최대 3곡, 내 곡이 겹치면 한 번만.
+            // 카드의 '비슷한 내 곡'도 같은 결과로 바꿔 둘이 어긋나지 않게 한다 (전에는 카드는 앞 3곡을 섞은 평균 기준이라 달랐다)
             double best = near.Values.Max(v => v.Sim);
-            var shown = near.Where(kv => kv.Value.Sim >= best - 0.02).OrderByDescending(kv => kv.Value.Sim).Take(2)
-                .Select(kv => kv.Key).ToHashSet();
+            var top = new List<KeyValuePair<long, (string Near, double Sim)>>();
+            var mine = new HashSet<string>();
+            foreach (var kv in near.OrderByDescending(kv => kv.Value.Sim))
+            {
+                if (kv.Value.Sim < best - 0.03 || top.Count == 3) break;
+                if (mine.Add(kv.Value.Near)) top.Add(kv);
+            }
+            var shown = top.ToDictionary(kv => kv.Key, kv => kv.Value);
             foreach (var t in item.Tracks)
-                if (shown.Contains(t.Id))
-                {
-                    t.Near = near[t.Id].Near;
-                    t.IsClosest = near[t.Id].Sim == best && near.Count > 1;
-                }
+            {
+                t.Near = shown.TryGetValue(t.Id, out var n) ? n.Near : null;
+                t.IsClosest = t.Near != null && n.Sim == best && near.Count > 1;
+            }
+            var titleOf = item.Tracks.GroupBy(t => t.Id).ToDictionary(g => g.Key, g => g.First().Title);
+            List<TrackPair> pairs = [.. top.Select(kv => new TrackPair(titleOf.GetValueOrDefault(kv.Key, ""), kv.Value.Near, kv.Value.Sim))];
+            _trackNear.Set(item.Rec.DeezerAlbumId.ToString(), pairs);
+            _trackNear.Save();
+            item.NearItems = [.. pairs.Select(p => new NearTrackItem(p.Near, FindLocalFile(p.Near), PlayNear))];
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 바쁘거나 꺼져 있으면 표시하지 않는다
     }

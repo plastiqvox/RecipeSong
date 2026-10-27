@@ -77,10 +77,11 @@ public sealed partial class ReleaseItem : ObservableObject
         : IsMine ? L.F("{0} 플레이리스트에 있는 뮤지션의 신보", L.T(Rec.FromPlaylist ?? ""))
         : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보") : L.T("내 라이브러리에 있는 아티스트");
     public System.Windows.Thickness BadgeMargin => HasFit ? new(8, 0, 0, 0) : new(0);
-    public bool HasNear => Rec.NearTracks.Count > 0;
+    public bool HasNear => NearItems.Count > 0;
 
     /// <summary>비슷한 내 곡 (내 파일로 바로 재생). VM이 라이브러리에서 파일 경로를 찾아 채운다.</summary>
-    public IReadOnlyList<NearTrackItem> NearItems { get; init; } = [];
+    /// <summary>비슷한 내 곡 — 수록곡을 곡마다 분석했으면 그 결과(수록곡 목록과 같은 곡), 아니면 앨범 전체와 닮은 곡</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNear))] private IReadOnlyList<NearTrackItem> _nearItems = [];
     public string Near => string.Join("  /  ", Rec.NearTracks.Take(2).Select(Shorten));
     // BecauseOf는 아티스트 이름 또는 "웹진" → 표시할 때만 번역
     public string Because => SavedNote ?? (IsMine || Rec.BecauseOf.Count == 0 ? "" : L.F("{0}에서 출발", string.Join(", ", Rec.BecauseOf.Select(L.T))));
