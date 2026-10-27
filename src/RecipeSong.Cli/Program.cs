@@ -1,4 +1,4 @@
-﻿// 엔진 점검용 콘솔:  dotnet run --project src/RecipeSong.Cli -- recommend 2026-W43 [crate] [top]
+// 엔진 점검용 콘솔:  dotnet run --project src/RecipeSong.Cli -- recommend 2026-W43 [crate] [top]
 //                   dotnet run --project src/RecipeSong.Cli -- status
 using System.Text;
 using RecipeSong.Core;
@@ -58,7 +58,8 @@ if (cmd == "ai-recover")
     Console.WriteLine($"{by} 제출 {picks.Count}장 다시 확인");
     var recov = new ReleaseRecommender(new DeezerClient(new HttpClient()), new RegionResolver(new HttpClient()));
     List<ReleaseRecommendation> bare = [];
-    await recov.ScoreAiPicksAsync(picks, new OwnedLibrary(await library.GetTracksAsync()), null, matched: b => bare = [.. b]);
+    var (_, _, olderWeeks) = await recov.ScoreAiPicksAsync(picks, new OwnedLibrary(await library.GetTracksAsync()), null, matched: b => bare = [.. b]);
+    bare = [.. bare, .. olderWeeks];
     var cache = new JsonCache<List<ReleaseRecommendation>>("ai-picks", TimeSpan.FromDays(3650));
     foreach (var g in bare.GroupBy(r => Periods.Create(PeriodKind.Week, r.ReleaseDate.ToDateTime(TimeOnly.MinValue)).Label))
     {

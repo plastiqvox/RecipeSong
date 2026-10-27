@@ -805,8 +805,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 if (_sound?.IsBusy == true)
                     AiText = L.F("{0}장 확인해 저장했어요 · 소리 분석이 다른 작업 중이라 끝나면 점수를 매겨요", bare.Count);
             }
-            var (recs, unverified) = picks.Count == 0 ? ([], 0)
+            var (recs, unverified, otherWeeks) = picks.Count == 0 ? ([], 0, [])
                 : await _recommender.ScoreAiPicksAsync(picks, _owned, period, progress, _life.Token, SaveMatched);
+            // AI가 날짜를 틀린 다른 주 발매: 버리지 않고 실제 발매 주에 저장 (점수는 그 주를 열 때)
+            foreach (var g in otherWeeks.GroupBy(r => Periods.Create(PeriodKind.Week, r.ReleaseDate.ToDateTime(TimeOnly.MinValue))))
+            {
+                var have = AiPicksFor(g.Key).ToDictionary(r => r.DeezerAlbumId);
+                foreach (var r in g) have[r.DeezerAlbumId] = have.TryGetValue(r.DeezerAlbumId, out var o) ? MergeAi(o, r) : r;
+                _aiPicks.Set(AiKey(g.Key), [.. have.Values]);
+            }
 
             if (replace)
             {
@@ -839,6 +846,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 ? L.F("{0} {1}장", r.Name, recs.Count(x => x.AiBy?.Any(b => b.StartsWith(r.Name, StringComparison.Ordinal)) == true))
                 : L.F("{0} 실패: {1}", r.Name, r.error)));
             AiText = L.F("AI 제안 {0}", summary) + (unverified > 0 ? " · " + L.F("Deezer에서 확인 못 한 {0}장은 뺐어요", unverified) : "")
+                     + (otherWeeks.Count > 0 ? " · " + L.F("다른 주 발매 {0}장은 그 주에 넣었어요", otherWeeks.Count) : "")
                      + " · " + L.F("이번 검색 {0}", AiUsageLedger.Money(_aiLedger.Spent(runStart)))
                      + (blocked.Count > 0 ? " · " + string.Join(", ", blocked.Select(b => L.F("{0} 쉼: {1}", b.s.Name, b.why))) : "");
         }
@@ -1096,7 +1104,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (picks.Count > 0)
             {
                 _owned ??= new OwnedLibrary(await _library.GetTracksAsync(_life.Token));
-                var (recs, _) = await _recommender.ScoreAiPicksAsync(picks, _owned, null,
+                var (recs, _, _) = await _recommender.ScoreAiPicksAsync(picks, _owned, null,
                     new Progress<string>(m => SyncText = L.F("웹진 추천 확인 중 · {0}", m)), _life.Token);
                 var all = AllWebzinePicks().ToDictionary(r => r.DeezerAlbumId);
                 foreach (var r in recs)
