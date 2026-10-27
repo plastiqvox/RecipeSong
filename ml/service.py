@@ -458,6 +458,20 @@ class Service:
         out = sorted(({"id": int(i), "sim": round(float(s), 4)} for i, s in zip(ids, sims) if s >= lo), key=lambda a: -a["sim"])
         return {"albums": out}
 
+    def dislike_matches(self, args: dict, rid) -> dict:
+        """ids 중 별로 목록(별로·'소리 때문' 차단·바로 넘긴 앨범)의 어느 앨범과 min 이상 닮은 것. 다시 분석한 뒤 뺄지 묻는 데 쓴다."""
+        if self.dis_x is None:
+            return {"albums": []}
+        ids = [str(i) for i in args.get("ids") or [] if str(i) in self.album_cache and str(i) not in self.dis_keys]
+        if not ids:
+            return {"albums": []}
+        sims = train.preprocess(np.stack([self.album_cache[i] for i in ids]), self.mean) @ self.dis_x.T
+        best = sims.argmax(axis=1)
+        lo = float(args.get("min", 0.85))
+        out = [{"id": int(i), "sim": round(float(sims[k, best[k]]), 4), "like": int(self.dis_keys[best[k]])}
+               for k, i in enumerate(ids) if sims[k, best[k]] >= lo]
+        return {"albums": sorted(out, key=lambda a: -a["sim"])}
+
     # ---- 수록곡마다 비슷한 내 곡 (수록곡을 펼쳤을 때) ----------------------
     def track_near(self, args: dict, rid) -> dict:
         """[{id, preview}] → 곡마다 미리듣기를 들어 가장 닮은 내 곡 하나. 곡 임베딩은 "t곡id" 로 앨범 캐시에 같이 둔다 (곡 하트와 같은 키)."""
@@ -619,7 +633,8 @@ def main() -> None:
     svc = Service(args.xml)
     send({"event": "ready", "seconds": round(time.time() - t0, 1)})
     handlers = {"status": svc.status, "score_albums": svc.score_albums, "update": svc.update, "favorites": svc.favorites,
-                "track_near": svc.track_near, "album_pairs": svc.album_pairs, "similar_albums": svc.similar_albums}
+                "track_near": svc.track_near, "album_pairs": svc.album_pairs, "similar_albums": svc.similar_albums,
+                "dislike_matches": svc.dislike_matches}
 
     for line in sys.stdin:
         line = line.strip().lstrip("﻿")

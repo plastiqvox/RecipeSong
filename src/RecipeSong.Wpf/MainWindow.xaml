@@ -796,10 +796,13 @@
                         Visibility="{Binding HasSimilarOffer, Converter={StaticResource BoolVis}}">
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,5" Margin="8,0,0,0" Command="{Binding KeepSimilarCommand}" VerticalAlignment="Center">
-                            <TextBlock Text="{local:Tr '그대로'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                            <Grid>
+                                <TextBlock Text="{local:Tr '그대로'}" FontSize="12" Foreground="{StaticResource Text2}" Visibility="{Binding SimilarAsk, Converter={StaticResource BoolVis}}"/>
+                                <TextBlock Text="{local:Tr '닫기'}" FontSize="12" Foreground="{StaticResource Text2}" Visibility="{Binding SimilarAsk, Converter={StaticResource NotBoolVis}}"/>
+                            </Grid>
                         </Button>
                         <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,5" Command="{Binding HideSimilarCommand}" VerticalAlignment="Center"
-                                BorderBrush="{StaticResource Accent}">
+                                BorderBrush="{StaticResource Accent}" Visibility="{Binding SimilarAsk, Converter={StaticResource BoolVis}}">
                             <TextBlock Text="{local:Tr '같이 숨기기'}" FontSize="12" Foreground="{StaticResource AccentText}" FontWeight="Medium"/>
                         </Button>
                         <TextBlock Text="{Binding SimilarOfferText}" FontSize="12" Foreground="{StaticResource Text}" TextWrapping="Wrap" VerticalAlignment="Center"

@@ -954,7 +954,41 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     // ---- 별로·'소리 때문' 차단을 누른 자리에서: 이 목록에서 아주 닮은 추천도 같이 숨길지 묻는다 ----
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasSimilarOffer))] private string _similarOfferText = "";
     public bool HasSimilarOffer => SimilarOfferText.Length > 0;
+    /// <summary>배너가 묻는 중 (숨기기 버튼). false 면 자동으로 뺀 결과를 알리기만 한다</summary>
+    [ObservableProperty] private bool _similarAsk = true;
     private List<long> _similarOffer = [];
+
+    /// <summary>
+    /// 다시 분석한 뒤: 별로 목록(별로·'소리 때문' 차단·바로 넘긴 앨범)과 아주 닮은(0.85) 추천을 설정대로 묻거나 뺀다.
+    /// 점수에는 이미 감점이 들어가지만 화면은 소리를 들은 앨범을 다 보여 줘서, 감점만으로는 목록에서 사라지지 않는다.
+    /// </summary>
+    private async Task CheckDislikeMatchesAsync(Period period, string key)
+    {
+        if (_sound == null || _recPrefs.DropMode == 2) return;
+        var candidates = FilteredBase().Where(i => !i.IsMine && !i.IsLiked && !i.IsSaved && !i.IsDisliked)
+            .Select(i => i.Rec.DeezerAlbumId).Distinct().ToList();
+        if (candidates.Count == 0) return;
+        try
+        {
+            var hits = await _sound.DislikeMatchesAsync(candidates, ct: _life.Token);
+            if (hits.Count == 0 || CurrentPeriod.Label != period.Label) return;
+            _similarOffer = [.. hits.Select(h => h.Id)];
+            var names = string.Join(", ", hits.Take(5).Select(h => _all.First(i => i.Rec.DeezerAlbumId == h.Id)).Select(i => $"{i.Artist} – {i.Album}"))
+                        + (hits.Count > 5 ? " …" : "");
+            if (_recPrefs.DropMode == 1)
+            {
+                HideSimilar();  // 목록·저장 결과에서 뺀다 (배너를 닫는다)
+                SimilarAsk = false;
+                SimilarOfferText = L.F("별로·차단한 앨범과 아주 닮은 {0}장을 뺐어요: {1}", hits.Count, names);
+            }
+            else
+            {
+                SimilarAsk = true;
+                SimilarOfferText = L.F("별로·차단한 앨범과 아주 닮은 추천 {0}장: {1}", hits.Count, names);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }
+    }
 
     private async Task OfferSimilarAsync(ReleaseItem item)
     {
@@ -969,6 +1003,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (near.Count == 0) return;
             _similarOffer = [.. near.Select(n => n.Id)];
             var names = near.Select(n => _all.First(i => i.Rec.DeezerAlbumId == n.Id)).Select(i => $"{i.Artist} – {i.Album}");
+            SimilarAsk = true;
             SimilarOfferText = L.F("'{0}'와 소리가 아주 닮은 추천 {1}장: {2}", item.Album, near.Count, string.Join(", ", names));
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 바쁘면 묻지 않는다
@@ -1568,6 +1603,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var regionKey = _region;
         var focus = RegionKeys.First(r => r.Key == regionKey).ConfigRegion;
         var key = RecKey(period, focus);
+        string? freshKey = null;  // 새로 계산했으면 그 저장 키 — 별로·차단과 아주 닮은 추천을 확인한다
         // AI 결과 + 웹진 추천 (같은 앨범이면 배지를 합친다)
         var aiRecs = AiPicksFor(period).Concat(WebzinePicksFor(period)).GroupBy(r => r.DeezerAlbumId)
             .Select(g => g.Aggregate(MergeAi)).ToList();
@@ -1591,6 +1627,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             List<ReleaseRecommendation> releases;
             bool soundScored = true;
+            bool fresh = false;  // 이번에 새로 계산했다 (저장된 결과가 아니다)
             if (!force && period.Kind != PeriodKind.Week && TryGetPrecise(period, focus, out var precise, out var preciseAt))
             {
                 releases = precise;
@@ -1622,6 +1659,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 if (ct.IsCancellationRequested) return;
                 releases = [.. result.Releases];
                 soundScored = result.SoundScored;
+                fresh = soundScored;
                 // 소리 분석까지 된 결과만 저장 (소리 서비스가 늦게 뜬 경우는 다음에 다시 계산)
                 if (soundScored && releases.Count > 0)
                 {
@@ -1644,6 +1682,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             await MergeFollowedAsync(period, ct);
             if (ct.IsCancellationRequested) return;
             _resultsRegion = focus != null ? regionKey : "all";
+            if (fresh) freshKey = key;
             IsBusy = false;
             BusyText = soundScored ? "" : L.T("소리 분석 없이 아티스트 연결로만 골랐어요");
         }
@@ -1657,6 +1696,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyFilters();
         UpdateHeat();
         if (!IsBusy) MarkSeen();
+        if (freshKey != null) _ = CheckDislikeMatchesAsync(period, freshKey);
     }
 
     private async Task LoadLibraryAsync(Period period, CancellationToken ct)

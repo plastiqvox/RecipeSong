@@ -28,6 +28,12 @@
         </Border>
         <TextBlock x:Name="TracksHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
 
+        <TextBlock Text="{local:Tr '별로·차단과 아주 닮은 추천'}" Style="{StaticResource Kicker}" Margin="0,22,0,8"/>
+        <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
+            <UniformGrid x:Name="DropGrid" Rows="1"/>
+        </Border>
+        <TextBlock x:Name="DropHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
+
         <CheckBox x:Name="ExcludeKnownBox" Margin="0,22,0,0" Foreground="{StaticResource Text}" FontSize="14"
                   Content="{local:Tr '추가 제안에서 아는 아티스트 빼기 (처음 듣는 사람만)'}"/>
         <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
