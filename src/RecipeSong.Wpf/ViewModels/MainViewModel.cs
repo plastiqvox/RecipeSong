@@ -645,6 +645,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (_aiPicks.TryGet(key, out var list))
                 foreach (var r in list.Select(FixOldRegion))
                     all[r.DeezerAlbumId] = all.TryGetValue(r.DeezerAlbumId, out var o) ? MergeAi(o, r) : r;
+        // 월·연: 주별로 찾은 결과(다른 키)도 그 기간에 발매됐으면 합친다
+        if (p.Kind != PeriodKind.Week)
+            foreach (var r in _aiPicks.FreshValues.SelectMany(l => l).Where(r => p.Contains(r.ReleaseDate)).Select(FixOldRegion))
+                all[r.DeezerAlbumId] = all.TryGetValue(r.DeezerAlbumId, out var o) ? MergeAi(o, r) : r;
         return [.. all.Values];
     }
 
@@ -745,9 +749,40 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private async Task FindWithAiAsync(string? mode)
     {
         if (AiBusy) return;
-        bool replace = mode == "replace";
         if (!AiReady) { OpenConnector(); if (!AiReady) return; }
-        var period = CurrentPeriod;
+        if (mode == "weekly") { await FindWithAiWeeklyAsync(); return; }
+        await AiSearchAsync(CurrentPeriod, mode == "replace");
+    }
+
+    /// <summary>
+    /// AI 주별로 찾기 (월): 한 달을 한 번에 찾으면 검색 8회로 한 달을 훑어 주마다 몇 장씩만 건진다 → 주마다 따로 찾는다.
+    /// 결과는 주 키로 저장되고, 월 화면은 그 주들의 결과를 합쳐 보여 준다 (AiPicksFor). 비용은 주 수만큼.
+    /// </summary>
+    private async Task FindWithAiWeeklyAsync()
+    {
+        var month = CurrentPeriod;
+        var weeks = new List<Period>();
+        for (var d = month.Start; d <= month.End; d = d.AddDays(7))
+            if (Periods.Create(PeriodKind.Week, d) is var w && weeks.All(x => x.Label != w.Label)) weeks.Add(w);
+        if (Periods.Create(PeriodKind.Week, month.End) is var last && weeks.All(x => x.Label != last.Label)) weeks.Add(last);
+        // 예상 비용: 최근 검색 한 번 비용 × 주 수 (기록이 없으면 Sonnet 기준 $0.15)
+        double per = _aiLedger.Recent(5) is { Count: > 0 } r ? r.Average() : 0.15;
+        if (MessageBox.Show(Application.Current.MainWindow,
+                L.F("{0}을(를) 주 {1}번으로 나눠 AI로 찾을까요?\n한 번에 찾을 때보다 촘촘하지만 비용이 주 수만큼 들어요 (예상 약 ${2:0.00}).", month.Display, weeks.Count, per * weeks.Count),
+                L.T("AI 주별로 찾기"), MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+        var start = DateTime.Now;
+        for (int i = 0; i < weeks.Count; i++)
+        {
+            if (!await AiSearchAsync(weeks[i], false, L.F("주별로 찾는 중 {0}/{1} · {2}", i + 1, weeks.Count, weeks[i].Display))) break;  // 한도에 닿으면 멈춘다
+        }
+        await LoadAsync();  // 월 화면에 주별 결과를 합쳐 다시 보여 준다
+        AiText = L.F("주별로 찾기 끝 · 이번 검색 {0}", AiUsageLedger.Money(_aiLedger.Spent(start)));
+        UpdateAiMarks();
+    }
+
+    /// <returns>계속해도 되면 true (한도·키 문제로 아무 커넥터도 못 돌리면 false)</returns>
+    private async Task<bool> AiSearchAsync(Period period, bool replace, string? stepText = null)
+    {
         var regionKey = _region;
         var focus = RegionKeys.First(r => r.Key == regionKey) is var rk && rk.Key != "all" ? rk.Label : null;
         // 일일·주간 한도나 충전액에 닿은 커넥터는 이번에 쉰다
@@ -758,12 +793,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (scouts.Count == 0)
         {
             AiText = string.Join(" · ", blocked.Select(b => $"{b.s.Name}: {b.why}")) + " " + L.T("(설정에서 한도를 바꿀 수 있어요)");
-            return;
+            return false;
         }
         var runStart = DateTime.Now;
         AiBusy = true;
         var status = new Dictionary<string, string>();
-        void Report(string who, string m) { lock (status) status[who] = m; AiText = string.Join("  ·  ", status.Values); }
+        void Report(string who, string m) { lock (status) status[who] = m; AiText = (stepText != null ? stepText + "  ·  " : "") + string.Join("  ·  ", status.Values); }
         var progress = new Progress<string>(m => AiText = m);
         try
         {
@@ -853,13 +888,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                      + " · " + L.F("이번 검색 {0}", AiUsageLedger.Money(_aiLedger.Spent(runStart)))
                      + (blocked.Count > 0 ? " · " + string.Join(", ", blocked.Select(b => L.F("{0} 쉼: {1}", b.s.Name, b.why))) : "");
         }
-        catch (OperationCanceledException) { AiText = ""; }
+        catch (OperationCanceledException) { AiText = ""; return false; }
         catch (Exception ex) { AiText = L.F("AI로 찾지 못했어요: {0}", ex.Message); }
         finally
         {
             AiBusy = false;
             UpdateAiSaved();
         }
+        return true;
     }
 
     // 이 기간에 저장된 AI 결과: "저장된 AI 제안 5장 · 10.27 06:36 검색"

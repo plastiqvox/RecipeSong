@@ -48,6 +48,9 @@ public sealed class AiUsageLedger
 {
     private readonly string _file = Path.Combine(JsonCache<object>.Dir, "ai-usage.json");
     private readonly List<AiUsageEntry> _entries;
+
+    /// <summary>최근 n번 검색 비용 (예상 비용 안내용)</summary>
+    public List<double> Recent(int n) => [.. _entries.TakeLast(n).Select(e => e.Cost)];
     private readonly Lock _lock = new();
 
     public event Action? Changed;

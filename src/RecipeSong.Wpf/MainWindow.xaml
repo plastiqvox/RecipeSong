@@ -755,52 +755,62 @@
                     </StackPanel>
                 </Border>
 
-                <!-- AI 찾기 · 다시 분석 · 추천 설정 -->
-                <DockPanel Margin="0,16,0,0" Visibility="{Binding IsRecsTab, Converter={StaticResource BoolVis}}">
-                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,16,0" Command="{Binding OpenRecommendSettingsCommand}"
-                            AutomationProperties.Name="{local:Tr '추천 설정 열기'}" ToolTip="{local:Tr '추천 양 · 모험 정도 · 아는 아티스트 빼기'}">
-                        <TextBlock Text="{local:Tr '추천 설정'}" Foreground="{StaticResource Text2}"/>
-                    </Button>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,0,0" Command="{Binding PreciseCommand}"
-                            AutomationProperties.Name="{Binding PreciseLabel}" Visibility="{Binding CanPrecise, Converter={StaticResource BoolVis}}"
-                            ToolTip="{local:Tr '연은 월 단위, 월은 주 단위로 하나씩 분석해 저장해요. 주 단위만큼 촘촘해져요. 다시 누르면 멈춰요 (AI 비용 없음)'}">
-                        <Grid>
-                            <TextBlock Text="{Binding PreciseLabel}" Foreground="{StaticResource Text2}" Visibility="{Binding IsPrecise, Converter={StaticResource NotBoolVis}}"/>
-                            <TextBlock Text="{local:Tr '정밀 분석 멈추기'}" Foreground="{StaticResource AccentText}" Visibility="{Binding IsPrecise, Converter={StaticResource BoolVis}}"/>
-                        </Grid>
-                    </Button>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="14,7" Command="{Binding ReanalyzeCommand}"
-                            AutomationProperties.Name="{local:Tr '다시 분석'}" ToolTip="{local:Tr '저장된 추천 대신 지금 다시 계산해요 (AI 비용 없음)'}">
-                        <TextBlock Text="{local:Tr '다시 분석'}" Foreground="{StaticResource Text2}"/>
-                    </Button>
-                    <!-- 저장된 추천 안내 -->
-                    <TextBlock DockPanel.Dock="Right" Text="{Binding RecSavedNote}" Margin="0,0,12,0" VerticalAlignment="Center" FontSize="12"
-                               Foreground="{StaticResource Muted}"/>
-
-                    <Button DockPanel.Dock="Left" Style="{StaticResource Bare}" Padding="14,7" Command="{Binding FindWithAiCommand}" CommandParameter="add"
-                            BorderBrush="{StaticResource Accent}" AutomationProperties.Name="{local:Tr 'AI로 더 찾기'}"
-                            ToolTip="{local:Tr '켜 둔 AI 커넥터가 웹에서 이 주 신보를 더 찾아요. 저장된 결과에 더해져요.'}">
-                        <Grid>
-                            <TextBlock Text="{local:Tr 'AI로 찾기'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
-                                       Visibility="{Binding HasAiSaved, Converter={StaticResource NotBoolVis}}"/>
-                            <TextBlock Text="{local:Tr 'AI 더 찾기'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
-                                       Visibility="{Binding HasAiSaved, Converter={StaticResource BoolVis}}"/>
-                        </Grid>
-                    </Button>
-                    <Button DockPanel.Dock="Left" Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,0,0" Command="{Binding FindWithAiCommand}" CommandParameter="replace"
-                            AutomationProperties.Name="{local:Tr 'AI 다시 찾기'}" ToolTip="{local:Tr '이 주에 저장된 AI 결과를 지우고 처음부터 새로 찾아요'}"
-                            Visibility="{Binding HasAiSaved, Converter={StaticResource BoolVis}}">
-                        <TextBlock Text="{local:Tr 'AI 다시 찾기'}" Foreground="{StaticResource Text2}"/>
-                    </Button>
-                    <ProgressBar DockPanel.Dock="Left" Style="{StaticResource Progress}" IsIndeterminate="True" Width="80" Margin="12,0,0,0"
-                                 VerticalAlignment="Center" Visibility="{Binding AiBusy, Converter={StaticResource BoolVis}}"/>
-                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                <!-- AI 찾기 · 다시 분석 · 추천 설정: 오른쪽 버튼은 고정, AI 버튼은 자리가 모자라면 아랫줄로 (한 줄에 넣으면 'AI 다시 찾기'가 밀려 사라졌다) -->
+                <StackPanel Margin="0,16,0,0" Visibility="{Binding IsRecsTab, Converter={StaticResource BoolVis}}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                            <TextBlock Text="{Binding RecSavedNote}" Margin="0,0,12,0" VerticalAlignment="Center" FontSize="12" MaxWidth="180" TextTrimming="CharacterEllipsis" ToolTip="{Binding RecSavedNote}"
+                                       Foreground="{StaticResource Muted}"/>
+                            <Button Style="{StaticResource Bare}" Padding="14,7" Command="{Binding ReanalyzeCommand}"
+                                    AutomationProperties.Name="{local:Tr '다시 분석'}" ToolTip="{local:Tr '저장된 추천 대신 지금 다시 계산해요 (AI 비용 없음)'}">
+                                <TextBlock Text="{local:Tr '다시 분석'}" Foreground="{StaticResource Text2}"/>
+                            </Button>
+                            <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,0,0" Command="{Binding PreciseCommand}"
+                                    AutomationProperties.Name="{Binding PreciseLabel}" Visibility="{Binding CanPrecise, Converter={StaticResource BoolVis}}"
+                                    ToolTip="{local:Tr '연은 월 단위, 월은 주 단위로 하나씩 분석해 저장해요. 주 단위만큼 촘촘해져요. 다시 누르면 멈춰요 (AI 비용 없음)'}">
+                                <Grid>
+                                    <TextBlock Text="{Binding PreciseLabel}" Foreground="{StaticResource Text2}" Visibility="{Binding IsPrecise, Converter={StaticResource NotBoolVis}}"/>
+                                    <TextBlock Text="{local:Tr '정밀 분석 멈추기'}" Foreground="{StaticResource AccentText}" Visibility="{Binding IsPrecise, Converter={StaticResource BoolVis}}"/>
+                                </Grid>
+                            </Button>
+                            <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,16,0" Command="{Binding OpenRecommendSettingsCommand}"
+                                    AutomationProperties.Name="{local:Tr '추천 설정 열기'}" ToolTip="{local:Tr '추천 양 · 모험 정도 · 아는 아티스트 빼기'}">
+                                <TextBlock Text="{local:Tr '추천 설정'}" Foreground="{StaticResource Text2}"/>
+                            </Button>
+                        </StackPanel>
+                        <WrapPanel>
+                            <Button Style="{StaticResource Bare}" Padding="14,7" Margin="0,0,0,6" Command="{Binding FindWithAiCommand}" CommandParameter="add"
+                                    BorderBrush="{StaticResource Accent}" AutomationProperties.Name="{local:Tr 'AI로 더 찾기'}"
+                                    ToolTip="{local:Tr '켜 둔 AI 커넥터가 웹에서 이 주 신보를 더 찾아요. 저장된 결과에 더해져요.'}">
+                                <Grid>
+                                    <TextBlock Text="{local:Tr 'AI로 찾기'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
+                                               Visibility="{Binding HasAiSaved, Converter={StaticResource NotBoolVis}}"/>
+                                    <TextBlock Text="{local:Tr 'AI 더 찾기'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
+                                               Visibility="{Binding HasAiSaved, Converter={StaticResource BoolVis}}"/>
+                                </Grid>
+                            </Button>
+                            <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,0,6" Command="{Binding FindWithAiCommand}" CommandParameter="weekly"
+                                    AutomationProperties.Name="{local:Tr 'AI 주별로 찾기'}" Visibility="{Binding IsMonthMode, Converter={StaticResource BoolVis}}"
+                                    ToolTip="{local:Tr '한 달을 주마다 나눠 찾아요. 한 번에 찾을 때보다 촘촘하지만 비용이 주 수만큼 들어요'}">
+                                <TextBlock Text="{local:Tr 'AI 주별로 찾기'}" Foreground="{StaticResource AccentText}"/>
+                            </Button>
+                            <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,0,6" Command="{Binding FindWithAiCommand}" CommandParameter="replace"
+                                    AutomationProperties.Name="{local:Tr 'AI 다시 찾기'}" ToolTip="{local:Tr '이 주에 저장된 AI 결과를 지우고 처음부터 새로 찾아요'}"
+                                    Visibility="{Binding HasAiSaved, Converter={StaticResource BoolVis}}">
+                                <TextBlock Text="{local:Tr 'AI 다시 찾기'}" Foreground="{StaticResource Text2}"/>
+                            </Button>
+                            <ProgressBar Style="{StaticResource Progress}" IsIndeterminate="True" Width="80" Margin="12,0,0,0"
+                                         VerticalAlignment="Center" Visibility="{Binding AiBusy, Converter={StaticResource BoolVis}}"/>
+                        </WrapPanel>
+                    </DockPanel>
+                    <!-- AI 진행·결과 안내는 버튼 아래 한 줄로 (길어도 버튼을 밀지 않게) -->
+                    <StackPanel Margin="0,4,0,0">
                         <TextBlock Text="{Binding AiText}" FontSize="12" Foreground="{StaticResource Text2}" TextTrimming="CharacterEllipsis"
                                    Visibility="{Binding AiText, Converter={StaticResource EmptyCollapsed}}"/>
                         <TextBlock Text="{Binding AiSavedNote}" FontSize="12" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis"
                                    Visibility="{Binding AiSavedNote, Converter={StaticResource EmptyCollapsed}}"/>
                     </StackPanel>
-                </DockPanel>
+                </StackPanel>
 
                 <!-- 별로·차단한 앨범과 아주 닮은 추천: 같이 숨길지 -->
                 <Border Margin="0,12,16,0" Padding="14,10" CornerRadius="10" Background="{StaticResource Surface2}" BorderBrush="{StaticResource Line3}" BorderThickness="1"
