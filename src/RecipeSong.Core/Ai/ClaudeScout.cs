@@ -56,8 +56,7 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
         var key = settings.GetKey() ?? throw new InvalidOperationException(L.T("Claude API 키가 없어요"));
         var client = new AnthropicClient { ApiKey = key };
         var prompt = AiPrompt.Build(period, taste, exclude, focusRegion, $"Submit everything you found once, with the {SubmitTool} tool.");
-        AiDebugLog.Write(Name, "보낸 지시:
-" + prompt);
+        AiDebugLog.Write(Name, "보낸 지시: " + prompt.ReplaceLineEndings(" ⏎ "));
 
         var tools = new List<BetaToolUnion>
         {

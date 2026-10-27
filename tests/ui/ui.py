@@ -73,6 +73,8 @@ def build() -> None:
         p.unlink(missing_ok=True)
     errors = [l for l in r.stdout.splitlines() if " error " in l]
     print("빌드 " + ("성공" if r.returncode == 0 else "실패"), *sorted(set(errors))[:10], sep="\n")
+    if r.returncode != 0:  # 실패하면 실패로 끝낸다 (&& 로 이어 붙인 다음 명령·커밋이 돌지 않게)
+        sys.exit(1)
 
 
 def app():
