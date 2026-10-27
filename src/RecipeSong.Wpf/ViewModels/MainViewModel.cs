@@ -1648,12 +1648,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             var near = await _sound.TrackNearAsync(tracks.Select(t => (t.Id, t.Preview)), _life.Token);
-            double best = near.Count > 1 ? near.Values.Max(v => v.Sim) : double.NaN;
+            if (near.Count == 0) return;
+            // 모든 곡에 붙이면 목록이 번잡하다 → 가장 닮은 곡, 그리고 그와 거의 같은 곡(0.02 이내)만, 최대 2곡
+            double best = near.Values.Max(v => v.Sim);
+            var shown = near.Where(kv => kv.Value.Sim >= best - 0.02).OrderByDescending(kv => kv.Value.Sim).Take(2)
+                .Select(kv => kv.Key).ToHashSet();
             foreach (var t in item.Tracks)
-                if (near.TryGetValue(t.Id, out var n))
+                if (shown.Contains(t.Id))
                 {
-                    t.Near = n.Near;
-                    t.IsClosest = n.Sim == best;
+                    t.Near = near[t.Id].Near;
+                    t.IsClosest = near[t.Id].Sim == best && near.Count > 1;
                 }
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 바쁘거나 꺼져 있으면 표시하지 않는다
