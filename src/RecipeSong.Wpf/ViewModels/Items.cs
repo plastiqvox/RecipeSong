@@ -147,14 +147,6 @@ public sealed partial class ReleaseItem : ObservableObject
         OnPropertyChanged(nameof(TracksButton));
     }
 
-    /// <summary>Deezer에서 열기. 발매 전 앨범은 API 링크가 deezer.com/soon이라 앨범 주소로 연다.</summary>
-    [RelayCommand]
-    private void Open()
-    {
-        var link = Rec.Link is { } l && !l.Contains("/soon", StringComparison.OrdinalIgnoreCase) ? l : $"https://www.deezer.com/album/{Rec.DeezerAlbumId}";
-        Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });
-    }
-
     /// <summary>Apple Music(iTunes 앱)에서 열기 — 주소 찾기는 MainViewModel이</summary>
     public Func<ReleaseItem, Task>? OpenAppleMusicAction { get; init; }
 
