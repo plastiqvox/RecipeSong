@@ -7,6 +7,7 @@
     python tests/ui/ui.py setup              시험 데이터 폴더 만들기 (지금 설정·캐시 복사) + 빌드
     python tests/ui/ui.py start [--en]       시험용 앱 띄우기 (--en: 영어 화면)
     python tests/ui/ui.py shot <이름>        창 캡처 → <데이터>/shots/<이름>.png
+    python tests/ui/ui.py live [이름]        쓰고 있는 앱(시험용 아님)을 찍기만 한다
     python tests/ui/ui.py tree [깊이]        보이는 컨트롤 이름 목록 (누를 이름 찾기)
     python tests/ui/ui.py click <이름> [--right] [--index N]   버튼 누르기 (invoke, 오른쪽은 마우스)
     python tests/ui/ui.py menu <이름>        열린 우클릭 메뉴 항목 누르기
@@ -103,16 +104,38 @@ def stop() -> None:
         print("시험용 앱을 닫았어요")
 
 
-def shot(name: str) -> None:
+def live_hwnd() -> int:
+    """쓰고 있는 앱(시험용이 아닌 RecipeSong)의 창 — 찍기만 한다"""
+    import win32gui
+    import win32process
+    test_pid = int(PID_FILE.read_text()) if PID_FILE.exists() else -1
+    found = []
+
+    def visit(h, _):
+        if win32gui.IsWindowVisible(h) and win32gui.GetWindowText(h) == "RecipeSong":
+            if win32process.GetWindowThreadProcessId(h)[1] != test_pid:
+                found.append(h)
+    win32gui.EnumWindows(visit, None)
+    if not found:
+        raise SystemExit("실행 중인 RecipeSong 창이 없어요")
+    return found[0]
+
+
+def shot(name: str, hwnd: int | None = None) -> None:
     SHOTS.mkdir(parents=True, exist_ok=True)
     out = SHOTS / f"{name}.png"
     # PrintWindow: 다른 창에 가려져 있어도 이 창만 찍는다 (capture_as_image 는 화면 영역을 찍어 가린 창이 찍힌다)
+    # 화면 배율(150% 등)을 모르는 프로세스면 창 크기가 작게 잡혀 오른쪽이 잘려 찍히므로 먼저 DPI 를 알린다
     import ctypes
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        pass
 
     import win32gui
     import win32ui
     from PIL import Image
-    hwnd = window().handle
+    hwnd = hwnd or window().handle
     l, t, r, b = win32gui.GetWindowRect(hwnd)
     w, h = r - l, b - t
     src = win32ui.CreateDCFromHandle(win32gui.GetWindowDC(hwnd))
@@ -197,6 +220,8 @@ def main() -> None:
     idx = int(rest[rest.index("--index") + 1]) if "--index" in rest else 0
     if cmd == "setup":
         setup()
+    elif cmd == "live":  # 쓰고 있는 앱 찍기 (누르거나 움직이지 않는다)
+        shot(pos[0] if pos else "live-" + time.strftime("%H%M%S"), live_hwnd())
     elif cmd == "build":
         build()
     elif cmd == "start":
