@@ -119,6 +119,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyFilters();
     }
 
+    /// <summary>추천 설정 창에서 웹진을 켜고 끈 뒤</summary>
+    public void SetDisabledWebzines(IEnumerable<string> names)
+    {
+        DisabledWebzines = [.. names];
+        _prefs.Set("webzines-off", [.. DisabledWebzines]);
+        _prefs.Save();
+    }
+
     /// <summary>추천 설정 창에서 해제한 뒤 화면을 다시 거른다</summary>
     public void RefreshBlocked() => ApplyFilters();
 
@@ -142,7 +150,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private async Task OpenRecommendSettingsAsync()
     {
-        var win = new RecommendSettingsWindow(_recPrefs, _settings, _sound?.MlDirectory ?? _settings.MlDirectory ?? SoundService.FindMlDirectory(), _blocked)
+        var win = new RecommendSettingsWindow(_recPrefs, _settings, _sound?.MlDirectory ?? _settings.MlDirectory ?? SoundService.FindMlDirectory(), _blocked, this)
             { Owner = Application.Current.MainWindow };
         if (win.ShowDialog() != true || win.Result == _recPrefs) return;
         RefreshBlocked();  // 창에서 차단을 해제했을 수 있다
@@ -239,6 +247,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _selectedDate = LatestFriday(DateTime.Today);  // 신보는 금요일에 몰린다 → 가장 최근 금요일이 있는 주
         if (_prefs.TryGet("crate-order", out var savedOrder)) _userOrder = savedOrder;
         if (_recPrefsStore.TryGet("prefs", out var rp)) _recPrefs = rp;
+        if (_prefs.TryGet("webzines-off", out var off)) DisabledWebzines = [.. off];
         _navMonth = new DateTime(_selectedDate.Year, _selectedDate.Month, 1);
         BuildCalendar();
         SyncChips();
@@ -444,7 +453,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void UpdateAiMarks()
     {
         // 같은 앨범이 여러 기간 키에 있으면 배지를 합친다
-        var recs = _aiPicks.FreshValues.SelectMany(l => l).GroupBy(r => r.DeezerAlbumId)
+        var recs = _aiPicks.FreshValues.SelectMany(l => l).Concat(AllWebzinePicks()).GroupBy(r => r.DeezerAlbumId)
             .Select(g => g.Aggregate(MergeAi)).ToList();
         (IReadOnlyList<AiBadge> Dots, string? Tip) Marks(IEnumerable<ReleaseRecommendation> rs)
         {
@@ -907,35 +916,103 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>크레이트 칩 옆 "AI 제안" 칩: AI 커넥터가 찾은 것만 모아 본다</summary>
     private const string AiChip = "AI 제안";
+    /// <summary>"웹진" 칩: 웹진 RSS에서 가져온 것만</summary>
+    private const string WebzineChip = "웹진";
+
+    // ---- 외부 추천 가져오기: 웹진 RSS (켤 때와 6시간마다 새 글만) ----
+    private readonly JsonCache<List<ReleaseRecommendation>> _webzinePicks = new("webzine-picks", TimeSpan.FromDays(3650));
+    private readonly JsonCache<bool> _webzineSeen = new("webzine-seen", TimeSpan.FromDays(365));
+    private readonly JsonCache<DateTime> _webzineRun = new("webzine-run", TimeSpan.FromDays(3650));
+
+    /// <summary>끈 웹진 이름 (추천 설정에서)</summary>
+    public HashSet<string> DisabledWebzines { get; private set; } = [];
+
+    private List<ReleaseRecommendation> AllWebzinePicks() => _webzinePicks.TryGet("all", out var l) ? l : [];
+
+    /// <summary>이 기간에 나온 웹진 추천 (꺼 둔 웹진 것은 뺀다)</summary>
+    private List<ReleaseRecommendation> WebzinePicksFor(Period p) =>
+        [.. AllWebzinePicks().Where(r => p.Contains(r.ReleaseDate))
+            .Where(r => r.AiBy?.Any(b => !DisabledWebzines.Contains(b.Replace("웹진 · ", ""))) != false)];
+
+    /// <summary>웹진 새 글을 읽어 Deezer 확인·소리 점수까지 매겨 저장한다. force면 6시간 안 지나도.</summary>
+    public async Task RefreshWebzinesAsync(bool force = false)
+    {
+        if (!force && _webzineRun.TryGet("last", out var last) && DateTime.Now - last < TimeSpan.FromHours(6)) return;
+        var reader = new WebzineFeeds(new HttpClient { Timeout = TimeSpan.FromSeconds(20) });
+        var picks = new List<AiPick>();
+        foreach (var feed in WebzineFeeds.Defaults.Where(f => !DisabledWebzines.Contains(f.Name)))
+        {
+            try
+            {
+                SyncText = $"웹진 새 글 확인 중 · {feed.Name}";
+                picks.AddRange((await reader.ReadAsync(feed, _life.Token)).Where(p => p.Source is { } link && !_webzineSeen.TryGet(link, out _)));
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Xml.XmlException) { }
+        }
+        try
+        {
+            if (picks.Count > 0)
+            {
+                _owned ??= new OwnedLibrary(await _library.GetTracksAsync(_life.Token));
+                var (recs, _) = await _recommender.ScoreAiPicksAsync(picks, _owned, null,
+                    new Progress<string>(m => SyncText = $"웹진 추천 확인 중 · {m}"), _life.Token);
+                var all = AllWebzinePicks().ToDictionary(r => r.DeezerAlbumId);
+                foreach (var r in recs)
+                    all[r.DeezerAlbumId] = all.TryGetValue(r.DeezerAlbumId, out var o) ? MergeAi(o, r) : r with { BecauseOf = ["웹진"] };
+                _webzinePicks.Set("all", [.. all.Values]);
+                _webzinePicks.Save();
+                foreach (var p in picks) _webzineSeen.Set(p.Source!, true);
+                _webzineSeen.Save();
+                // 지금 보는 기간에 새로 들어온 게 있으면 바로 넣는다
+                var period = CurrentPeriod;
+                var add = recs.Where(r => period.Contains(r.ReleaseDate) && _all.All(i => i.Rec.DeezerAlbumId != r.DeezerAlbumId)).ToList();
+                if (add.Count > 0)
+                {
+                    _all = [.. _all, .. add.Select(r => MakeItem(r with { BecauseOf = ["웹진"] }))];
+                    ApplyFilters();
+                }
+                UpdateAiMarks();
+            }
+            _webzineRun.Set("last", DateTime.Now);
+            _webzineRun.Save();
+            SyncText = "";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { SyncText = $"웹진을 읽지 못했어요: {ex.Message}"; }
+    }
 
     private void ApplyFilters()
     {
         var items = FilteredBase().ToList();
-        int aiCount = items.Count(i => i.IsAi);
+        int aiCount = items.Count(i => i.IsAiConnector);
+        int webzineCount = items.Count(i => i.IsWebzine);
 
         // 크레이트 칩: 전체 · (AI 제안) · 모델의 크레이트 순서 · 미분류
         var names = CrateOrder.Concat(items.Select(i => i.CrateName)).Distinct().ToList();
         var keys = new List<string> { Labels.All };
         if (aiCount > 0) keys.Add(AiChip);
+        if (webzineCount > 0) keys.Add(WebzineChip);
         keys.AddRange(names);
         if (!CrateChips.Select(c => c.Key).SequenceEqual(keys))
         {
             CrateChips.Clear();
             foreach (var k in keys)
-                CrateChips.Add(new FilterChip(k, k, SelectCrate) { Mover = k == Labels.All || k == AiChip || k == Labels.Unsorted ? null : MoveCrate });
+                CrateChips.Add(new FilterChip(k, k, SelectCrate) { Mover = k == Labels.All || k == AiChip || k == WebzineChip || k == Labels.Unsorted ? null : MoveCrate });
         }
         if (!keys.Contains(_crate)) _crate = Labels.All;
         foreach (var c in CrateChips)
-            c.Count = c.Key == Labels.All ? items.Count : c.Key == AiChip ? aiCount : items.Count(i => i.CrateName == c.Key);
+            c.Count = c.Key == Labels.All ? items.Count : c.Key == AiChip ? aiCount : c.Key == WebzineChip ? webzineCount
+                : items.Count(i => i.CrateName == c.Key);
         SyncChips();
 
         bool aiOnly = _crate == AiChip;
+        bool webzineOnly = _crate == WebzineChip;
         bool all = _crate == Labels.All;
         Sections.Clear();
-        foreach (var g in items.Where(i => !aiOnly || i.IsAi).GroupBy(i => i.CrateName)
+        foreach (var g in items.Where(i => (!aiOnly || i.IsAiConnector) && (!webzineOnly || i.IsWebzine)).GroupBy(i => i.CrateName)
                      .OrderBy(g => g.Key == Labels.Unsorted ? 99 : names.IndexOf(g.Key)))
         {
-            if (!all && !aiOnly && g.Key != _crate) continue;
+            if (!all && !aiOnly && !webzineOnly && g.Key != _crate) continue;
             // 플리 뮤지션 → AI 제안 → 추가 제안 순
             var list = g.OrderBy(i => i.IsMine ? 0 : i.IsAi ? 1 : 2).ToList();
             int mine = list.Count(i => i.IsMine);
@@ -986,6 +1063,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             await _sound.StartAsync(_life.Token);
             await SyncFavoritesAsync();
             await RefreshStatusAsync();
+            _ = RefreshWebzinesAsync();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -1206,7 +1284,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var regionKey = _region;
         var focus = RegionKeys.First(r => r.Key == regionKey).ConfigRegion;
         var key = RecKey(period, focus);
-        var aiRecs = AiPicksFor(period);
+        // AI 결과 + 웹진 추천 (같은 앨범이면 배지를 합친다)
+        var aiRecs = AiPicksFor(period).Concat(WebzinePicksFor(period)).GroupBy(r => r.DeezerAlbumId)
+            .Select(g => g.Aggregate(MergeAi)).ToList();
         UpdateAiSaved();
 
         IsBusy = true;

@@ -14,6 +14,23 @@ var clock = System.Diagnostics.Stopwatch.StartNew();
 var progress = new Progress<string>(m => Console.Error.WriteLine($"  [{clock.Elapsed.TotalSeconds,6:F1}s] {m}"));
 
 var cmd = args.FirstOrDefault() ?? "status";
+
+// 웹진 RSS에서 뽑은 "아티스트 – 앨범" 확인용 (Deezer 확인·점수 없이)
+if (cmd == "webzines")
+{
+    var feeds = new WebzineFeeds(new HttpClient { Timeout = TimeSpan.FromSeconds(20) });
+    foreach (var f in WebzineFeeds.Defaults)
+    {
+        try
+        {
+            var picks = await feeds.ReadAsync(f);
+            Console.WriteLine($"== {f.Name} ({f.Region}) {picks.Count}장");
+            foreach (var p in picks.Take(6)) Console.WriteLine($"   {p.Artist} – {p.Album}  ({p.ReleaseDate})");
+        }
+        catch (Exception ex) { Console.WriteLine($"== {f.Name}: 실패 {ex.Message}"); }
+    }
+    return;
+}
 if (cmd == "status")
 {
     if (sound == null) { Console.WriteLine("소리 분석 서비스를 찾지 못했습니다."); return; }

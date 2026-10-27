@@ -50,6 +50,19 @@ public sealed partial class ReleaseItem : ObservableObject
     public bool HasLikedLabel => !string.IsNullOrEmpty(Rec.LikedLabel);
     public bool HasFavNear => !string.IsNullOrEmpty(Rec.FavNear);
     public bool IsAi => Rec.AiReason != null;
+    /// <summary>웹진 RSS에서 온 추천</summary>
+    public bool IsWebzine => Rec.AiBy?.Any(b => b.StartsWith("웹진", StringComparison.Ordinal)) == true;
+    /// <summary>AI 커넥터(Claude·GPT)가 찾은 추천</summary>
+    public bool IsAiConnector => Rec.AiBy?.Any(b => !b.StartsWith("웹진", StringComparison.Ordinal)) == true;
+    public bool HasSource => !string.IsNullOrEmpty(Rec.SourceUrl);
+
+    /// <summary>추천 이유를 누르면 원문(웹진 리뷰·AI가 확인한 페이지)을 연다</summary>
+    [RelayCommand]
+    private void OpenSource()
+    {
+        if (Rec.SourceUrl is { } url && Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme is "http" or "https")
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    }
     public string? AiReason => Rec.AiReason;
     /// <summary>제안한 AI 커넥터 ("Claude", "GPT") — 커넥터마다 배지 하나</summary>
     public IReadOnlyList<AiBadge> AiBy => [.. (Rec.AiBy ?? (IsAi ? ["AI"] : [])).Select(b => new AiBadge(b))];

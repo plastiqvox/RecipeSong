@@ -26,6 +26,18 @@
         <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
                    Text="내 라이브러리에 곡이 있는 아티스트는 추가 제안에 나오지 않아요. 내 플리 뮤지션과 AI 제안은 그대로 나와요."/>
 
+        <!-- 외부 추천: 웹진 -->
+        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+        <DockPanel Margin="0,20,0,8">
+            <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,5" Click="RefreshWebzines_Click">
+                <TextBlock x:Name="WebzineRefreshText" Text="지금 새로 읽기" FontSize="12" Foreground="{StaticResource Text2}"/>
+            </Button>
+            <TextBlock Text="외부 추천 · 웹진 (RSS)" Style="{StaticResource Kicker}" VerticalAlignment="Center"/>
+        </DockPanel>
+        <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"
+                   Text="웹진이 소개한 앨범을 6시간마다 가져와 Deezer에서 확인하고, 발매 주를 열면 '웹진' 배지로 보여 줘요. 국내 웹진은 RSS를 막아 두거나 제공하지 않아 아직 없어요."/>
+        <WrapPanel x:Name="WebzinePanel"/>
+
         <!-- 차단 목록 -->
         <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
         <TextBlock Text="차단 목록" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>

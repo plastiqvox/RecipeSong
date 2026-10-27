@@ -201,9 +201,15 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </StackPanel>
-                        <TextBlock Margin="0,6,0,0" FontSize="12" Text="{Binding AiReason}" Foreground="{StaticResource AccentText}" TextWrapping="Wrap"
-                                   MaxHeight="34" TextTrimming="CharacterEllipsis" ToolTip="{Binding AiReason}"
-                                   Visibility="{Binding IsAi, Converter={StaticResource BoolVis}}"/>
+                        <!-- 추천 이유 (AI·웹진). 누르면 원문 -->
+                        <Button Margin="0,6,0,0" Command="{Binding OpenSourceCommand}" Cursor="Hand" HorizontalContentAlignment="Left"
+                                ToolTip="{Binding Rec.SourceUrl}" Visibility="{Binding IsAi, Converter={StaticResource BoolVis}}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button"><ContentPresenter/></ControlTemplate>
+                            </Button.Template>
+                            <TextBlock FontSize="12" Text="{Binding AiReason}" Foreground="{StaticResource AccentText}" TextWrapping="Wrap"
+                                       MaxHeight="34" TextTrimming="CharacterEllipsis" TextDecorations="{x:Null}"/>
+                        </Button>
                         <!-- 수록곡에 좋아하는 아티스트가 참여 -->
                         <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis"
                                    ToolTip="수록곡에 내가 좋아하는 아티스트가 참여했어요 (피처링 등)"

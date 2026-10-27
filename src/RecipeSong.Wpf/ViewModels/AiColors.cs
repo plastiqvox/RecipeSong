@@ -28,6 +28,7 @@ public static class AiColors
     private static Color Base(string label)
     {
         var l = label.ToLowerInvariant();
+        if (l.StartsWith("웹진")) return Rgb(0xA8, 0x8B, 0xFF);
         if (l.StartsWith("gpt"))
             return l.Contains("nano") || l.Contains("mini") ? Rgb(0x9C, 0xE6, 0xC6)
                 : l.Contains("pro") ? Rgb(0x0F, 0x8A, 0x5C)
@@ -44,7 +45,7 @@ public static class AiColors
     public static int Rank(string label)
     {
         var l = label.ToLowerInvariant();
-        int provider = l.StartsWith("gpt") ? 10 : 0;
+        int provider = l.StartsWith("웹진") ? 20 : l.StartsWith("gpt") ? 10 : 0;
         int tier = l.Contains("fable") ? 0 : l.Contains("opus") || l.Contains("pro") ? 1 : l.Contains("haiku") || l.Contains("mini") || l.Contains("nano") ? 3 : 2;
         return provider + tier;
     }

@@ -305,7 +305,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     /// AI 커넥터가 찾은 발매작: Deezer에서 실제로 있는지 확인하고 (없으면 버린다) 같은 방식으로 소리·지역·점수를 매긴다.
     /// </summary>
     public async Task<(IReadOnlyList<ReleaseRecommendation> Recs, int Unverified)> ScoreAiPicksAsync(
-        IReadOnlyList<AiPick> picks, OwnedLibrary owned, Period period,
+        IReadOnlyList<AiPick> picks, OwnedLibrary owned, Period? period,
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
         progress?.Report($"AI가 찾은 {picks.Count}장 Deezer에서 확인 중…");
@@ -339,6 +339,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 AiReason = ps.Count == 1 ? ps[0].Reason : string.Join("  /  ", ps.Select(p => $"{p.By}: {p.Reason}")),
                 AiBy = [.. ps.Select(p => p.By)],
                 BecauseOf = ["AI 제안"],
+                SourceUrl = ps[0].Source,
             };
         }).OrderByDescending(r => r.Score)], picks.Count - accepted);
     }
@@ -349,7 +350,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     /// 2) 없으면 그 아티스트의 디스코그래피에서 제목이 맞는 것, 그래도 없으면 그 기간에 나온 그 아티스트의 발매작
     /// 발매일: Deezer 날짜가 기간 ±3일이거나, AI가 확인했다는 날짜가 기간 안이고 Deezer 날짜와 30일 이내 (선공개 싱글 날짜가 붙는 경우)
     /// </summary>
-    private async Task<(DzAlbum? Album, string Note)> MatchAiPickAsync(AiPick p, Period period, CancellationToken ct)
+    private async Task<(DzAlbum? Album, string Note)> MatchAiPickAsync(AiPick p, Period? period, CancellationToken ct)
     {
         var artistKey = ListeningAnalyzer.NormalizeArtist(p.Artist);
         var titleKey = TasteProfile.TitleKey(p.Album);
@@ -358,9 +359,11 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         bool SameTitle(string title) => TasteProfile.TitleKey(title) is var t && t.Length > 0 && titleKey.Length > 0
             && (t == titleKey || t.Length >= 3 && titleKey.Length >= 3 && (t.StartsWith(titleKey) || titleKey.StartsWith(t)));
         DateOnly? aiDate = DateOnly.TryParse(p.ReleaseDate, out var ad) ? ad : null;
-        bool InPeriod(DateOnly d) =>
-            Enumerable.Range(-3, 7).Any(k => period.Contains(d.AddDays(k)))
-            || aiDate is { } x && period.Contains(x) && Math.Abs(d.DayNumber - x.DayNumber) <= 30;
+        // 기간이 없으면 (웹진) 최근 1년 안 발매작이면 받는다
+        bool InPeriod(DateOnly d) => period is not { } pr
+            ? d >= DateOnly.FromDateTime(DateTime.Today.AddYears(-1))
+            : Enumerable.Range(-3, 7).Any(k => pr.Contains(d.AddDays(k)))
+              || aiDate is { } x && pr.Contains(x) && Math.Abs(d.DayNumber - x.DayNumber) <= 30;
 
         async Task<(DzAlbum?, string)> Check(long id, string how)
         {
@@ -380,7 +383,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         var albums = await _discography.GetOrAddAsync(artist.Id.ToString(), async () => [.. await deezer.ArtistAlbumsAsync(artist.Id, ct)]);
         if (albums.FirstOrDefault(a => SameTitle(a.Title)) is { } byTitle)
             return await Check(byTitle.Id, "디스코그래피 제목 일치");
-        if (albums.Where(a => a.Released is { } d && period.Contains(d) && a.RecordType != "compile")
+        if (period != null && albums.Where(a => a.Released is { } d && period.Value.Contains(d) && a.RecordType != "compile")
                 .OrderByDescending(a => TypeWeight(a.RecordType)).FirstOrDefault() is { } inPeriod)
             return await Check(inPeriod.Id, $"제목은 다르지만 기간 내 발매작 '{inPeriod.Title}'");
         return (null, $"아티스트는 있지만 해당 앨범 없음 (Deezer 앨범 {albums.Count}장)");
@@ -457,7 +460,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             var (c, a) = hits[i];
             var snd = heard[i];
             // 플리 뮤지션: 일본 크레이트 플레이리스트면 그 크레이트, 한국 플레이리스트면 한국음악
-            string? crate = c.Mine?.Style ?? (c.Mine?.Region == "한국" ? KoreanCrate : null);
+            string? crate = c.Mine?.Style ?? (c.Mine?.Region == "한국" || c.Mine == null && regionOf[c.Id] == Region.Korea ? KoreanCrate : null);
             double? fit = null, taste = null;
             double score;
             if (snd != null)

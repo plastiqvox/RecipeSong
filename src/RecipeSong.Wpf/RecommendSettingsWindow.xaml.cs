@@ -30,13 +30,18 @@ public partial class RecommendSettingsWindow : Window
 
     private readonly RecipeSong.Core.BlockList _blocked;
 
-    public RecommendSettingsWindow(RecPrefs prefs, RecipeSong.Core.AppSettings app, string? mlDir, RecipeSong.Core.BlockList blocked)
+    private readonly ViewModels.MainViewModel _vm;
+
+    public RecommendSettingsWindow(RecPrefs prefs, RecipeSong.Core.AppSettings app, string? mlDir, RecipeSong.Core.BlockList blocked,
+        ViewModels.MainViewModel vm)
     {
         InitializeComponent();
         _app = app;
         _mlDir = mlDir;
         _blocked = blocked;
+        _vm = vm;
         ShowBlocked();
+        ShowWebzines();
         ShowStorage();
         Result = prefs;
         Build(AmountGrid, AmountHint, Amounts, prefs.Amount);
@@ -54,6 +59,29 @@ public partial class RecommendSettingsWindow : Window
             grid.Children.Add(rb);
         }
         hint.Text = options[Math.Clamp(selected, 0, options.Length - 1)].Hint;
+    }
+
+    // ---- 웹진: 체크를 끄면 그 웹진은 읽지도 보여 주지도 않는다 ----
+    private void ShowWebzines()
+    {
+        foreach (var f in RecipeSong.Core.WebzineFeeds.Defaults)
+        {
+            var box = new CheckBox { Content = $"{f.Name} ({f.Region})", IsChecked = !_vm.DisabledWebzines.Contains(f.Name),
+                Foreground = (System.Windows.Media.Brush)FindResource("Text"), Margin = new Thickness(0, 0, 16, 6), Tag = f.Name };
+            box.Checked += (_, _) => SaveWebzines();
+            box.Unchecked += (_, _) => SaveWebzines();
+            WebzinePanel.Children.Add(box);
+        }
+    }
+
+    private void SaveWebzines() =>
+        _vm.SetDisabledWebzines(WebzinePanel.Children.OfType<CheckBox>().Where(c => c.IsChecked != true).Select(c => (string)c.Tag));
+
+    private async void RefreshWebzines_Click(object sender, RoutedEventArgs e)
+    {
+        WebzineRefreshText.Text = "읽는 중…";
+        await _vm.RefreshWebzinesAsync(force: true);
+        WebzineRefreshText.Text = "다 읽었어요";
     }
 
     // ---- 차단 목록: 칩을 누르면 해제 ----
