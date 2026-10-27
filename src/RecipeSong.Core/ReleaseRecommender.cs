@@ -411,7 +411,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         if (sound != null)
         {
             progress?.Report(L.F("미리듣기 소리 분석 준비 중… ({0}장)", toScore.Count));
-            try { sounds = await sound.ScoreAlbumsAsync(toScore, progress, ct); }
+            var coverOf = hits.DistinctBy(h => h.a.Id).ToDictionary(h => h.a.Id, h => h.a.Cover);
+            try { sounds = await sound.ScoreAlbumsAsync(toScore, progress, ct, coverOf); }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 progress?.Report(L.F("소리 분석을 건너뜀: {0}", ex.Message));
