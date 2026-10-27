@@ -791,8 +791,8 @@
                             </Button>
                             <!-- 옵션: 주별로(월) · 지우고 다시 (저장된 AI 결과가 있을 때) -->
                             <CheckBox Content="{local:Tr '주별로'}" IsChecked="{Binding AiWeekly}" Margin="14,0,0,6" VerticalAlignment="Center"
-                                      Foreground="{StaticResource Text2}" FontSize="13" Visibility="{Binding IsMonthMode, Converter={StaticResource BoolVis}}"
-                                      ToolTip="{local:Tr '한 달을 주마다 나눠 찾아요. 한 번에 찾을 때보다 촘촘하지만 비용이 주 수만큼 들어요'}"/>
+                                      Foreground="{StaticResource Text2}" FontSize="13" Visibility="{Binding CanAiWeekly, Converter={StaticResource BoolVis}}"
+                                      ToolTip="{local:Tr '한 달(1년)을 주마다 나눠 찾아요. 한 번에 찾을 때보다 촘촘하지만 비용이 주 수만큼 들어요'}"/>
                             <CheckBox Content="{local:Tr '저장된 AI 결과 지우고 다시'}" IsChecked="{Binding AiReplace}" Margin="14,0,0,6" VerticalAlignment="Center"
                                       Foreground="{StaticResource Text2}" FontSize="13" Visibility="{Binding HasAiSaved, Converter={StaticResource BoolVis}}"
                                       ToolTip="{local:Tr '이 기간에 저장된 AI 결과를 지우고 처음부터 새로 찾아요. 한 번 찾으면 체크가 풀려요'}"/>

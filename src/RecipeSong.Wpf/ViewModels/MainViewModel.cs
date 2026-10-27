@@ -428,7 +428,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void OnPeriodChanged()
     {
         NavMonth = new DateTime(SelectedDate.Year, SelectedDate.Month, 1);
-        foreach (var n in new[] { nameof(CanPrecise), nameof(PreciseLabel), nameof(IsYearMode), nameof(IsWeekMode), nameof(IsMonthMode), nameof(IsYearModeChecked),
+        foreach (var n in new[] { nameof(CanPrecise), nameof(PreciseLabel), nameof(IsYearMode), nameof(IsWeekMode), nameof(IsMonthMode), nameof(IsYearModeChecked), nameof(CanAiWeekly),
                                   nameof(NavLabel), nameof(PeriodKicker), nameof(PeriodTitle), nameof(PeriodRange) })
             OnPropertyChanged(n);
         BuildCalendar();
@@ -747,6 +747,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// </summary>
     /// <summary>AI 찾기 옵션: 주별로(월에서만) · 저장된 AI 결과 지우고 다시 (한 번 돌리면 풀린다 — 실수로 계속 지우지 않게)</summary>
     [ObservableProperty] private bool _aiWeekly;
+    /// <summary>주별로 찾기는 주를 여럿 담은 월·연에서만 (연은 52번 검색이라 시작 전에 예상 비용을 묻는다)</summary>
+    public bool CanAiWeekly => !IsWeekMode;
     [ObservableProperty] private bool _aiReplace;
 
     [RelayCommand]
@@ -755,14 +757,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (AiBusy) return;
         if (!AiReady) { OpenConnector(); if (!AiReady) return; }
         bool replace = mode == "replace" || AiReplace && HasAiSaved;
-        bool weekly = mode == "weekly" || AiWeekly && IsMonthMode;
+        bool weekly = mode == "weekly" || AiWeekly && CanAiWeekly;
         AiReplace = false;
         if (weekly) await FindWithAiWeeklyAsync(replace);
         else await AiSearchAsync(CurrentPeriod, replace);
     }
 
     /// <summary>
-    /// AI 주별로 찾기 (월): 한 달을 한 번에 찾으면 검색 8회로 한 달을 훑어 주마다 몇 장씩만 건진다 → 주마다 따로 찾는다.
+    /// AI 주별로 찾기 (월·연): 한 달(1년)을 한 번에 찾으면 검색 8회로 한 달을 훑어 주마다 몇 장씩만 건진다 → 주마다 따로 찾는다.
     /// 결과는 주 키로 저장되고, 월 화면은 그 주들의 결과를 합쳐 보여 준다 (AiPicksFor). 비용은 주 수만큼.
     /// </summary>
     private async Task FindWithAiWeeklyAsync(bool replace)
@@ -780,7 +782,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var start = DateTime.Now;
         for (int i = 0; i < weeks.Count; i++)
         {
-            if (!await AiSearchAsync(weeks[i], replace, L.F("주별로 찾는 중 {0}/{1} · {2}", i + 1, weeks.Count, weeks[i].Display))) break;  // 한도에 닿으면 멈춘다
+            if (i > 0 && !AiWeekly) break;  // 진행 중에 '주별로' 체크를 풀면 그 주까지만 하고 멈춘다 (연은 52번이라 오래 걸린다)
+            if (!await AiSearchAsync(weeks[i], replace, L.F("주별로 찾는 중 {0}/{1} · {2} · 멈추려면 '주별로' 체크를 풀어요", i + 1, weeks.Count, weeks[i].Display))) break;  // 한도에 닿으면 멈춘다
         }
         await LoadAsync();  // 월 화면에 주별 결과를 합쳐 다시 보여 준다
         AiText = L.F("주별로 찾기 끝 · 이번 검색 {0}", AiUsageLedger.Money(_aiLedger.Spent(start)));
