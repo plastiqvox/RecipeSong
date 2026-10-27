@@ -46,8 +46,8 @@ ALBUM_INFO = DATA / "album_info.json"  # 레이블·장르 (바뀌지 않으므�
 ALBUM_COVER = DATA / "album_cover.npz"  # 신보 커버 CLIP 임베딩 (앨범 id)
 FAILED = DATA / "failed_tracks.json"  # 디코딩 실패한 곡 → '새 곡'으로 다시 세지 않음
 KNN = 20
-MAX_TRACKS = 20      # 앨범에서 미리듣기를 들을 최대 곡 수 (전에는 앞 3곡)
-TRACKS_V = 2         # album_info 의 분석 판: 2 = 수록곡 전부. 이보다 낮으면(앞 3곡만 들은 앨범) 다음에 다시 듣는다
+MAX_TRACKS = 20      # 전곡 모드에서 미리듣기를 들을 최대 곡 수
+HIT_TRACKS = 3       # 인기곡 모드: Deezer 인기(rank) 상위 곡 수
 ACCEPT_MARGIN = 0.02  # 재학습 모델이 이보다 더 나빠지면 이전 모델 유지
 
 
@@ -70,6 +70,7 @@ class Service:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self._clap = None
         self._effnet = None
+        self.track_mode = "all"  # 앨범에서 들을 곡: "all" 전곡 / "top" 인기곡 (score_albums 요청마다 앱 설정을 따른다)
         self._covers = None
         self.cover_cache: dict[str, np.ndarray] = {}
         if ALBUM_COVER.exists():
@@ -237,17 +238,22 @@ class Service:
         return {}
 
     def album_detail(self, album_id: str) -> list[tuple[int, str, str]]:
-        """앨범 상세 한 번으로 레이블·장르(캐시)와 미리듣기 곡 전부 (곡 id, 제목, URL — URL은 만료되므로 매번 새로)."""
+        """앨범 상세 한 번으로 레이블·장르(캐시)와 미리듣기 곡 (곡 id, 제목, URL — URL은 만료되므로 매번 새로).
+        전곡 모드면 수록 순서대로 최대 20곡, 인기곡 모드면 Deezer 인기 상위 3곡."""
         r = self.deezer(f"/album/{album_id}")
         genres = (r.get("genres") or {}).get("data") or []
         if r:
             old = self.album_info.get(album_id, {})
             self.album_info[album_id] = {**old, "label": r.get("label"), "genre": genres[0]["name"] if genres else None,
                                          "with": collaborators(r)}
-        return [(t["id"], t.get("title", ""), t["preview"]) for t in (r.get("tracks") or {}).get("data", []) if t.get("preview")][:MAX_TRACKS]
+        tracks = [t for t in (r.get("tracks") or {}).get("data", []) if t.get("preview")]
+        if self.track_mode == "top":
+            tracks = sorted(tracks, key=lambda t: -(t.get("rank") or 0))[:HIT_TRACKS]
+        return [(t["id"], t.get("title", ""), t["preview"]) for t in tracks[:MAX_TRACKS]]
 
-    def preview_tracks(self, album_id: str) -> list[tuple[int | None, str | None, list[np.ndarray]]]:
-        """미리듣기를 곡별 클립으로: [(곡 id, 제목, 클립)]. "t곡id" 는 곡 하나 (하트를 누른 곡)."""
+    def preview_tracks(self, album_id: str) -> list[tuple[int | None, str | None, list[np.ndarray] | None]]:
+        """미리듣기를 곡별 클립으로: [(곡 id, 제목, 클립)]. "t곡id" 는 곡 하나 (하트를 누른 곡).
+        이미 들은 곡(곡 임베딩 캐시)은 받지 않고 클립 자리에 None — 전곡·인기곡을 오가도 다시 받지 않는다."""
         if album_id.startswith("t"):
             preview = self.deezer(f"/track/{album_id[1:]}").get("preview")
             items = [(None, None, preview)] if preview else []
@@ -255,6 +261,9 @@ class Service:
             items = self.album_detail(album_id)
         out = []
         for tid, title, url in items:
+            if tid is not None and f"t{tid}" in self.album_cache:
+                out.append((tid, title, None))
+                continue
             try:
                 clips = decode_preview(self._http.get(url, timeout=20).content, self.sr)
             except requests.RequestException:
@@ -274,15 +283,18 @@ class Service:
         """수록곡 미리듣기를 곡별로 들어 곡 임베딩("t곡id")·앨범 임베딩(곡 평균)·곡 짝(이 앨범 곡 ≈ 내 곡)을 만든다.
         곡 짝은 수록곡 목록과 같은 규칙: 가장 닮은 곡과 0.03 이내, 최대 3곡, 내 곡 중복 없이."""
         per = list(pool.map(self.preview_tracks, ids))
-        flat = [(i, tid, title) for i, tr in enumerate(per) for tid, title, _ in tr]
-        embs = self.embed_clips([c for tr in per for _, _, c in tr])
-        by_album: dict[int, list] = {}
+        flat = [(i, tid, title) for i, tr in enumerate(per) for tid, title, c in tr if c is not None]
+        embs = self.embed_clips([c for tr in per for _, _, c in tr if c is not None])
         for (i, tid, title), e in zip(flat, embs):
-            if e is None:
-                continue
-            by_album.setdefault(i, []).append((tid, title, e))
-            if tid is not None:
+            if e is not None and tid is not None:
                 self.album_cache[f"t{tid}"] = e
+        by_album: dict[int, list] = {}
+        new = iter(embs)
+        for i, tr in enumerate(per):
+            for tid, title, c in tr:
+                e = next(new) if c is not None else self.album_cache.get(f"t{tid}")
+                if e is not None:
+                    by_album.setdefault(i, []).append((tid, title, e))
         for i, aid in enumerate(ids):
             items = by_album.get(i)
             if not items:
@@ -301,13 +313,13 @@ class Service:
                         top.append(p)
                 info = self.album_info.setdefault(aid, {})
                 info["pairs"] = top
-                info["tracks_v"] = TRACKS_V
+                info["tracks_mode"] = self.track_mode
 
     # ---- 신보 점수 --------------------------------------------------------
     def ensure_embedded(self, albums: list, rid, what: str = "미리듣기 소리 분석 중") -> None:
-        """아직 소리를 모르는 앨범(또는 앞 3곡만 들었던 앨범)만 수록곡 미리듣기를 받아 임베딩한다 (album_emb.npz 캐시)."""
+        """아직 소리를 모르는 앨범, 또는 다른 모드(전곡·인기곡, 예전의 앞 3곡)로 들은 앨범만 다시 임베딩한다 (album_emb.npz 캐시)."""
         def stale(k: str) -> bool:
-            return k not in self.album_cache or (not k.startswith("t") and self.album_info.get(k, {}).get("tracks_v", 0) < TRACKS_V)
+            return k not in self.album_cache or (not k.startswith("t") and self.album_info.get(k, {}).get("tracks_mode") != self.track_mode)
         todo = [a for a in albums if stale(str(a["id"]))]
         done = 0
         with ThreadPoolExecutor(16) as pool:
@@ -328,6 +340,7 @@ class Service:
 
     def score_albums(self, args: dict, rid) -> dict:
         albums = args["albums"]
+        self.track_mode = "top" if args.get("tracks") == "top" else "all"
         self.ensure_embedded(albums, rid)
         try:
             self.ensure_covers(albums)

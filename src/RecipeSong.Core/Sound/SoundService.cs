@@ -106,10 +106,10 @@ public sealed class SoundService : IAsyncDisposable
     /// <summary>Deezer 앨범 ID들의 미리듣기를 분석한다. 이미 분석한 앨범은 서비스 쪽 캐시에서 바로 나온다.</summary>
     public async Task<IReadOnlyDictionary<long, AlbumSound>> ScoreAlbumsAsync(
         IEnumerable<long> albumIds, IProgress<string>? progress = null, CancellationToken ct = default,
-        IReadOnlyDictionary<long, string?>? covers = null)
+        IReadOnlyDictionary<long, string?>? covers = null, bool hitsOnly = false)
     {
-        // 커버 주소: 소리 + 커버로 지역을 판정한다 (없으면 소리만)
-        var args = new { albums = albumIds.Select(id => new { id, cover = covers?.GetValueOrDefault(id) }).ToList() };
+        // 커버 주소: 소리 + 커버로 지역을 판정한다 (없으면 소리만). tracks: 앨범에서 들을 곡 (전곡 / 인기곡)
+        var args = new { albums = albumIds.Select(id => new { id, cover = covers?.GetValueOrDefault(id) }).ToList(), tracks = hitsOnly ? "top" : "all" };
         var r = await CallAsync("score_albums", args, progress, ct);
         var map = new Dictionary<long, AlbumSound>();
         foreach (var a in r.GetProperty("albums").EnumerateArray())

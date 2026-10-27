@@ -33,6 +33,8 @@ public sealed record RecommendOptions
     public IReadOnlySet<string> BlockedLabels { get; init; } = new HashSet<string>();
     /// <summary>동명이인으로 막은 Deezer 아티스트 id (이름이 같은 다른 사람은 그대로)</summary>
     public IReadOnlySet<long> BlockedArtistIds { get; init; } = new HashSet<long>();
+    /// <summary>앨범에서 들을 곡: false 전곡(최대 20곡) / true Deezer 인기 상위 3곡 (빠르다)</summary>
+    public bool HitsOnly { get; init; }
     /// <summary>원래 앨범이 있으면 인스트루멘털 버전은 뺀다</summary>
     public bool ExcludeInstrumental { get; init; } = true;
 
@@ -442,7 +444,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         {
             progress?.Report(L.F("미리듣기 소리 분석 준비 중… ({0}장)", toScore.Count));
             var coverOf = hits.DistinctBy(h => h.a.Id).ToDictionary(h => h.a.Id, h => h.a.Cover);
-            try { sounds = await sound.ScoreAlbumsAsync(toScore, progress, ct, coverOf); }
+            try { sounds = await sound.ScoreAlbumsAsync(toScore, progress, ct, coverOf, options.HitsOnly); }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 progress?.Report(L.F("소리 분석을 건너뜀: {0}", ex.Message));

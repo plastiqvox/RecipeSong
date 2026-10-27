@@ -6,7 +6,7 @@ using RecipeSong.Core;
 namespace RecipeSong.Wpf;
 
 /// <summary>추천 설정: 0 기본 / 1 많이 / 2 최대, 모험 0 익숙하게 / 1 보통 / 2 새롭게</summary>
-public sealed record RecPrefs(int Amount = 0, int Adventure = 1, bool ExcludeKnown = false, bool ExcludeInstrumental = true);
+public sealed record RecPrefs(int Amount = 0, int Adventure = 1, bool ExcludeKnown = false, bool ExcludeInstrumental = true, int Tracks = 0);
 
 public partial class RecommendSettingsWindow : Window
 {
@@ -15,6 +15,12 @@ public partial class RecommendSettingsWindow : Window
         ("기본", "후보 아티스트 1,000명 · 추가 제안 150장까지 소리 분석. 처음 보는 주 30초 안팎."),
         ("많이", "후보 아티스트 2,000명 · 추가 제안 300장. 처음 보는 주 1분 안팎, 후보를 넓힐 때 Deezer에서 한 번 더 받아요."),
         ("최대", "후보 아티스트 3,000명 · 추가 제안 500장. 처음 보는 주 1~2분, 월·연 단위로 넓게 볼 때."),
+    ];
+
+    private static readonly (string Label, string Hint)[] TrackModes =
+    [
+        ("전곡", "수록곡 전부(최대 20곡)의 30초 미리듣기를 들어요. 앨범 전체의 성격을 봐요. 처음 보는 주는 오래 걸려요."),
+        ("인기곡 3곡", "Deezer 인기 상위 3곡만 들어요. 빠르지만 앨범 뒤쪽 곡의 성격은 빠질 수 있어요."),
     ];
 
     private static readonly (string Label, string Hint)[] Adventures =
@@ -41,6 +47,7 @@ public partial class RecommendSettingsWindow : Window
         Result = prefs;
         Build(AmountGrid, AmountHint, Amounts, prefs.Amount);
         Build(AdventureGrid, AdventureHint, Adventures, prefs.Adventure);
+        Build(TracksGrid, TracksHint, TrackModes, prefs.Tracks);
         ExcludeKnownBox.IsChecked = prefs.ExcludeKnown;
         ExcludeInstrumentalBox.IsChecked = prefs.ExcludeInstrumental;
     }
@@ -126,7 +133,8 @@ public partial class RecommendSettingsWindow : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        Result = new RecPrefs(Selected(AmountGrid), Selected(AdventureGrid), ExcludeKnownBox.IsChecked == true, ExcludeInstrumentalBox.IsChecked == true);
+        Result = new RecPrefs(Selected(AmountGrid), Selected(AdventureGrid), ExcludeKnownBox.IsChecked == true, ExcludeInstrumentalBox.IsChecked == true,
+            Selected(TracksGrid));
         DialogResult = true;
     }
 }

@@ -50,7 +50,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             DislikedArtists = DislikedArtists, LabelAffinity = _labelAffinity,
             BlockedArtists = _blocked.ArtistKeys, BlockedLabels = _blocked.LabelKeys, BlockedArtistIds = _blocked.ArtistIds,
-            ExcludeInstrumental = _recPrefs.ExcludeInstrumental,
+            ExcludeInstrumental = _recPrefs.ExcludeInstrumental, HitsOnly = _recPrefs.Tracks == 1,
             LikedArtists = _likedArtists, TypeBonus = _typeBonus,
         };
 
@@ -1332,7 +1332,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>기간 · 지역 · 추천 설정마다 따로 저장 (설정을 바꾸면 결과가 달라지니까)</summary>
     private string RecKey(Period period, string? focus) =>
-        $"{period.Label}|{focus ?? "all"}|{_recPrefs.Amount}{_recPrefs.Adventure}{(_recPrefs.ExcludeKnown ? 1 : 0)}{(_recPrefs.ExcludeInstrumental ? "" : "i")}";
+        $"{period.Label}|{focus ?? "all"}|{_recPrefs.Amount}{_recPrefs.Adventure}{(_recPrefs.ExcludeKnown ? 1 : 0)}{(_recPrefs.ExcludeInstrumental ? "" : "i")}{(_recPrefs.Tracks == 1 ? "h" : "")}";
 
     /// <summary>
     /// 지난 기간은 저장 결과를 그대로 쓴다. 끝난 지 7일이 안 된 기간은 신보·디스코그래피가 계속 바뀌니 12시간만 쓴다.
