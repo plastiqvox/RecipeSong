@@ -5,17 +5,20 @@ using RecipeSong.Core;
 
 namespace RecipeSong.Wpf;
 
-/// <summary>앱 설정 (톱니 버튼): 언어 · iTunes 라이브러리 · 저장 위치와 용량. 추천 방식은 '추천 설정' 창에 따로.</summary>
+/// <summary>앱 설정 (톱니 버튼): 언어 · iTunes 라이브러리 · 자동 재학습 · 저장 위치와 용량. 추천 방식은 '추천 설정' 창에 따로.</summary>
 public partial class SettingsWindow : Window
 {
     private readonly AppSettings _app;
     private readonly string? _mlDir;
 
-    public SettingsWindow(AppSettings app, string? mlDir)
+    public SettingsWindow(AppSettings app, string? mlDir, ViewModels.MainViewModel vm)
     {
         InitializeComponent();
         _app = app;
         _mlDir = mlDir;
+        AutoRetrainBox.IsChecked = vm.AutoUpdate;
+        AutoRetrainBox.Checked += (_, _) => vm.AutoUpdate = true;
+        AutoRetrainBox.Unchecked += (_, _) => vm.AutoUpdate = false;
         ShowLanguages();
         ShowLibrary();
         ShowStorage();

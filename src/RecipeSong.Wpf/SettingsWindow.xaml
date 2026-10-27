@@ -31,6 +31,14 @@
         </DockPanel>
         <TextBlock x:Name="LibraryResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"/>
 
+        <!-- 취향 모델 -->
+        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+        <TextBlock Text="{local:Tr '취향 모델'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
+        <CheckBox x:Name="AutoRetrainBox" Foreground="{StaticResource Text}" FontSize="14"
+                  Content="{local:Tr 'iTunes에 곡이 추가되면 자동으로 다시 학습'}"/>
+        <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
+                   Text="{local:Tr '새로 들어온 곡의 소리를 분석해 취향 모델을 다시 학습해요. 정확도가 떨어지면 이전 모델을 그대로 써요. 끄면 사이드바의 \'지금 업데이트\'로 직접 해요.'}"/>
+
         <!-- 저장 위치와 용량 -->
         <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
         <TextBlock Text="{local:Tr '저장 위치와 용량'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>

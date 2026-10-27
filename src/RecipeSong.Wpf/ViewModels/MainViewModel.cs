@@ -154,7 +154,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>톱니 버튼: 언어 · iTunes 라이브러리 · 저장 위치와 용량</summary>
     [RelayCommand]
     private void OpenSettings() =>
-        new SettingsWindow(_settings, _sound?.MlDirectory ?? _settings.MlDirectory ?? SoundService.FindMlDirectory())
+        new SettingsWindow(_settings, _sound?.MlDirectory ?? _settings.MlDirectory ?? SoundService.FindMlDirectory(), this)
             { Owner = Application.Current.MainWindow }.ShowDialog();
 
     [RelayCommand]
@@ -241,6 +241,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public MainViewModel(AppSettings settings)
     {
         _settings = settings;
+        AutoUpdate = settings.AutoRetrain;
         _library = new LibraryService(settings);
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         _deezer = new DeezerClient(http);
@@ -1534,6 +1535,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private string _updateProgressText = "";
     [ObservableProperty] private double _updateProgress;
     [ObservableProperty] private bool _autoUpdate = true;
+
+    /// <summary>설정 창에서 자동 재학습을 켜면 밀린 새 곡부터 바로 학습</summary>
+    partial void OnAutoUpdateChanged(bool value)
+    {
+        if (_settings.AutoRetrain != value) { _settings.AutoRetrain = value; _settings.Save(); }
+        if (value && HasUpdate && !IsUpdating) _ = RunUpdateAsync();
+    }
 
     private async Task RefreshStatusAsync()
     {

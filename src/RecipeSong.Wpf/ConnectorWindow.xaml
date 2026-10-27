@@ -33,7 +33,7 @@
                 <TextBlock Margin="0,8,0,0" FontSize="12.5" Foreground="{StaticResource Text}" TextWrapping="Wrap" LineHeight="20">
                     <Run Text="{local:Tr '1. Anthropic 콘솔에 가입하거나 로그인해요 (Claude 계정과 따로예요).'}"/><LineBreak/>
                     <Run Text="{local:Tr '2. 결제(Billing)에서 크레딧을 충전해요. $5면 수십 번 넉넉히 써요.'}"/><LineBreak/>
-                    <Run Text="{local:Tr '3. API Keys에서 Create Key → 이름 \'Crate\' → 나온 키를 복사해요.'}"/><LineBreak/>
+                    <Run Text="{local:Tr '3. API Keys에서 Create Key → 이름 \'RecipeSong\' → 나온 키를 복사해요.'}"/><LineBreak/>
                     <Run Text="{local:Tr '4. 이 창으로 돌아오면 복사한 키를 자동으로 넣어 드려요.'}"/>
                 </TextBlock>
                 <StackPanel Orientation="Horizontal" Margin="0,12,0,0">

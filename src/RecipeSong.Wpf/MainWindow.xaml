@@ -382,7 +382,7 @@
                         <StackPanel>
                             <TextBlock Text="{local:Tr 'AI 커넥터'}" Style="{StaticResource Kicker}"/>
                             <TextBlock Text="{Binding AiStatus}" FontSize="11.5" Margin="0,4,0,0" Foreground="{StaticResource Text2}" TextWrapping="Wrap"
-                                       LineHeight="17" ToolTip="{local:Tr 'Crate에서 쓴 만큼만 센 추정치예요. 정확한 잔액은 각 콘솔에서 확인하세요.'}"/>
+                                       LineHeight="17" ToolTip="{local:Tr 'RecipeSong에서 쓴 만큼만 센 추정치예요. 정확한 잔액은 각 콘솔에서 확인하세요.'}"/>
                         </StackPanel>
                     </DockPanel>
                 </Border>
@@ -409,8 +409,6 @@
                         </StackPanel>
                         <TextBlock Text="{Binding UpdateProgressText}" Style="{StaticResource MutedText}" Margin="0,10,0,0" TextWrapping="Wrap"
                                    Visibility="{Binding IsUpdating, Converter={StaticResource NotBoolVis}}"/>
-                        <CheckBox IsChecked="{Binding AutoUpdate}" Margin="0,10,0,0" Foreground="{StaticResource Muted}" FontSize="12"
-                                  Content="{local:Tr '새 곡이 생기면 자동으로 학습'}"/>
                     </StackPanel>
                 </Border>
 
@@ -536,19 +534,25 @@
                         </ItemsControl>
                     </StackPanel>
                     <TextBlock Text="{local:Tr '날짜를 누르면 그 주 발매작 · 진한 날일수록 취향 신보가 많음'}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                    <!-- AI 점 범례 -->
+                    <!-- 달력 범례: 아래 점 = AI · 웹진이 찾은 앨범 발매일, 위 회색 선 = 내 PC 소리 모델로 분석해 둔 기간 -->
                     <StackPanel Margin="0,6,0,0">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{local:Tr 'AI가 찾은 앨범'}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,0,8,0"/>
                             <Ellipse Width="6" Height="6" Fill="#FFC98E" Margin="0,0,2,0" VerticalAlignment="Center"/>
                             <Ellipse Width="6" Height="6" Fill="#FF9838" Margin="0,0,2,0" VerticalAlignment="Center"/>
                             <Ellipse Width="6" Height="6" Fill="#F26B0A" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="Claude" Style="{StaticResource MutedText}" FontSize="11" Margin="0,0,8,0"/>
+                            <TextBlock Text="Claude" Style="{StaticResource MutedText}" FontSize="11" Margin="0,0,10,0"/>
                             <Ellipse Width="6" Height="6" Fill="#9CE6C6" Margin="0,0,2,0" VerticalAlignment="Center"/>
                             <Ellipse Width="6" Height="6" Fill="#2FC088" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="GPT" Style="{StaticResource MutedText}" FontSize="11"/>
+                            <TextBlock Text="GPT" Style="{StaticResource MutedText}" FontSize="11" Margin="0,0,10,0"/>
+                            <Ellipse Width="6" Height="6" Fill="#A88BFF" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{local:Tr '웹진'}" Style="{StaticResource MutedText}" FontSize="11"/>
                         </StackPanel>
-                        <TextBlock Text="{local:Tr '점이 진할수록 비싼 모델 · 위쪽 회색 선은 분석해 둔 주 · 마우스를 올리면 자세히'}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <Rectangle Height="2" Width="14" RadiusX="1" RadiusY="1" Fill="{StaticResource Text2}" Opacity="0.55" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{local:Tr '로컬 소리 모델로 분석한 기간'}" Style="{StaticResource MutedText}" FontSize="11"
+                                       ToolTip="{local:Tr '내 PC의 소리 모델(LLM 아님)이 추천을 계산해 저장해 둔 주예요. 다시 열면 바로 나와요.'}"/>
+                        </StackPanel>
+                        <TextBlock Text="{local:Tr '점은 그 앨범의 발매일 · 진할수록 비싼 AI 모델 · 마우스를 올리면 자세히'}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
                     <TextBlock Text="{Binding SyncText}" Foreground="{StaticResource Accent}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
                                Visibility="{Binding SyncText, Converter={StaticResource EmptyCollapsed}}"/>

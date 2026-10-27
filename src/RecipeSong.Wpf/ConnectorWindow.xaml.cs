@@ -181,7 +181,7 @@ public partial class ConnectorWindow : Window
         credit.Text = Format(b.Credit);
         var parts = new List<string>
         {
-            L.F("Crate에서 쓴 금액: 오늘 {0}", AiUsageLedger.Money(_ledger.Spent(AiUsageLedger.TodayStart, provider))),
+            L.F("RecipeSong에서 쓴 금액: 오늘 {0}", AiUsageLedger.Money(_ledger.Spent(AiUsageLedger.TodayStart, provider))),
             L.F("이번 주 {0}", AiUsageLedger.Money(_ledger.Spent(AiUsageLedger.WeekStart, provider))),
         };
         if (b.Remaining(_ledger, provider) is { } left)

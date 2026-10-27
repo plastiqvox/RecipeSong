@@ -16,6 +16,8 @@ public sealed class AppSettings
     public string? UvPath { get; set; }
     /// <summary>화면 언어 (ko / en). 비우면 Windows 표시 언어를 따른다.</summary>
     public string? Language { get; set; }
+    /// <summary>iTunes에 곡이 추가되면 자동으로 소리 분석 + 취향 모델 재학습</summary>
+    public bool AutoRetrain { get; set; } = true;
 
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RecipeSong", "settings.json");
