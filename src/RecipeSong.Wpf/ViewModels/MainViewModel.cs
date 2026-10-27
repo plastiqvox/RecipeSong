@@ -67,6 +67,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _likedArtists = [.. tracks.GroupBy(t => t.GroupArtist).OrderByDescending(g => g.Sum(t => t.Weight)).Take(300)
             .Select(g => ListeningAnalyzer.NormalizeArtist(g.Key))];
         if (_mine != null) _likedArtists.UnionWith(_mine.Select(m => ListeningAnalyzer.NormalizeArtist(m.Artist)));
+        _likedArtists.UnionWith(_follows.All.Select(f => ListeningAnalyzer.NormalizeArtist(f.Name)));
         var share = tracks.Where(t => t.Album.Length > 0).GroupBy(t => (t.GroupArtist, t.Album))
             .Select(g => (Type: g.Count() >= 7 ? "album" : g.Count() >= 4 ? "ep" : "single", W: g.Sum(t => t.Weight)))
             .GroupBy(x => x.Type).ToDictionary(g => g.Key, g => g.Sum(x => x.W));
@@ -99,6 +100,69 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private IEnumerable<long> ImplicitSkips() =>
         _listens.FreshValuesWithKeys().Where(x => x.Value.Skipped >= 2 && x.Value.Completed == 0).Select(x => long.Parse(x.Key));
+
+    // ---- 팔로우: 신보는 플리 뮤지션처럼 항상 앞에, 비슷한 아티스트 찾기의 출발점 (Deezer 아티스트 id로) ----
+    private readonly FollowList _follows = new();
+    public FollowList Follows => _follows;
+
+    private static string RegionName(Region r) => r switch
+    {
+        Region.Japan => "일본", Region.Korea => "한국", Region.International => "해외", Region.SoutheastAsia => "동남아", _ => "",
+    };
+
+    private bool IsFollowedRec(ReleaseRecommendation r) => r.ArtistId != 0
+        ? _follows.Contains(r.ArtistId)
+        : _follows.All.Any(f => ListeningAnalyzer.NormalizeArtist(f.Name) == ListeningAnalyzer.NormalizeArtist(r.Artist));
+
+    private async Task ToggleFollowAsync(ReleaseItem item)
+    {
+        var id = item.Rec.ArtistId;
+        // 예전에 저장한 추천에는 아티스트 id가 없다 → 앨범에서 찾는다
+        if (id == 0)
+        {
+            try { id = (await _deezer.AlbumAsync(item.Rec.DeezerAlbumId, _life.Token))?.Artist?.Id ?? 0; }
+            catch (HttpRequestException) { }
+        }
+        if (id == 0) { SyncText = L.F("{0}을(를) Deezer에서 찾지 못해 팔로우하지 못했어요", item.Artist); return; }
+        bool follow = !_follows.Contains(id);
+        if (follow)
+        {
+            _follows.Follow(id, item.Artist, RegionName(item.Rec.Region));
+            _likedArtists.Add(ListeningAnalyzer.NormalizeArtist(item.Artist));
+        }
+        else _follows.Unfollow(id);
+        await RefreshFollowsAsync();
+    }
+
+    /// <summary>팔로우가 바뀐 뒤 (카드 ☆ 또는 추천 설정에서 해제): 후보 풀을 새로 모으고, 지금 기간에 팔로우 신보를 더하거나 뺀다</summary>
+    public async Task RefreshFollowsAsync()
+    {
+        await _poolLock.WaitAsync(_life.Token);
+        try { _pools.Clear(); } finally { _poolLock.Release(); }
+        // 해제한 아티스트: 팔로우 때문에만 들어온 카드는 뺀다
+        _all = [.. _all.Where(i => i.Rec.FromPlaylist != FollowList.Tag || IsFollowedRec(i.Rec))];
+        foreach (var i in _all) i.IsFollowed = IsFollowedRec(i.Rec);
+        await MergeFollowedAsync(CurrentPeriod, _loadCts?.Token ?? _life.Token);
+        ApplyFilters();
+        MarkSeen();
+        UpdateAiMarks();
+    }
+
+    /// <summary>팔로우한 아티스트의 기간 내 발매작을 결과에 더한다 (저장된 추천에도). 이미 있는 앨범은 팔로우 표시만 붙인다.</summary>
+    private async Task MergeFollowedAsync(Period period, CancellationToken ct)
+    {
+        if (_follows.All.Count == 0) return;
+        try
+        {
+            _owned ??= new OwnedLibrary(await _library.GetTracksAsync(ct));
+            var recs = await Task.Run(() => _recommender.FollowedAsync(_follows.AsPlaylistArtists(), _owned, period, RecOptions.ForPeriod(period.Kind), ct: ct), ct);
+            if (ct.IsCancellationRequested || CurrentPeriod.Label != period.Label) return;
+            var byId = recs.ToDictionary(r => r.DeezerAlbumId);
+            _all = [.. _all.Select(i => byId.Remove(i.Rec.DeezerAlbumId) ? MakeItem(i.Rec with { FromPlaylist = i.Rec.FromPlaylist ?? FollowList.Tag }) : i),
+                    .. byId.Values.Select(r => MakeItem(r))];
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException) { }
+    }
 
     // ---- 차단: 카드 우클릭으로 아티스트·레이블 전체를 뺀다 (추천 설정에서 해제) ----
     private readonly BlockList _blocked = new();
@@ -486,13 +550,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             .DistinctBy(r => r.DeezerAlbumId).ToList();
         var newByDay = unseen.ToLookup(r => r.ReleaseDate);
         static string? NewTip(int n) => n > 0 ? L.F("처음 보는 앨범 {0}장", n) : null;
+        var followed = _follows.All.SelectMany(f => _recommender.CachedDiscography(f.Id)
+                .Where(a => a.Released != null && a.RecordType != "compile").Select(a => (f.Name, a.Title, Date: a.Released!.Value)))
+            .Distinct().ToList();
+        var followByDay = followed.ToLookup(x => x.Date);
+        static string? FollowTip(IEnumerable<(string Name, string Title, DateOnly Date)> xs) =>
+            xs.Select(x => $"{x.Name} – {x.Title}").ToList() is { Count: > 0 } l
+                ? L.T("팔로우한 아티스트 신보") + "\n" + string.Join("\n", l.Take(4)) + (l.Count > 4 ? " …" : "") : null;
         foreach (var d in Days)
         {
             (d.AiDots, d.AiTip) = Marks(byDay[DateOnly.FromDateTime(d.Date)]);
             var h = history.Where(x => x.Kind == PeriodKind.Week && x.Start.Date <= d.Date && d.Date <= x.End.Date).MaxBy(x => x.At);
             d.Analyzed = h != null;
             d.NewCount = newByDay[DateOnly.FromDateTime(d.Date)].Count();
-            d.Tip = Join(Join(h is { } w ? L.F("이 주 분석함 · {0:M.d HH:mm} · 추천 {1}장", w.At, w.Count) : null, NewTip(d.NewCount)), d.AiTip);
+            var fol = followByDay[DateOnly.FromDateTime(d.Date)].ToList();
+            d.FollowCount = fol.Count;
+            d.Tip = Join(Join(h is { } w ? L.F("이 주 분석함 · {0:M.d HH:mm} · 추천 {1}장", w.At, w.Count) : null, NewTip(d.NewCount)),
+                Join(FollowTip(fol), d.AiTip));
         }
         var byMonth = recs.Where(r => r.ReleaseDate.Year == SelectedDate.Year).ToLookup(r => r.ReleaseDate.Month);
         foreach (var m in Months)
@@ -501,7 +575,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var h = history.Where(x => x.Kind == PeriodKind.Month && x.Start.Year == SelectedDate.Year && x.Start.Month == m.Month).MaxBy(x => x.At);
             m.Analyzed = h != null;
             m.NewCount = unseen.Count(r => r.ReleaseDate.Year == SelectedDate.Year && r.ReleaseDate.Month == m.Month);
-            m.Tip = Join(Join(h is { } mo ? L.F("이 달 분석함 · {0:M.d HH:mm} · 추천 {1}장", mo.At, mo.Count) : null, NewTip(m.NewCount)), m.AiTip);
+            var folM = followed.Where(x => x.Date.Year == SelectedDate.Year && x.Date.Month == m.Month).ToList();
+            m.FollowCount = folM.Count;
+            m.Tip = Join(Join(h is { } mo ? L.F("이 달 분석함 · {0:M.d HH:mm} · 추천 {1}장", mo.At, mo.Count) : null, NewTip(m.NewCount)),
+                Join(FollowTip(folM), m.AiTip));
         }
     }
 
@@ -776,6 +853,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             ToggleDislikeAction = ToggleDislike,
             IsDisliked = _disliked.Contains(r.DeezerAlbumId),
             IsNew = _newThisRun.Contains(r.DeezerAlbumId),
+            IsFollowed = IsFollowedRec(r),
+            ToggleFollowAction = ToggleFollowAsync,
             OpenAppleMusicAction = OpenAppleMusicAsync,
             ToggleLikeAction = ToggleLike,
             IsLiked = _likedAlbums.Contains(r.DeezerAlbumId),
@@ -863,7 +942,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>저장함이 바뀌면 추천 결과·후보 풀 저장 키가 바뀐다 (저장 앨범이 점수와 시드에 들어가니까)</summary>
     private string FavoritesVersion =>
-        $"{_likedAlbums.All.Count}-{_likedAlbums.All.Sum(s => s.Rec.DeezerAlbumId % 100_000):x}-{_likedTracks.All.Count}";
+        $"{_likedAlbums.All.Count}-{_likedAlbums.All.Sum(s => s.Rec.DeezerAlbumId % 100_000):x}-{_likedTracks.All.Count}-{_follows.All.Count}";
 
     private void RebuildSaved()
     {
@@ -1121,6 +1200,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 .Where(a => seeds.All(x => !string.Equals(x.Artist, a, StringComparison.OrdinalIgnoreCase)))
                 .Select(a => new TasteArtist(a, 0.9, 0, "좋아요"));
             seeds = [.. seeds, .. savedSeeds];
+            // 팔로우한 아티스트는 가중치 최대로 출발점에
+            seeds = [.. seeds, .. _follows.All.Where(f => seeds.All(x => !string.Equals(x.Artist, f.Name, StringComparison.OrdinalIgnoreCase)))
+                .Select(f => new TasteArtist(f.Name, 1.0, 0, FollowList.Tag))];
             if (seeds.Count == 0) seeds = TasteProfile.Build(tracks);
             _mine ??= TasteProfile.PlaylistArtists(playlists, tracks, _crates);
             _likedArtists.UnionWith(_mine.Select(m => ListeningAnalyzer.NormalizeArtist(m.Artist)));  // 피처링 가산점용
@@ -1453,6 +1535,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 _all = [.. _all.Select(i => byId.Remove(i.Rec.DeezerAlbumId, out var r) ? MakeItem(MergeAi(i.Rec, r)) : i),
                         .. byId.Values.Select(r => MakeItem(r))];
             }
+            await MergeFollowedAsync(period, ct);
+            if (ct.IsCancellationRequested) return;
             _resultsRegion = focus != null ? regionKey : "all";
             IsBusy = false;
             BusyText = soundScored ? "" : L.T("소리 분석 없이 아티스트 연결로만 골랐어요");

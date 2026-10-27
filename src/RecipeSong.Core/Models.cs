@@ -100,8 +100,9 @@ public sealed record TasteArtist(string Artist, double Weight, int PlayCount, st
 /// Playlist: 이 뮤지션 곡이 가장 많은 플레이리스트 (크레이트·지역을 여기서 정한다).
 /// Titles: 내 라이브러리의 이 뮤지션 곡·앨범 제목 (정규화) — Deezer 동명이인 확인용.
 /// </summary>
+/// <param name="DeezerId">팔로우한 아티스트처럼 Deezer id를 이미 알면 (0이면 이름으로 찾는다)</param>
 public sealed record PlaylistArtist(string Artist, string Playlist, string? Style, string Region, int Tracks,
-    IReadOnlySet<string> Titles);
+    IReadOnlySet<string> Titles, long DeezerId = 0);
 
 public enum Region { Korea, Japan, International, SoutheastAsia, Unknown }
 

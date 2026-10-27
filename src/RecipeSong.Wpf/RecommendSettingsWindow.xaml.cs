@@ -36,6 +36,7 @@ public partial class RecommendSettingsWindow : Window
         _blocked = blocked;
         _vm = vm;
         ShowBlocked();
+        ShowFollows();
         ShowWebzines();
         Result = prefs;
         Build(AmountGrid, AmountHint, Amounts, prefs.Amount);
@@ -80,6 +81,29 @@ public partial class RecommendSettingsWindow : Window
     }
 
     // ---- 차단 목록: 칩을 누르면 해제 ----
+    // ---- 팔로우: 칩을 누르면 해제 ----
+    private bool _followsChanged;
+
+    private void ShowFollows()
+    {
+        FollowPanel.Children.Clear();
+        foreach (var f in _vm.Follows.All.ToList())
+        {
+            var b = new Button { Style = (Style)FindResource("Bare"), Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(0, 0, 6, 6),
+                ToolTip = L.T("눌러서 팔로우 해제") };
+            b.Content = new TextBlock { Text = $"★ {f.Name}  ✕", FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("Text2") };
+            b.Click += (_, _) => { _vm.Follows.Unfollow(f.Id); _followsChanged = true; ShowFollows(); };
+            FollowPanel.Children.Add(b);
+        }
+        FollowEmpty.Visibility = FollowPanel.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        if (_followsChanged) _ = _vm.RefreshFollowsAsync();
+    }
+
     private void ShowBlocked()
     {
         BlockedPanel.Children.Clear();

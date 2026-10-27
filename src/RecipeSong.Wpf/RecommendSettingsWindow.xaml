@@ -44,6 +44,13 @@
                    Text="{local:Tr '웹진이 소개한 앨범을 6시간마다 가져와 Deezer에서 확인하고, 발매 주를 열면 \'웹진\' 배지로 보여 줘요. 국내 웹진은 RSS를 막아 두거나 제공하지 않아 아직 없어요.'}"/>
         <WrapPanel x:Name="WebzinePanel"/>
 
+        <!-- 팔로우 -->
+        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+        <TextBlock Text="{local:Tr '팔로우한 아티스트'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
+        <TextBlock x:Name="FollowEmpty" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap"
+                   Text="{local:Tr '아직 없어요. 카드의 아티스트 이름 앞 ☆을 누르면 그 아티스트 신보를 항상 맨 앞에 보여 줘요.'}"/>
+        <WrapPanel x:Name="FollowPanel"/>
+
         <!-- 차단 목록 -->
         <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
         <TextBlock Text="{local:Tr '차단 목록'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>

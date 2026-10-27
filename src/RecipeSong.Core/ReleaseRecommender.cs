@@ -395,6 +395,36 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     }
 
     /// <summary>3~4) 발매작 목록에 소리·레이블·지역·점수를 매긴다. toScore에 있는 것만 소리를 듣는다.</summary>
+    /// <summary>
+    /// 팔로우한 아티스트의 기간 내 발매작 (저장된 추천 결과에도 더할 수 있게 따로). 디스코그래피는 캐시, 없으면 Deezer에서.
+    /// 점수는 플리 뮤지션과 같은 방식이라 항상 앞에 놓인다.
+    /// </summary>
+    public async Task<List<ReleaseRecommendation>> FollowedAsync(IReadOnlyList<PlaylistArtist> follows, OwnedLibrary owned, Period period,
+        RecommendOptions options, IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        var hits = new List<(PoolArtist c, DzAlbum a)>();
+        foreach (var f in follows.Where(f => f.DeezerId != 0))
+        {
+            var albums = await FollowedDiscographyAsync(f.DeezerId, ct);
+            var c = new PoolArtist(f.DeezerId, f.Artist, 0, [f.Playlist], albums, f);
+            hits.AddRange(albums.Where(a => a.Released is { } d && period.Contains(d) && a.RecordType != "compile" && !owned.HasAlbum(f.Artist, a.Title)
+                    && !(options.ExcludeInstrumental && IsRedundantInstrumental(c, a, owned)))
+                .DistinctBy(a => a.Id).Select(a => (c, a)));
+        }
+        SaveCaches();
+        if (hits.Count == 0) return [];
+        var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, options, progress, ct);
+        return recs;
+    }
+
+    public async Task<List<DzAlbum>> FollowedDiscographyAsync(long artistId, CancellationToken ct = default) =>
+        _discography.TryGet(artistId.ToString(), out var cached) ? cached
+            : await _discography.GetOrAddAsync(artistId.ToString(), async () => [.. await deezer.ArtistAlbumsAsync(artistId, ct)]);
+
+    /// <summary>캐시에 있는 디스코그래피만 (달력 표시용, 요청 없음)</summary>
+    public IReadOnlyList<DzAlbum> CachedDiscography(long artistId) =>
+        _discography.TryGetStale(artistId.ToString(), out var albums, out _) ? albums : [];
+
     /// <summary>"앨범 (Instrumental)"인데 같은 아티스트의 원래 앨범이 디스코그래피나 내 라이브러리에 있다</summary>
     private static bool IsRedundantInstrumental(PoolArtist c, DzAlbum a, OwnedLibrary owned) =>
         AlbumVariants.InstrumentalBase(a.Title) is { } original
@@ -471,7 +501,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             var (c, a) = hits[i];
             var snd = heard[i];
             // 플리 뮤지션: 일본 크레이트 플레이리스트면 그 크레이트, 한국 플레이리스트면 한국음악
-            string? crate = c.Mine?.Style ?? (c.Mine?.Region == "한국" || c.Mine == null && regionOf[c.Id] == Region.Korea ? KoreanCrate : null);
+            string? crate = c.Mine?.Style ?? (c.Mine?.Region == "한국" || c.Mine is null or { Region: "" } && regionOf[c.Id] == Region.Korea ? KoreanCrate : null);
             double? fit = null, taste = null;
             double score;
             if (snd != null)

@@ -71,8 +71,10 @@ public sealed partial class ReleaseItem : ObservableObject
         ? L.F("{0}에서 소개", r[..^"에서 소개".Length]) : Rec.AiReason;
     /// <summary>제안한 AI 커넥터 ("Claude", "GPT") — 커넥터마다 배지 하나</summary>
     public IReadOnlyList<AiBadge> AiBy => [.. (Rec.AiBy ?? (IsAi ? ["AI"] : [])).Select(b => new AiBadge(b))];
-    public string Badge => IsMine ? L.F("내 플리 · {0}", L.T(Rec.FromPlaylist ?? "")) : IsAi ? "" : Known ? L.T("아는 아티스트") : "";
-    public string BadgeTip => IsMine ? L.F("{0} 플레이리스트에 있는 뮤지션의 신보", L.T(Rec.FromPlaylist ?? ""))
+    public string Badge => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우")
+        : IsMine ? L.F("내 플리 · {0}", L.T(Rec.FromPlaylist ?? "")) : IsAi ? "" : Known ? L.T("아는 아티스트") : "";
+    public string BadgeTip => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우한 아티스트의 신보")
+        : IsMine ? L.F("{0} 플레이리스트에 있는 뮤지션의 신보", L.T(Rec.FromPlaylist ?? ""))
         : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보") : L.T("내 라이브러리에 있는 아티스트");
     public System.Windows.Thickness BadgeMargin => HasFit ? new(8, 0, 0, 0) : new(0);
     public bool HasNear => Rec.NearTracks.Count > 0;
@@ -95,6 +97,13 @@ public sealed partial class ReleaseItem : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(LikeTip))] private bool _isLiked;
     /// <summary>처음 보는 앨범 (이번 실행 동안 NEW 배지)</summary>
     [ObservableProperty] private bool _isNew;
+    /// <summary>이 아티스트를 팔로우 중 (☆)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(FollowTip))] private bool _isFollowed;
+    public string FollowTip => IsFollowed ? L.T("팔로우 중 · 누르면 해제") : L.T("이 아티스트 팔로우 (신보를 항상 맨 앞에)");
+    public Func<ReleaseItem, Task>? ToggleFollowAction { get; init; }
+
+    [RelayCommand]
+    private Task ToggleFollow() => ToggleFollowAction?.Invoke(this) ?? Task.CompletedTask;
     public string LikeTip => IsLiked ? L.T("좋아요 취소") : L.T("좋아요 · 이 앨범과 비슷한 소리를 더 추천");
 
     [RelayCommand]
@@ -328,6 +337,9 @@ public sealed partial class DayCell(DateTime date, bool inMonth, Action<DateTime
     /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 점)</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNew))] private int _newCount;
     public bool HasNew => NewCount > 0;
+    /// <summary>팔로우한 아티스트의 발매작 수 (칸 왼쪽 위 ★)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasFollow))] private int _followCount;
+    public bool HasFollow => FollowCount > 0;
     /// <summary>툴팁: 분석 이력 + AI가 찾은 앨범</summary>
     [ObservableProperty] private string? _tip;
 
@@ -348,6 +360,9 @@ public sealed partial class MonthCell(int month, Action<int> select) : Observabl
     /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 점)</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNew))] private int _newCount;
     public bool HasNew => NewCount > 0;
+    /// <summary>팔로우한 아티스트의 발매작 수 (칸 왼쪽 위 ★)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasFollow))] private int _followCount;
+    public bool HasFollow => FollowCount > 0;
     /// <summary>툴팁: 분석 이력 + AI가 찾은 앨범</summary>
     [ObservableProperty] private string? _tip;
 

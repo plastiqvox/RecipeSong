@@ -125,6 +125,8 @@
                 <!-- 우클릭: 차단 (아티스트·레이블 전체를 추천에서 뺀다) -->
                 <Border.ContextMenu>
                     <ContextMenu>
+                        <MenuItem Header="{Binding Artist}" HeaderStringFormat="{local:Tr '팔로우 / 해제 · {0}'}" Command="{Binding ToggleFollowCommand}"/>
+                        <Separator/>
                         <MenuItem Header="{Binding Artist}" HeaderStringFormat="{local:Tr '이 아티스트 차단… · {0}'}" Tag="artist" Click="Block_Click"/>
                         <MenuItem Header="{Binding Rec.Label}" HeaderStringFormat="{local:Tr '이 레이블 차단… · {0}'}" Tag="label" Click="Block_Click"/>
                     </ContextMenu>
@@ -164,7 +166,16 @@
                             </Border>
                         </DockPanel>
                         <TextBlock Text="{Binding Album}" FontWeight="Bold" FontSize="15" TextTrimming="CharacterEllipsis" Margin="0,-18,52,0" ToolTip="{Binding Album}"/>
-                        <TextBlock Text="{Binding Artist}" FontSize="13" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
+                        <DockPanel Margin="0,3,0,0">
+                            <!-- 팔로우: 신보를 항상 맨 앞에 -->
+                            <Button DockPanel.Dock="Left" Style="{StaticResource Bare}" BorderThickness="0" Padding="0,0,5,0" VerticalAlignment="Center"
+                                    Command="{Binding ToggleFollowCommand}" ToolTip="{Binding FollowTip}"
+                                    AutomationProperties.Name="{Binding Artist, Converter={StaticResource TrFmt}, ConverterParameter='팔로우: {0}'}">
+                                <Path x:Name="follow" Data="{StaticResource StarIcon}" Width="12" Height="12" Stretch="Uniform"
+                                      Stroke="{StaticResource Text2}" StrokeThickness="1.4" StrokeLineJoin="Round" Fill="Transparent"/>
+                            </Button>
+                            <TextBlock Text="{Binding Artist}" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
                         <TextBlock Text="{Binding Meta}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <TextBlock Text="{Binding CrateLabel, Converter={StaticResource TrFmt}, ConverterParameter='{}{0} 어울림'}" Style="{StaticResource MutedText}" FontSize="11" VerticalAlignment="Center" ToolTip="{Binding FitText}"
@@ -294,7 +305,7 @@
                             <Button Style="{StaticResource Bare}" Command="{Binding ToggleDislikeCommand}"
                                     Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding DislikeTip}"
                                     AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='별로: {0}'}">
-                                <Path x:Name="dislike" Data="{StaticResource ThumbDownIcon}" Width="13" Height="13" Stretch="Uniform"
+                                <Path x:Name="dislike" Data="{StaticResource TrashIcon}" Width="13" Height="13" Stretch="Uniform"
                                       Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
                             </Button>
                             <Button x:Name="tracksBtn" Style="{StaticResource Bare}" Command="{Binding ToggleTracksCommand}" Padding="9,5" Margin="0,0,6,0"
@@ -337,8 +348,12 @@
                     <Setter TargetName="like" Property="Stroke" Value="#F0607A"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsDisliked}" Value="True">
-                    <Setter TargetName="dislike" Property="Fill" Value="#E06A6A"/>
+                    <Setter TargetName="dislike" Property="Fill" Value="#33E06A6A"/>
                     <Setter TargetName="dislike" Property="Stroke" Value="#E06A6A"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsFollowed}" Value="True">
+                    <Setter TargetName="follow" Property="Fill" Value="#F5C04A"/>
+                    <Setter TargetName="follow" Property="Stroke" Value="#F5C04A"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ShowTracks}" Value="True">
                     <Setter TargetName="tracksIcon" Property="Stroke" Value="{StaticResource Accent}"/>
@@ -454,6 +469,8 @@
                                                                Visibility="{Binding Analyzed, Converter={StaticResource BoolVis}}"/>
                                                     <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" IsHitTestVisible="False"
                                                              Visibility="{Binding HasNew, Converter={StaticResource BoolVis}}"/>
+                                                    <TextBlock Text="★" FontSize="8" Foreground="#F5C04A" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,2,0,0" IsHitTestVisible="False"
+                                                               Visibility="{Binding HasFollow, Converter={StaticResource BoolVis}}"/>
                                                     <ItemsControl ItemsSource="{Binding AiDots}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,5" IsHitTestVisible="False">
                                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                                         <ItemsControl.ItemTemplate>
@@ -506,6 +523,8 @@
                                                                    Visibility="{Binding Analyzed, Converter={StaticResource BoolVis}}"/>
                                                         <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" IsHitTestVisible="False"
                                                                  Visibility="{Binding HasNew, Converter={StaticResource BoolVis}}"/>
+                                                        <TextBlock Text="★" FontSize="8" Foreground="#F5C04A" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,2,0,0" IsHitTestVisible="False"
+                                                                   Visibility="{Binding HasFollow, Converter={StaticResource BoolVis}}"/>
                                                         <!-- AI가 찾은 앨범 발매일: 모델별 점 (Claude 오렌지 / GPT 초록, 비쌀수록 진함) -->
                                                         <ItemsControl ItemsSource="{Binding AiDots}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,2" IsHitTestVisible="False">
                                                             <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
@@ -563,6 +582,8 @@
                             <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" Margin="0,0,4,0" VerticalAlignment="Center"/>
                             <TextBlock Text="{local:Tr '처음 보는 앨범'}" Style="{StaticResource MutedText}" FontSize="11"
                                        ToolTip="{local:Tr '웹진·AI·정밀 분석이 찾아 두었지만 아직 화면에서 보지 않은 앨범이 있는 날이에요.'}"/>
+                            <TextBlock Text="★" FontSize="9" Foreground="#F5C04A" Margin="10,0,4,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{local:Tr '팔로우 신보'}" Style="{StaticResource MutedText}" FontSize="11"/>
                         </StackPanel>
                         <TextBlock Text="{local:Tr '점은 그 앨범의 발매일 · 진할수록 비싼 AI 모델 · 마우스를 올리면 자세히'}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
