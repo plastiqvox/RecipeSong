@@ -656,6 +656,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// 지역 버그(모르는 아티스트가 한국으로 저장됨) 때 저장한 AI 결과 바로잡기:
     /// 이름에 한글이 없는데 한국이면 해외로 보고 해외 크레이트(장르 기준)로 다시 나눈다.
     /// </summary>
+    /// <summary>지역을 모른 채 저장된 예전 결과도 해외로 (지금은 엔진이 모르면 해외로 정한다). 모든 카드에 적용</summary>
+    private static ReleaseRecommendation UnknownToOverseas(ReleaseRecommendation r)
+    {
+        if (r.Region != Region.Unknown || r.FromPlaylist != null) return r;
+        var c = ReleaseRecommender.OverseasCrate(r.GenreName, null, r.Crate);
+        return r with { Region = Region.International, Crate = c, CrateFit = c == "Jazz" ? r.CrateFit : null };
+    }
+
+    /// <summary>AI 결과에만: 예전 지역 버그(한글 없는 이름이 한국으로 저장) 바로잡기. 일반 추천에는 쓰지 않는다 (영문 이름의 한국 아티스트가 있다)</summary>
     private static ReleaseRecommendation FixOldRegion(ReleaseRecommendation r)
     {
         if (r.Region != Region.Korea || RegionResolver.FromScript(r.Artist) == Region.Korea || r.FromPlaylist != null) return r;
@@ -933,7 +942,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NoSaved))] private int _savedCount;
     public bool NoSaved => SavedCount == 0;
 
-    private ReleaseItem MakeItem(ReleaseRecommendation r, string? savedNote = null) =>
+    private ReleaseItem MakeItem(ReleaseRecommendation r, string? savedNote = null) => MakeItemCore(UnknownToOverseas(r), savedNote);
+
+    private ReleaseItem MakeItemCore(ReleaseRecommendation r, string? savedNote) =>
         new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
         {
             SavedNote = savedNote,

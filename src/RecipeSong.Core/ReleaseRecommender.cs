@@ -513,7 +513,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 var (name, p) = snd.Region.MaxBy(kv => kv.Value);
                 if (p >= 0.8 && SoundRegions.TryGetValue(name, out var guessed)) r = guessed;
             }
-            regionOf[h.c.Id] = r;
+            // 끝까지 모르면 해외로: 이름 문자로 한국·일본은 이미 가려지고, 소리 레시피 모델은 일본 플레이리스트로만 배워
+            // 모르는 채로 두면 캐나다 아티스트도 '일본 인디'로 들어갔다 (Andy Shauf). 해외면 Deezer 장르로 나뉜다
+            regionOf[h.c.Id] = r == Region.Unknown && h.c.Mine?.Style == null ? Region.International : r;
         }
         if (lookups > 0) regions.Save();
 
