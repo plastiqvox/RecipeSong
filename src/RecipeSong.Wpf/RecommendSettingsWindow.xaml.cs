@@ -25,24 +25,17 @@ public partial class RecommendSettingsWindow : Window
 
     public RecPrefs Result { get; private set; }
 
-    private readonly RecipeSong.Core.AppSettings _app;
-    private readonly string? _mlDir;
-
     private readonly RecipeSong.Core.BlockList _blocked;
 
     private readonly ViewModels.MainViewModel _vm;
 
-    public RecommendSettingsWindow(RecPrefs prefs, RecipeSong.Core.AppSettings app, string? mlDir, RecipeSong.Core.BlockList blocked,
-        ViewModels.MainViewModel vm)
+    public RecommendSettingsWindow(RecPrefs prefs, RecipeSong.Core.BlockList blocked, ViewModels.MainViewModel vm)
     {
         InitializeComponent();
-        _app = app;
-        _mlDir = mlDir;
         _blocked = blocked;
         _vm = vm;
         ShowBlocked();
         ShowWebzines();
-        ShowStorage();
         Result = prefs;
         Build(AmountGrid, AmountHint, Amounts, prefs.Amount);
         Build(AdventureGrid, AdventureHint, Adventures, prefs.Adventure);
@@ -99,66 +92,6 @@ public partial class RecommendSettingsWindow : Window
         foreach (var a in _blocked.Artists.ToList()) Add("아티스트", a, () => _blocked.UnblockArtist(a));
         foreach (var l in _blocked.Labels.ToList()) Add("레이블", l, () => _blocked.UnblockLabel(l));
         BlockedEmpty.Visibility = BlockedPanel.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    // ---- 저장 위치와 용량 ----
-
-    private void ShowStorage()
-    {
-        var dir = RecipeSong.Core.CacheLocation.Directory;
-        CachePath.Text = dir;
-        CachePath.ToolTip = dir;
-        var parts = RecipeSong.Core.CacheLocation.Breakdown(dir);
-        long total = parts.Sum(p => p.Bytes);
-        CacheSizes.Text = $"캐시 합계 {RecipeSong.Core.CacheLocation.Format(total)}" + Environment.NewLine +
-            string.Join(Environment.NewLine, parts.Select(p => $"· {p.Name} {RecipeSong.Core.CacheLocation.Format(p.Bytes)}"));
-
-        // 소리 분석 데이터는 ml 폴더에 있다 (학습 데이터라 옮기지 않는다)
-        if (_mlDir is { } ml && System.IO.Directory.Exists(System.IO.Path.Combine(ml, "data")))
-        {
-            var data = new System.IO.DirectoryInfo(System.IO.Path.Combine(ml, "data"));
-            long albums = data.EnumerateFiles("album_*").Sum(f => f.Length);
-            long library = data.EnumerateDirectories("emb_*").Sum(RecipeSong.Core.CacheLocation.Size);
-            long model = data.EnumerateFiles("crate_model.json").Sum(f => f.Length);
-            MlSizes.Text = $"소리 분석 데이터 ({data.FullName})" + Environment.NewLine +
-                $"· 신보 미리듣기 분석 {RecipeSong.Core.CacheLocation.Format(albums)}" + Environment.NewLine +
-                $"· 내 곡 학습 데이터 {RecipeSong.Core.CacheLocation.Format(library)} · 취향 모델 {RecipeSong.Core.CacheLocation.Format(model)}";
-        }
-    }
-
-    private void OpenCache_Click(object sender, RoutedEventArgs e) =>
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(RecipeSong.Core.CacheLocation.Directory) { UseShellExecute = true });
-
-    /// <summary>새 폴더로 캐시를 복사하고 설정에 적어 둔다. 다시 시작하면 새 위치를 쓴다 (예전 폴더는 그대로 남긴다).</summary>
-    private void MoveCache_Click(object sender, RoutedEventArgs e)
-    {
-        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "캐시를 둘 폴더를 고르세요", InitialDirectory = RecipeSong.Core.CacheLocation.Directory };
-        if (dlg.ShowDialog(this) != true) return;
-        var target = System.IO.Path.GetFullPath(dlg.FolderName);
-        var from = System.IO.Path.GetFullPath(RecipeSong.Core.CacheLocation.Directory);
-        if (string.Equals(target.TrimEnd(System.IO.Path.DirectorySeparatorChar), from.TrimEnd(System.IO.Path.DirectorySeparatorChar),
-                StringComparison.OrdinalIgnoreCase)) return;
-        try
-        {
-            int copied = 0;
-            foreach (var file in System.IO.Directory.EnumerateFiles(from, "*", System.IO.SearchOption.AllDirectories))
-            {
-                var dest = System.IO.Path.Combine(target, System.IO.Path.GetRelativePath(from, file));
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest)!);
-                // 쓰는 중인 로그 등은 공유 읽기로 복사
-                using var src = new System.IO.FileStream(file, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite);
-                using var dst = System.IO.File.Create(dest);
-                src.CopyTo(dst);
-                copied++;
-            }
-            _app.CacheDirectory = target;
-            _app.Save();
-            MoveResult.Text = $"{copied}개 파일을 {target}(으)로 복사했어요. 앱을 다시 시작하면 새 위치를 써요. 예전 폴더({from})는 확인 후 지우셔도 돼요.";
-        }
-        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
-        {
-            MoveResult.Text = $"옮기지 못했어요: {ex.Message}";
-        }
     }
 
     private static int Selected(UniformGrid grid) =>

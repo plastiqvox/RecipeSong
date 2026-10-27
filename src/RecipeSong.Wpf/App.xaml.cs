@@ -25,6 +25,7 @@ public partial class App : Application
 
         // iTunes 라이브러리는 자동으로 찾고, 못 찾을 때만 한 번 묻는다
         var settings = AppSettings.Load();
+        L.Init(settings.Language);
         // 캐시 폴더는 캐시를 처음 만들기 전에 정한다
         if (settings.CacheDirectory is { Length: > 0 } cacheDir) CacheLocation.Directory = cacheDir;
         if (settings.ITunesLibraryPath is not { } xml || !File.Exists(xml))

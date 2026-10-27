@@ -14,6 +14,8 @@ public sealed class AppSettings
     public string? CacheDirectory { get; set; }
     /// <summary>uv.exe 경로. 비우면 %USERPROFILE%\.local\bin 과 PATH에서 찾는다.</summary>
     public string? UvPath { get; set; }
+    /// <summary>화면 언어 (ko / en). 비우면 Windows 표시 언어를 따른다.</summary>
+    public string? Language { get; set; }
 
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RecipeSong", "settings.json");

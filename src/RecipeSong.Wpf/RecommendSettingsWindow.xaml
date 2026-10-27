@@ -45,21 +45,6 @@
                    Text="아직 없어요. 카드를 우클릭하면 그 아티스트나 레이블 전체를 추천에서 뺄 수 있어요."/>
         <WrapPanel x:Name="BlockedPanel"/>
 
-        <!-- 저장 위치와 용량 -->
-        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
-        <TextBlock Text="저장 위치와 용량" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
-        <DockPanel>
-            <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Margin="6,0,0,0" Click="MoveCache_Click">
-                <TextBlock Text="위치 바꾸기…" FontSize="12" Foreground="{StaticResource Text2}"/>
-            </Button>
-            <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Click="OpenCache_Click">
-                <TextBlock Text="폴더 열기" FontSize="12" Foreground="{StaticResource Text2}"/>
-            </Button>
-            <TextBlock x:Name="CachePath" FontSize="12" Foreground="{StaticResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-        </DockPanel>
-        <TextBlock x:Name="CacheSizes" Style="{StaticResource MutedText}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" LineHeight="19"/>
-        <TextBlock x:Name="MlSizes" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="19"/>
-        <TextBlock x:Name="MoveResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"/>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,26,0,0">
             <Button Style="{StaticResource Bare}" Padding="18,8" IsCancel="True">

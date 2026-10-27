@@ -149,10 +149,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         catch (Exception ex) when (ex is HttpRequestException or IOException) { SyncText = ""; }
     }
 
+    /// <summary>톱니 버튼: 언어 · iTunes 라이브러리 · 저장 위치와 용량</summary>
+    [RelayCommand]
+    private void OpenSettings() =>
+        new SettingsWindow(_settings, _sound?.MlDirectory ?? _settings.MlDirectory ?? SoundService.FindMlDirectory())
+            { Owner = Application.Current.MainWindow }.ShowDialog();
+
     [RelayCommand]
     private async Task OpenRecommendSettingsAsync()
     {
-        var win = new RecommendSettingsWindow(_recPrefs, _settings, _sound?.MlDirectory ?? _settings.MlDirectory ?? SoundService.FindMlDirectory(), _blocked, this)
+        var win = new RecommendSettingsWindow(_recPrefs, _blocked, this)
             { Owner = Application.Current.MainWindow };
         if (win.ShowDialog() != true || win.Result == _recPrefs) return;
         RefreshBlocked();  // 창에서 차단을 해제했을 수 있다
