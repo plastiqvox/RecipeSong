@@ -125,10 +125,15 @@
                 <!-- 우클릭: 차단 (아티스트·레이블 전체를 추천에서 뺀다) -->
                 <Border.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Header="{Binding Artist}" HeaderStringFormat="{local:Tr '이 아티스트 차단 · {0}'}"
-                                  Click="BlockArtist_Click"/>
-                        <MenuItem Header="{Binding Rec.Label}" HeaderStringFormat="{local:Tr '이 레이블 차단 · {0}'}"
-                                  Click="BlockLabel_Click"/>
+                        <MenuItem Header="{Binding Artist}" HeaderStringFormat="{local:Tr '이 아티스트 차단 · {0}'}">
+                            <MenuItem Header="{local:Tr '취향이 아니에요 (비슷한 소리도 덜 추천)'}" Tag="artist|Taste" Click="Block_Click"/>
+                            <MenuItem Header="{local:Tr '이름만 같은 다른 아티스트예요 (학습 안 함)'}" Tag="artist|SameName" Click="Block_Click"/>
+                            <MenuItem Header="{local:Tr '다른 이유 (학습 안 함)'}" Tag="artist|Other" Click="Block_Click"/>
+                        </MenuItem>
+                        <MenuItem Header="{Binding Rec.Label}" HeaderStringFormat="{local:Tr '이 레이블 차단 · {0}'}">
+                            <MenuItem Header="{local:Tr '취향이 아니에요 (비슷한 소리도 덜 추천)'}" Tag="label|Taste" Click="Block_Click"/>
+                            <MenuItem Header="{local:Tr '다른 이유 (학습 안 함)'}" Tag="label|Other" Click="Block_Click"/>
+                        </MenuItem>
                     </ContextMenu>
                 </Border.ContextMenu>
                 <Grid>
@@ -188,6 +193,10 @@
                             <Border Margin="{Binding BadgeMargin}" Padding="8,2" CornerRadius="10" Background="{StaticResource Accent}"
                                     Visibility="{Binding Badge, Converter={StaticResource EmptyCollapsed}}" ToolTip="{Binding BadgeTip}">
                                 <TextBlock Text="{Binding Badge}" FontSize="11" FontWeight="Medium" Foreground="{StaticResource OnAccent}"/>
+                            </Border>
+                            <Border Margin="6,0,0,0" Padding="6,1" CornerRadius="9" BorderThickness="1" BorderBrush="{StaticResource Accent}" VerticalAlignment="Center"
+                                    Visibility="{Binding IsNew, Converter={StaticResource BoolVis}}" ToolTip="{local:Tr '이번에 처음 나온 앨범'}">
+                                <TextBlock Text="NEW" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentText}"/>
                             </Border>
                             <!-- AI 커넥터 배지: Claude / GPT -->
                             <ItemsControl ItemsSource="{Binding AiBy}" VerticalAlignment="Center" ToolTip="{local:Tr 'AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보'}">
@@ -447,6 +456,8 @@
                                                     <Rectangle Height="2" Width="18" RadiusX="1" RadiusY="1" Fill="{StaticResource Text2}" Opacity="0.55"
                                                                VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,5,0,0" IsHitTestVisible="False"
                                                                Visibility="{Binding Analyzed, Converter={StaticResource BoolVis}}"/>
+                                                    <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" IsHitTestVisible="False"
+                                                             Visibility="{Binding HasNew, Converter={StaticResource BoolVis}}"/>
                                                     <ItemsControl ItemsSource="{Binding AiDots}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,5" IsHitTestVisible="False">
                                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                                         <ItemsControl.ItemTemplate>
@@ -497,6 +508,8 @@
                                                         <Rectangle Height="2" Width="14" RadiusX="1" RadiusY="1" Fill="{StaticResource Text2}" Opacity="0.55"
                                                                    VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,3,0,0" IsHitTestVisible="False"
                                                                    Visibility="{Binding Analyzed, Converter={StaticResource BoolVis}}"/>
+                                                        <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" IsHitTestVisible="False"
+                                                                 Visibility="{Binding HasNew, Converter={StaticResource BoolVis}}"/>
                                                         <!-- AI가 찾은 앨범 발매일: 모델별 점 (Claude 오렌지 / GPT 초록, 비쌀수록 진함) -->
                                                         <ItemsControl ItemsSource="{Binding AiDots}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,2" IsHitTestVisible="False">
                                                             <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
@@ -549,8 +562,11 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                             <Rectangle Height="2" Width="14" RadiusX="1" RadiusY="1" Fill="{StaticResource Text2}" Opacity="0.55" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="{local:Tr '로컬 소리 모델로 분석한 기간'}" Style="{StaticResource MutedText}" FontSize="11"
+                            <TextBlock Text="{local:Tr '로컬 소리 모델로 분석한 기간'}" Margin="0,0,10,0" Style="{StaticResource MutedText}" FontSize="11"
                                        ToolTip="{local:Tr '내 PC의 소리 모델(LLM 아님)이 추천을 계산해 저장해 둔 주예요. 다시 열면 바로 나와요.'}"/>
+                            <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{local:Tr '처음 보는 앨범'}" Style="{StaticResource MutedText}" FontSize="11"
+                                       ToolTip="{local:Tr '웹진·AI·정밀 분석이 찾아 두었지만 아직 화면에서 보지 않은 앨범이 있는 날이에요.'}"/>
                         </StackPanel>
                         <TextBlock Text="{local:Tr '점은 그 앨범의 발매일 · 진할수록 비싼 AI 모델 · 마우스를 올리면 자세히'}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
                     </StackPanel>

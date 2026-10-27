@@ -93,6 +93,8 @@ public sealed partial class ReleaseItem : ObservableObject
     /// <summary>앨범 하트: 좋아요 (취향 학습에 반영). 책갈피(저장함)는 위시리스트일 뿐 학습에는 쓰지 않는다.</summary>
     public Action<ReleaseItem>? ToggleLikeAction { get; init; }
     [ObservableProperty, NotifyPropertyChangedFor(nameof(LikeTip))] private bool _isLiked;
+    /// <summary>처음 보는 앨범 (이번 실행 동안 NEW 배지)</summary>
+    [ObservableProperty] private bool _isNew;
     public string LikeTip => IsLiked ? L.T("좋아요 취소") : L.T("좋아요 · 이 앨범과 비슷한 소리를 더 추천");
 
     [RelayCommand]
@@ -309,6 +311,9 @@ public sealed partial class DayCell(DateTime date, bool inMonth, Action<DateTime
     [ObservableProperty] private string? _aiTip;
     /// <summary>이 기간을 일반 추천으로 분석해 둔 적이 있다 (칸 위쪽 회색 선)</summary>
     [ObservableProperty] private bool _analyzed;
+    /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 점)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNew))] private int _newCount;
+    public bool HasNew => NewCount > 0;
     /// <summary>툴팁: 분석 이력 + AI가 찾은 앨범</summary>
     [ObservableProperty] private string? _tip;
 
@@ -326,6 +331,9 @@ public sealed partial class MonthCell(int month, Action<int> select) : Observabl
     [ObservableProperty] private string? _aiTip;
     /// <summary>이 기간을 일반 추천으로 분석해 둔 적이 있다 (칸 위쪽 회색 선)</summary>
     [ObservableProperty] private bool _analyzed;
+    /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 점)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNew))] private int _newCount;
+    public bool HasNew => NewCount > 0;
     /// <summary>툴팁: 분석 이력 + AI가 찾은 앨범</summary>
     [ObservableProperty] private string? _tip;
 

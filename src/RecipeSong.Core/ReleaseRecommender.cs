@@ -31,6 +31,10 @@ public sealed record RecommendOptions
     /// <summary>차단한 아티스트(정규화 이름)·레이블(LabelAffinity 키): 어디서도 추천하지 않는다</summary>
     public IReadOnlySet<string> BlockedArtists { get; init; } = new HashSet<string>();
     public IReadOnlySet<string> BlockedLabels { get; init; } = new HashSet<string>();
+    /// <summary>동명이인으로 막은 Deezer 아티스트 id (이름이 같은 다른 사람은 그대로)</summary>
+    public IReadOnlySet<long> BlockedArtistIds { get; init; } = new HashSet<long>();
+    /// <summary>원래 앨범이 있으면 인스트루멘털 버전은 뺀다</summary>
+    public bool ExcludeInstrumental { get; init; } = true;
 
     /// <summary>좋아하는 레이블 (LabelAffinity.Normalize 이름 → 0~1). 같은 레이블 신보에 가산점</summary>
     public IReadOnlyDictionary<string, double> LabelAffinity { get; init; } = new Dictionary<string, double>();
@@ -278,7 +282,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 .Where(a => !owned.HasAlbum(c.Name, a.Title))
                 .Select(a => (c, a)))
             .DistinctBy(x => x.a.Id)
-            .Where(x => !options.BlockedArtists.Contains(ListeningAnalyzer.NormalizeArtist(x.c.Name)))
+            .Where(x => !options.BlockedArtists.Contains(ListeningAnalyzer.NormalizeArtist(x.c.Name)) && !options.BlockedArtistIds.Contains(x.c.Id))
+            .Where(x => !(options.ExcludeInstrumental && IsRedundantInstrumental(x.c, x.a, owned)))
             .ToList();
         var mineHits = inPeriod.Where(x => x.c.Mine != null)
             .OrderByDescending(x => x.c.Mine!.Tracks * TypeWeight(x.a.RecordType)).ToList();
@@ -390,6 +395,11 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     }
 
     /// <summary>3~4) 발매작 목록에 소리·레이블·지역·점수를 매긴다. toScore에 있는 것만 소리를 듣는다.</summary>
+    /// <summary>"앨범 (Instrumental)"인데 같은 아티스트의 원래 앨범이 디스코그래피나 내 라이브러리에 있다</summary>
+    private static bool IsRedundantInstrumental(PoolArtist c, DzAlbum a, OwnedLibrary owned) =>
+        AlbumVariants.InstrumentalBase(a.Title) is { } original
+        && (c.Albums.Any(o => o.Id != a.Id && AlbumVariants.SameTitle(o.Title, original)) || owned.HasAlbum(c.Name, original));
+
     private async Task<(List<ReleaseRecommendation> Recs, bool HeardAny)> ScoreHitsAsync(
         List<(PoolArtist c, DzAlbum a)> hits, IReadOnlyList<long> toScore, OwnedLibrary owned,
         RecommendOptions options, IProgress<string>? progress, CancellationToken ct,
@@ -502,6 +512,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 c.Mine != null ? [c.Mine.Playlist] : c.Because,
                 c.Mine != null || owned.HasArtist(c.Name), Math.Round(score, 3),
                 c.Mine?.Playlist,
+                ArtistId: c.Id,
                 // 저장한 앨범과 특히 닮았을 때만 (상위 약 15%) 카드에 표시
                 FavNear: favZOf.GetValueOrDefault(i) >= 1.0 ? snd?.FavNear : null,
                 LikedLabel: labelAff >= 0.2 ? info.Label : null,

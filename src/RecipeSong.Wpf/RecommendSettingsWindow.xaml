@@ -27,6 +27,11 @@
         <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
                    Text="{local:Tr '내 라이브러리에 곡이 있는 아티스트는 추가 제안에 나오지 않아요. 내 플리 뮤지션과 AI 제안은 그대로 나와요.'}"/>
 
+        <CheckBox x:Name="ExcludeInstrumentalBox" Margin="0,16,0,0" Foreground="{StaticResource Text}" FontSize="14"
+                  Content="{local:Tr '원래 앨범이 있으면 인스트루멘털 버전 빼기'}"/>
+        <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
+                   Text="{local:Tr '같은 아티스트의 원래 앨범이 Deezer나 내 라이브러리에 있으면 (Instrumental) · (Inst.) 버전은 추천하지 않아요.'}"/>
+
         <!-- 외부 추천: 웹진 -->
         <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
         <DockPanel Margin="0,20,0,8">

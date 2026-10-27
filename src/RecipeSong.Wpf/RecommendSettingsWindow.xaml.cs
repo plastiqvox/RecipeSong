@@ -6,7 +6,7 @@ using RecipeSong.Core;
 namespace RecipeSong.Wpf;
 
 /// <summary>추천 설정: 0 기본 / 1 많이 / 2 최대, 모험 0 익숙하게 / 1 보통 / 2 새롭게</summary>
-public sealed record RecPrefs(int Amount = 0, int Adventure = 1, bool ExcludeKnown = false);
+public sealed record RecPrefs(int Amount = 0, int Adventure = 1, bool ExcludeKnown = false, bool ExcludeInstrumental = true);
 
 public partial class RecommendSettingsWindow : Window
 {
@@ -41,6 +41,7 @@ public partial class RecommendSettingsWindow : Window
         Build(AmountGrid, AmountHint, Amounts, prefs.Amount);
         Build(AdventureGrid, AdventureHint, Adventures, prefs.Adventure);
         ExcludeKnownBox.IsChecked = prefs.ExcludeKnown;
+        ExcludeInstrumentalBox.IsChecked = prefs.ExcludeInstrumental;
     }
 
     private void Build(UniformGrid grid, TextBlock hint, (string Label, string Hint)[] options, int selected)
@@ -92,6 +93,7 @@ public partial class RecommendSettingsWindow : Window
         }
         foreach (var a in _blocked.Artists.ToList()) Add(L.T("아티스트"), a, () => _blocked.UnblockArtist(a));
         foreach (var l in _blocked.Labels.ToList()) Add(L.T("레이블"), l, () => _blocked.UnblockLabel(l));
+        foreach (var s in _blocked.SameName.ToList()) Add(L.T("동명이인"), $"{s.Name} ({s.Album})", () => _blocked.UnblockSameName(s));
         BlockedEmpty.Visibility = BlockedPanel.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -100,7 +102,7 @@ public partial class RecommendSettingsWindow : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        Result = new RecPrefs(Selected(AmountGrid), Selected(AdventureGrid), ExcludeKnownBox.IsChecked == true);
+        Result = new RecPrefs(Selected(AmountGrid), Selected(AdventureGrid), ExcludeKnownBox.IsChecked == true, ExcludeInstrumentalBox.IsChecked == true);
         DialogResult = true;
     }
 }

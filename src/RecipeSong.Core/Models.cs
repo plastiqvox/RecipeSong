@@ -117,7 +117,7 @@ public sealed record ReleaseRecommendation(
     IReadOnlyList<string> BecauseOf, bool IsKnownArtist, double Score,
     string? FromPlaylist = null, string? AiReason = null, IReadOnlyList<string>? AiBy = null,
     string? FavNear = null, string? LikedLabel = null, string? WithLiked = null, int Fans = 0,
-    string? SourceUrl = null);
+    string? SourceUrl = null, long ArtistId = 0);
 
 /// <summary>
 /// AI 커넥터가 웹에서 찾은 발매작 (Deezer 확인 전). Region은 crates.json 이름 (일본/한국/해외/동남아).
