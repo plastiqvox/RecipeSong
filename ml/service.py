@@ -317,6 +317,35 @@ class Service:
         log(f"[service] 좋아요 {len(self.fav_keys)}/{len(items)}개, 별로 {len(self.dis_keys)}/{len(dislikes)}장 반영")
         return {"count": len(self.fav_keys), "dislikes": len(self.dis_keys)}
 
+    # ---- 수록곡마다 비슷한 내 곡 (수록곡을 펼쳤을 때) ----------------------
+    def track_near(self, args: dict, rid) -> dict:
+        """[{id, preview}] → 곡마다 미리듣기를 들어 가장 닮은 내 곡 하나. 곡 임베딩은 "t곡id" 로 앨범 캐시에 같이 둔다 (곡 하트와 같은 키)."""
+        items = [(f"t{t['id']}", t.get("preview")) for t in args.get("tracks") or []]
+        todo = [(k, url) for k, url in items if url and k not in self.album_cache]
+
+        def clips(url: str) -> list[np.ndarray]:
+            try:
+                return decode_preview(self._http.get(url, timeout=20).content, self.sr)
+            except requests.RequestException:
+                return []
+        if todo:
+            with ThreadPoolExecutor(8) as pool:
+                groups = list(pool.map(lambda kv: clips(kv[1]), todo))
+            for (k, _), e in zip(todo, self.embed_clips(groups)):
+                if e is not None:
+                    self.album_cache[k] = e
+            self.save_album_cache()
+        out = []
+        for k, _ in items:
+            e = self.album_cache.get(k)
+            if e is None:
+                continue
+            x = train.preprocess(e[None, :], self.mean)[0]
+            sims = (self.lib @ x) * self.lib_w
+            j = int(np.argmax(sims))
+            out.append({"id": int(k[1:]), "near": f"{self.meta[j][0]} – {self.meta[j][1]}", "sim": round(float(sims[j]), 4)})
+        return {"tracks": out}
+
     def stack(self, keys: list[str]) -> np.ndarray | None:
         return (train.preprocess(np.stack([self.album_cache[k] for k in keys]).astype(np.float32), self.mean).astype(np.float32)
                 if keys else None)
@@ -435,7 +464,8 @@ def main() -> None:
     t0 = time.time()
     svc = Service(args.xml)
     send({"event": "ready", "seconds": round(time.time() - t0, 1)})
-    handlers = {"status": svc.status, "score_albums": svc.score_albums, "update": svc.update, "favorites": svc.favorites}
+    handlers = {"status": svc.status, "score_albums": svc.score_albums, "update": svc.update, "favorites": svc.favorites,
+                "track_near": svc.track_near}
 
     for line in sys.stdin:
         line = line.strip().lstrip("﻿")

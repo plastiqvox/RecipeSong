@@ -147,6 +147,16 @@ public sealed class SoundService : IAsyncDisposable
         return r.GetProperty("count").GetInt32();
     }
 
+    /// <summary>수록곡마다 미리듣기를 들어 가장 닮은 내 곡 (곡 id → "아티스트 – 곡명", 유사도)</summary>
+    public async Task<Dictionary<long, (string Near, double Sim)>> TrackNearAsync(
+        IEnumerable<(long Id, string? Preview)> tracks, CancellationToken ct = default)
+    {
+        var args = new { tracks = tracks.Select(t => new { id = t.Id, preview = t.Preview }).ToList() };
+        var r = await CallAsync("track_near", args, null, ct);
+        return r.GetProperty("tracks").EnumerateArray().ToDictionary(
+            t => t.GetProperty("id").GetInt64(), t => (t.GetProperty("near").GetString()!, t.GetProperty("sim").GetDouble()));
+    }
+
     /// <summary>iTunes에 새로 들어온 곡만 분석하고 재학습한다. 성능이 떨어지면 이전 모델을 유지한다.</summary>
     public async Task<SoundUpdateResult> UpdateAsync(IProgress<string>? progress = null, CancellationToken ct = default)
     {

@@ -58,11 +58,15 @@
                         <Path x:Name="icon" Data="{StaticResource PauseIcon}" Fill="{StaticResource Accent}" Width="10" Height="10" Stretch="Uniform"
                               Visibility="Collapsed" HorizontalAlignment="Center"/>
                     </Grid>
-                    <TextBlock Grid.Column="1" x:Name="title" FontSize="12.5" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                               ToolTip="{Binding Title}">
-                        <Run Text="{Binding Title, Mode=OneWay}"/>
-                        <Run Text="{Binding ArtistSuffix, Mode=OneWay}" Foreground="{StaticResource Muted}"/>
-                    </TextBlock>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="title" FontSize="12.5" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}">
+                            <Run Text="{Binding Title, Mode=OneWay}"/>
+                            <Run Text="{Binding ArtistSuffix, Mode=OneWay}" Foreground="{StaticResource Muted}"/>
+                        </TextBlock>
+                        <!-- 이 곡과 가장 닮은 내 곡 (수록곡을 펼치면 채워진다) -->
+                        <TextBlock x:Name="near" Text="{Binding NearText}" FontSize="10.5" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis"
+                                   Margin="0,1,0,0" ToolTip="{Binding NearText}" Visibility="{Binding NearText, Converter={StaticResource EmptyCollapsed}}"/>
+                    </StackPanel>
                     <!-- 인기도: 앨범 안 상대값 (Deezer rank) -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Background="Transparent" ToolTip="{Binding PopTip}">
                         <Border Padding="5,0" Margin="0,0,8,0" CornerRadius="6" Background="{StaticResource AccentDeep}" VerticalAlignment="Center"
@@ -90,6 +94,9 @@
             </Button>
             </Grid>
             <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsClosest}" Value="True">
+                    <Setter TargetName="near" Property="Foreground" Value="{StaticResource AccentText}"/>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsMouseOver, ElementName=line}" Value="True">
                     <Setter TargetName="yt" Property="Fill" Value="#FF3D3D"/>
                     <Setter TargetName="heart" Property="Stroke" Value="{StaticResource Text2}"/>

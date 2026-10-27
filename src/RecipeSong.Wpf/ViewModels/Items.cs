@@ -270,6 +270,12 @@ public sealed partial class TrackItem : ObservableObject
     [RelayCommand]
     private void OpenYouTube() => YouTube.Search($"{Artist} {Title}");
 
+    /// <summary>이 곡과 가장 닮은 내 곡 ("아티스트 – 곡명", 수록곡을 펼치면 소리 서비스가 채운다)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(NearText))] private string? _near;
+    /// <summary>수록곡 중 내 곡과 가장 닮은 곡</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(NearText))] private bool _isClosest;
+    public string NearText => Near == null ? "" : (IsClosest ? L.T("가장 닮음") + " · " : "") + L.F("≈ 비슷한 내 곡: {0}", Near);
+
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasPreview))] private string? _preview;
     public bool HasPreview => Preview != null;
     [ObservableProperty] private bool _isPlaying;

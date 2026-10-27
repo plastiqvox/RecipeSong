@@ -1628,6 +1628,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var tracks = await _recommender.AlbumTracksAsync(item.Rec.DeezerAlbumId);
             item.SetTracks(tracks);
             item.TracksStatus = tracks.Count == 0 ? L.T("수록곡 정보가 없어요") : null;
+            _ = LoadTrackNearAsync(item);
             return tracks.Count > 0;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
@@ -1635,6 +1636,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             item.TracksStatus = L.T("수록곡을 불러오지 못했어요");
             return !first;
         }
+    }
+
+    /// <summary>수록곡마다 비슷한 내 곡 (곡 미리듣기를 소리 서비스가 듣는다, 한 번 들은 곡은 캐시)</summary>
+    private async Task LoadTrackNearAsync(ReleaseItem item)
+    {
+        if (_sound == null) return;
+        var tracks = item.Tracks.Where(t => t.Id != 0 && t.HasPreview).ToList();
+        if (tracks.Count == 0) return;
+        try
+        {
+            var near = await _sound.TrackNearAsync(tracks.Select(t => (t.Id, t.Preview)), _life.Token);
+            double best = near.Count > 1 ? near.Values.Max(v => v.Sim) : double.NaN;
+            foreach (var t in item.Tracks)
+                if (near.TryGetValue(t.Id, out var n))
+                {
+                    t.Near = n.Near;
+                    t.IsClosest = n.Sim == best;
+                }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 바쁘거나 꺼져 있으면 표시하지 않는다
     }
 
     // ---- 비슷한 내 곡: "아티스트 – 곡명" → 내 라이브러리 파일 ----
