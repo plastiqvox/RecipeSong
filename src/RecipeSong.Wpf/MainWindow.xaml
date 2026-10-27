@@ -185,6 +185,18 @@
                             <TextBlock Text="{Binding Artist}" FontSize="13" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
                         <TextBlock Text="{Binding Meta}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
+                        <!-- 장르 태그: 소리로 고른 Discogs 스타일 -->
+                        <ItemsControl ItemsSource="{Binding Genres}" Margin="0,5,0,0" Visibility="{Binding HasGenres, Converter={StaticResource BoolVis}}"
+                                      ToolTip="{local:Tr '미리듣기 소리로 고른 Discogs 스타일 (EffNet)'}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,5,3" Padding="7,1" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource Line3}">
+                                        <TextBlock Text="{Binding}" FontSize="11" Foreground="{StaticResource Text2}"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <TextBlock Text="{Binding CrateLabel, Converter={StaticResource TrFmt}, ConverterParameter='{}{0} 어울림'}" Style="{StaticResource MutedText}" FontSize="11" VerticalAlignment="Center" ToolTip="{Binding FitText}"
                                        Visibility="{Binding HasFit, Converter={StaticResource BoolVis}}"/>

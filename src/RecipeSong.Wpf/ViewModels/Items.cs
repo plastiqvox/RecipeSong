@@ -78,6 +78,9 @@ public sealed partial class ReleaseItem : ObservableObject
         : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보") : L.T("내 라이브러리에 있는 아티스트");
     public System.Windows.Thickness BadgeMargin => HasFit ? new(8, 0, 0, 0) : new(0);
     public bool HasNear => NearItems.Count > 0;
+    /// <summary>장르 태그 (EffNet 이 고른 Discogs 스타일, 최대 3개)</summary>
+    public IReadOnlyList<string> Genres => Rec.Genres ?? [];
+    public bool HasGenres => Genres.Count > 0;
 
     /// <summary>비슷한 내 곡 (내 파일로 바로 재생). VM이 라이브러리에서 파일 경로를 찾아 채운다.</summary>
     /// <summary>비슷한 내 곡 — 수록곡을 곡마다 분석했으면 그 결과(수록곡 목록과 같은 곡), 아니면 앨범 전체와 닮은 곡</summary>

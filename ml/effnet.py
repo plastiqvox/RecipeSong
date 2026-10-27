@@ -9,6 +9,7 @@ Essentia(TensorflowInputMusiCNN)와 같은 입력을 numpy로 만든다:
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -84,7 +85,12 @@ class EffNet:
         outs = [o.name for o in self.sess.get_outputs()]
         # 출력 순서: 스타일 400 (sigmoid), 임베딩 1280
         shapes = {o.name: o.shape[-1] for o in self.sess.get_outputs()}
-        self.out_emb = next(n for n in outs if shapes[n] == 1280 and "embed" in n.lower()) if "embeddings" in outs             else next(n for n in outs if shapes[n] == 1280)
+        self.out_emb = next(n for n in outs if shapes[n] == 1280 and "embed" in n.lower()) if "embeddings" in outs \
+            else next(n for n in outs if shapes[n] == 1280)
+        # 장르판만 스타일 400개 확률(sigmoid)을 낸다
+        self.out_pred = next((n for n in outs if shapes[n] == 400), None)
+        meta = MODELS_DIR / VARIANTS[name].replace(".onnx", ".json")
+        self.classes: list[str] = json.loads(meta.read_text(encoding="utf-8"))["classes"] if meta.exists() else []
 
     def embed_groups(self, groups: list[list[np.ndarray]]) -> list[np.ndarray | None]:
         """곡(앨범)마다 16kHz 클립 묶음 → 패치 평균 임베딩 (L2 정규화)."""
@@ -105,11 +111,29 @@ class EffNet:
             out[i] = (e / (np.linalg.norm(e) + 1e-8)).astype(np.float32)
         return out
 
-    def _run(self, x: np.ndarray) -> np.ndarray:
+    def _run(self, x: np.ndarray, out: str | None = None) -> np.ndarray:
         n = len(x)
         if self.sess.get_inputs()[0].shape[0] == self.batch and n < self.batch:
             x = np.concatenate([x, np.zeros((self.batch - n, *x.shape[1:]), np.float32)])
-        return self.sess.run([self.out_emb], {self.inp: x})[0][:n]
+        return self.sess.run([out or self.out_emb], {self.inp: x})[0][:n]
+
+    def styles(self, groups: list[list[np.ndarray]]) -> list[np.ndarray | None]:
+        """곡마다 16kHz 클립 묶음 → Discogs 스타일 400개 확률 (패치 평균). 장르판 모델에서만."""
+        out: list[np.ndarray | None] = [None] * len(groups)
+        ps, owner = [], []
+        for i, clips in enumerate(groups):
+            for c in clips:
+                p = patches(c)
+                ps.append(p)
+                owner += [i] * len(p)
+        if not ps or self.out_pred is None:
+            return out
+        x = np.concatenate(ps)
+        pred = np.concatenate([self._run(x[s:s + self.batch], self.out_pred) for s in range(0, len(x), self.batch)])
+        owner_arr = np.array(owner)
+        for i in set(owner):
+            out[i] = pred[owner_arr == i].mean(0).astype(np.float32)
+        return out
 
 
 def main() -> None:
