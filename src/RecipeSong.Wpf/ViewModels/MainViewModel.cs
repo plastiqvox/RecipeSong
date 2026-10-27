@@ -745,20 +745,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// 지금 보는 기간에서 켜 둔 AI 커넥터들이 동시에 웹으로 찾는다. 결과는 기간별로 저장해 두고 다음에 바로 꺼내 쓴다.
     /// mode: "add" = 저장된 결과에 더하기, "replace" = 저장된 결과를 지우고 새로 찾기
     /// </summary>
+    /// <summary>AI 찾기 옵션: 주별로(월에서만) · 저장된 AI 결과 지우고 다시 (한 번 돌리면 풀린다 — 실수로 계속 지우지 않게)</summary>
+    [ObservableProperty] private bool _aiWeekly;
+    [ObservableProperty] private bool _aiReplace;
+
     [RelayCommand]
     private async Task FindWithAiAsync(string? mode)
     {
         if (AiBusy) return;
         if (!AiReady) { OpenConnector(); if (!AiReady) return; }
-        if (mode == "weekly") { await FindWithAiWeeklyAsync(); return; }
-        await AiSearchAsync(CurrentPeriod, mode == "replace");
+        bool replace = mode == "replace" || AiReplace && HasAiSaved;
+        bool weekly = mode == "weekly" || AiWeekly && IsMonthMode;
+        AiReplace = false;
+        if (weekly) await FindWithAiWeeklyAsync(replace);
+        else await AiSearchAsync(CurrentPeriod, replace);
     }
 
     /// <summary>
     /// AI 주별로 찾기 (월): 한 달을 한 번에 찾으면 검색 8회로 한 달을 훑어 주마다 몇 장씩만 건진다 → 주마다 따로 찾는다.
     /// 결과는 주 키로 저장되고, 월 화면은 그 주들의 결과를 합쳐 보여 준다 (AiPicksFor). 비용은 주 수만큼.
     /// </summary>
-    private async Task FindWithAiWeeklyAsync()
+    private async Task FindWithAiWeeklyAsync(bool replace)
     {
         var month = CurrentPeriod;
         var weeks = new List<Period>();
@@ -773,7 +780,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var start = DateTime.Now;
         for (int i = 0; i < weeks.Count; i++)
         {
-            if (!await AiSearchAsync(weeks[i], false, L.F("주별로 찾는 중 {0}/{1} · {2}", i + 1, weeks.Count, weeks[i].Display))) break;  // 한도에 닿으면 멈춘다
+            if (!await AiSearchAsync(weeks[i], replace, L.F("주별로 찾는 중 {0}/{1} · {2}", i + 1, weeks.Count, weeks[i].Display))) break;  // 한도에 닿으면 멈춘다
         }
         await LoadAsync();  // 월 화면에 주별 결과를 합쳐 다시 보여 준다
         AiText = L.F("주별로 찾기 끝 · 이번 검색 {0}", AiUsageLedger.Money(_aiLedger.Spent(start)));

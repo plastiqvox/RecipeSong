@@ -205,6 +205,16 @@ def main() -> None:
         stop()
     elif cmd == "shot":
         shot(pos[0] if pos else time.strftime("%H%M%S"))
+        if "--around" in rest:  # 그 컨트롤 둘레만 잘라 따로 (큰 창에서 볼 곳만)
+            from PIL import Image
+            c = find(rest[rest.index("--around") + 1])
+            r, wr = c.rectangle(), window().rectangle()
+            pad = int(rest[rest.index("--pad") + 1]) if "--pad" in rest else 150
+            im = Image.open(SHOTS / f"{pos[0]}.png")
+            box = (max(0, r.left - wr.left - pad), max(0, r.top - wr.top - pad // 2),
+                   min(im.width, r.right - wr.left + pad * 8), min(im.height, r.bottom - wr.top + pad // 2))
+            im.crop(box).save(SHOTS / f"{pos[0]}_around.png")
+            print(SHOTS / f"{pos[0]}_around.png")
     elif cmd == "tree":
         tree()
     elif cmd == "click":
