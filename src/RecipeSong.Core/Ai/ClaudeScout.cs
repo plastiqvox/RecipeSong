@@ -14,7 +14,7 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
 
     public async Task<string?> TestAsync(CancellationToken ct = default)
     {
-        if (settings.GetKey() is not { } key) return "API 키가 없어요";
+        if (settings.GetKey() is not { } key) return L.T("API 키가 없어요");
         try
         {
             var client = new AnthropicClient { ApiKey = key };
@@ -36,7 +36,7 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
 
     public async Task<string?> CheckKeyAsync(CancellationToken ct = default)
     {
-        if (settings.GetKey() is not { } key) return "키 없음";
+        if (settings.GetKey() is not { } key) return L.T("키 없음");
         try
         {
             await new AnthropicClient { ApiKey = key }.Models.List(cancellationToken: ct);
@@ -45,7 +45,7 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return ex.Message.Contains("401") || ex.Message.Contains("authentication", StringComparison.OrdinalIgnoreCase)
-                ? "키 만료·삭제됨" : "키 확인 실패";
+                ? L.T("키 만료·삭제됨") : L.T("키 확인 실패");
         }
     }
 
@@ -53,7 +53,7 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
         Period period, string taste, IReadOnlyCollection<string> exclude, string? focusRegion,
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
-        var key = settings.GetKey() ?? throw new InvalidOperationException("Claude API 키가 없어요");
+        var key = settings.GetKey() ?? throw new InvalidOperationException(L.T("Claude API 키가 없어요"));
         var client = new AnthropicClient { ApiKey = key };
         var prompt = AiPrompt.Build(period, taste, exclude, focusRegion, $"찾은 결과는 {SubmitTool} 도구로 한 번에 제출하세요.");
 
@@ -74,8 +74,8 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
         bool nudged = false;
         for (int turn = 0; turn < 4; turn++)
         {
-            progress?.Report(turn == 0 ? "Claude가 웹에서 신보 찾는 중… (1~2분)"
-                : nudged ? "Claude에게 결과 제출을 다시 요청하는 중…" : "Claude가 검색 이어서 하는 중…");
+            progress?.Report(turn == 0 ? L.T("Claude가 웹에서 신보 찾는 중… (1~2분)")
+                : nudged ? L.T("Claude에게 결과 제출을 다시 요청하는 중…") : L.T("Claude가 검색 이어서 하는 중…"));
             var resp = await client.Beta.Messages.Create(new MessageCreateParams
             {
                 Model = settings.Model,
@@ -114,7 +114,7 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
                 Content = $"더 검색하지 말고, 지금까지 찾은 발매작을 {SubmitTool} 도구로 제출해 주세요. 발매일을 확인한 것만 넣어 주세요.",
             });
         }
-        throw new InvalidOperationException("Claude가 결과를 제출하지 않았어요. 잠시 뒤 다시 시도해 주세요.");
+        throw new InvalidOperationException(L.T("Claude가 결과를 제출하지 않았어요. 잠시 뒤 다시 시도해 주세요."));
     }
 
     // 사용량 기록 (대체 모델로 처리됐으면 그 모델 단가로)

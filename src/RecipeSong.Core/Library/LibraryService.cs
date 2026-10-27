@@ -43,15 +43,15 @@ public sealed class LibraryService(AppSettings settings)
                 list.AddRange(lib.Tracks);
                 rawPlaylists = lib.Playlists;
             }
-            else warnings.Add($"iTunes 라이브러리 파일이 없습니다: {xml}");
+            else warnings.Add(L.F("iTunes 라이브러리 파일이 없습니다: {0}", xml));
         }
         foreach (var folder in Settings.PlaylistFolders)
         {
             if (Directory.Exists(folder)) list.AddRange(PlaylistParser.ParseFolder(folder));
-            else warnings.Add($"플레이리스트 폴더가 없습니다: {folder}");
+            else warnings.Add(L.F("플레이리스트 폴더가 없습니다: {0}", folder));
         }
         if (list.Count == 0 && warnings.Count == 0)
-            warnings.Add("설정된 라이브러리가 없습니다. iTunes XML 경로나 플레이리스트 폴더를 지정하세요.");
+            warnings.Add(L.T("설정된 라이브러리가 없습니다. iTunes XML 경로나 플레이리스트 폴더를 지정하세요."));
 
         Warnings = warnings;
         var (merged, byOriginal) = Dedupe(list);

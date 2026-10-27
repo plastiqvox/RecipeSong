@@ -211,7 +211,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                     _discography.Set(i.ToString(), [.. await deezer.ArtistAlbumsAsync(i, ct)]);
     
                 int d = Interlocked.Increment(ref done);
-                if (d % 25 == 0) progress?.Report($"플레이리스트 뮤지션 {d}/{todo.Count}");
+                if (d % 25 == 0) progress?.Report(L.F("플레이리스트 뮤지션 {0}/{1}", d, todo.Count));
                 if (d % 250 == 0) SaveCaches();
             });
         }
@@ -222,7 +222,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         IReadOnlyList<TasteArtist> seeds, RecommendOptions options, IProgress<string>? progress, CancellationToken ct)
     {
         // 1) 시드 → 비슷한 아티스트 2단계
-        progress?.Report("취향 아티스트 찾는 중…");
+        progress?.Report(L.T("취향 아티스트 찾는 중…"));
         var seedIds = (await Task.WhenAll(seeds.Select(async s => (s, id: await ArtistIdAsync(s.Artist, ct)))))
             .Where(x => x.id != null).Select(x => (x.s, id: x.id!.Value)).ToList();
 
@@ -230,7 +230,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         foreach (var (s, id) in seedIds)
             Add(cands, id, s.Artist, s.Weight, s.Artist);
 
-        progress?.Report("비슷한 아티스트 모으는 중…");
+        progress?.Report(L.T("비슷한 아티스트 모으는 중…"));
         var hop1 = new List<(DzArtist a, double score, string seed)>();
         foreach (var (s, rel) in await Task.WhenAll(seedIds.Select(async x => (x.s, rel: await RelatedAsync(x.id, 25, ct)))))
             for (int i = 0; i < rel.Count; i++)
@@ -244,7 +244,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         int n2 = 0;
         foreach (var (h, rel) in await Task.WhenAll(hop2Seeds.Select(async h => (h, rel: await RelatedAsync(h.a.Id, 15, ct)))))
         {
-            progress?.Report($"비슷한 아티스트 넓히는 중… {++n2}/{hop2Seeds.Count}");
+            progress?.Report(L.F("비슷한 아티스트 넓히는 중… {0}/{1}", ++n2, hop2Seeds.Count));
             for (int i = 0; i < rel.Count; i++)
                 Add(cands, rel[i].Id, rel[i].Name, 0.5 * h.score * (1 - 0.7 * i / rel.Count), h.seed, rel[i].Fans);
         }
@@ -256,7 +256,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         {
             var albums = await _discography.GetOrAddAsync(c.Id.ToString(), async () => [.. await deezer.ArtistAlbumsAsync(c.Id, ct)]);
             int d = Interlocked.Increment(ref done);
-            if (d % 25 == 0) progress?.Report($"디스코그래피 확인 중… {d}/{pool.Count}");
+            if (d % 25 == 0) progress?.Report(L.F("디스코그래피 확인 중… {0}/{1}", d, pool.Count));
             return (c, albums);
         }));
         SaveCaches();
@@ -295,7 +295,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         // 차단 레이블은 레이블을 알게 된 뒤에 뺀다
         if (options.BlockedLabels.Count > 0)
             recs.RemoveAll(r => RecipeSong.Core.LabelAffinity.Keys(r.Label).Any(options.BlockedLabels.Contains));
-        progress?.Report($"추천 {recs.Count}장");
+        progress?.Report(L.F("추천 {0}장", recs.Count));
         return new RecommendationResult(period,
             [.. recs.OrderByDescending(r => r.FromPlaylist != null).ThenByDescending(r => r.Score)],
             heardAny);
@@ -308,7 +308,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         IReadOnlyList<AiPick> picks, OwnedLibrary owned, Period? period,
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
-        progress?.Report($"AI가 찾은 {picks.Count}장 Deezer에서 확인 중…");
+        progress?.Report(L.F("AI가 찾은 {0}장 Deezer에서 확인 중…", picks.Count));
         var found = await Task.WhenAll(picks.Select(async p => (p, m: await MatchAiPickAsync(p, period, ct))));
         foreach (var (p, m) in found)
             AiDebugLog.Write(p.By, $"{(m.Album != null ? "확인" : "제외")} {p.Artist} – {p.Album} ({p.ReleaseDate}): {m.Note}");
@@ -400,11 +400,11 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         var detailed = toScore.ToHashSet();
         if (sound != null)
         {
-            progress?.Report($"미리듣기 소리 분석 준비 중… ({toScore.Count}장)");
+            progress?.Report(L.F("미리듣기 소리 분석 준비 중… ({0}장)", toScore.Count));
             try { sounds = await sound.ScoreAlbumsAsync(toScore, progress, ct); }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                progress?.Report($"소리 분석을 건너뜀: {ex.Message}");
+                progress?.Report(L.F("소리 분석을 건너뜀: {0}", ex.Message));
             }
         }
         // 소리 서비스 결과가 없으면 레이블·장르만 직접 조회 (캐시, 많을 때는 캐시에 있는 것만)
@@ -429,7 +429,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             if (regionHints != null && regionHints.TryGetValue(h.a.Id, out var hint)) { regionOf[h.c.Id] = hint; continue; }
             if (!regions.TryGetCached(h.c.Name, out var r) && lookups < options.MaxRegionLookups)
             {
-                progress?.Report($"아티스트 지역 확인 중… {++lookups}");
+                progress?.Report(L.F("아티스트 지역 확인 중… {0}", ++lookups));
                 r = await regions.ResolveAsync(h.c.Name, ct);
             }
             if (r == Region.Unknown && sounds.TryGetValue(h.a.Id, out var snd) && snd.Region != null)
@@ -524,7 +524,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         {
             ct.ThrowIfCancellationRequested();
             await regions.ResolveAsync(todo[i].Name, ct);
-            if (i % 20 == 19) { regions.Save(); progress?.Report($"아티스트 지역 확인 {i + 1}/{todo.Count}"); }
+            if (i % 20 == 19) { regions.Save(); progress?.Report(L.F("아티스트 지역 확인 {0}/{1}", i + 1, todo.Count)); }
         }
         regions.Save();
     }

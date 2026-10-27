@@ -40,6 +40,6 @@ public static class Periods
             return Create(PeriodKind.Month, ym);
         if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
             return Create(kind ?? PeriodKind.Week, day);
-        throw new FormatException($"기간 형식을 알 수 없습니다: '{text}' (예: 2026, 2026-10, 2026-W43, 2026-10-21)");
+        throw new FormatException(L.F("기간 형식을 알 수 없습니다: '{0}' (예: 2026, 2026-10, 2026-W43, 2026-10-21)", text));
     }
 }

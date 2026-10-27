@@ -18,7 +18,7 @@ public sealed class GptScout(AiConnectorSettings settings, AiUsageLedger? ledger
 
     public async Task<string?> TestAsync(CancellationToken ct = default)
     {
-        if (settings.GetGptKey() is not { } key) return "API 키가 없어요";
+        if (settings.GetGptKey() is not { } key) return L.T("API 키가 없어요");
         try
         {
             await PostAsync(key, new JsonObject
@@ -37,24 +37,24 @@ public sealed class GptScout(AiConnectorSettings settings, AiUsageLedger? ledger
 
     public async Task<string?> CheckKeyAsync(CancellationToken ct = default)
     {
-        if (settings.GetGptKey() is not { } key) return "키 없음";
+        if (settings.GetGptKey() is not { } key) return L.T("키 없음");
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, "v1/models");
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
             using var resp = await Http.SendAsync(req, ct);
             return resp.IsSuccessStatusCode ? null
-                : resp.StatusCode == System.Net.HttpStatusCode.Unauthorized ? "키 만료·삭제됨" : "키 확인 실패";
+                : resp.StatusCode == System.Net.HttpStatusCode.Unauthorized ? L.T("키 만료·삭제됨") : L.T("키 확인 실패");
         }
-        catch (HttpRequestException) { return "키 확인 실패"; }
+        catch (HttpRequestException) { return L.T("키 확인 실패"); }
     }
 
     public async Task<IReadOnlyList<AiPick>> FindAsync(
         Period period, string taste, IReadOnlyCollection<string> exclude, string? focusRegion,
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
-        var key = settings.GetGptKey() ?? throw new InvalidOperationException("OpenAI API 키가 없어요");
-        progress?.Report("GPT가 웹에서 신보 찾는 중… (1~2분)");
+        var key = settings.GetGptKey() ?? throw new InvalidOperationException(L.T("OpenAI API 키가 없어요"));
+        progress?.Report(L.T("GPT가 웹에서 신보 찾는 중… (1~2분)"));
         var body = new JsonObject
         {
             ["model"] = settings.GptModel,
@@ -84,7 +84,7 @@ public sealed class GptScout(AiConnectorSettings settings, AiUsageLedger? ledger
             .Where(c => c.GetProperty("type").GetString() == "output_text")
             .Select(c => c.GetProperty("text").GetString())
             .LastOrDefault(t => !string.IsNullOrWhiteSpace(t))
-            ?? throw new InvalidOperationException("GPT가 결과를 돌려주지 않았어요 (거절됐거나 출력 한도에 걸렸어요)");
+            ?? throw new InvalidOperationException(L.T("GPT가 결과를 돌려주지 않았어요 (거절됐거나 출력 한도에 걸렸어요)"));
         using var result = JsonDocument.Parse(text);
         var picks = AiPrompt.Parse(result.RootElement.GetProperty("releases"), $"GPT {settings.GptModel}");
         AiDebugLog.Write(Name, $"제출 {picks.Count}장: " + string.Join(" | ", picks.Select(p => $"{p.Artist} – {p.Album} ({p.ReleaseDate})")));

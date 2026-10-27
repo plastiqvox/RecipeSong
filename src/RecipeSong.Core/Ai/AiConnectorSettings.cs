@@ -15,9 +15,10 @@ public sealed class AiConnectorSettings
 {
     public static readonly (string Id, string Label)[] Models =
     [
-        ("claude-opus-5-5", "Claude Opus 5.5 (기본, 가장 꼼꼼함)"),
-        ("claude-sonnet-5-5", "Claude Sonnet 5.5 (빠르고 저렴함)"),
-        ("claude-haiku-5-5", "Claude Haiku 5.5 (가장 저렴함)"),
+        // 괄호 앞부분("Claude Opus 5.5")은 배지 이름(AiPick.By)으로 저장되니 번역에서도 그대로 둔다
+        ("claude-opus-5-5", L.T("Claude Opus 5.5 (기본, 가장 꼼꼼함)")),
+        ("claude-sonnet-5-5", L.T("Claude Sonnet 5.5 (빠르고 저렴함)")),
+        ("claude-haiku-5-5", L.T("Claude Haiku 5.5 (가장 저렴함)")),
     ];
 
     /// <summary>"claude-sonnet-5-5" → "Claude Sonnet 5.5" (카드 배지·사이드바 표시용)</summary>
@@ -100,8 +101,8 @@ public sealed class AiConnectorSettings
     /// <summary>저장한 키, 없으면 OPENAI_API_KEY</summary>
     public string? GetGptKey() => Unprotect(GptEncryptedKey, "Crate.AiConnector.OpenAI") ?? Env("OPENAI_API_KEY");
 
-    public string KeySource => EncryptedKey != null ? "저장한 키" : Env("ANTHROPIC_API_KEY") != null ? "ANTHROPIC_API_KEY 환경 변수" : "키 없음";
-    public string GptKeySource => GptEncryptedKey != null ? "저장한 키" : Env("OPENAI_API_KEY") != null ? "OPENAI_API_KEY 환경 변수" : "키 없음";
+    public string KeySource => EncryptedKey != null ? L.T("저장한 키") : Env("ANTHROPIC_API_KEY") != null ? L.T("ANTHROPIC_API_KEY 환경 변수") : L.T("키 없음");
+    public string GptKeySource => GptEncryptedKey != null ? L.T("저장한 키") : Env("OPENAI_API_KEY") != null ? L.T("OPENAI_API_KEY 환경 변수") : L.T("키 없음");
 
     private static string? Env(string name) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } v ? v : null;
 
@@ -139,15 +140,15 @@ public sealed record AiBudget
 
     /// <summary>"키 만료 5일 남음" 같은 경고. 여유가 있으면 null</summary>
     public string? KeyExpiryWarning(int withinDays = 14) => KeyExpires is { } e && (e.Date - DateTime.Today).Days is var d && d <= withinDays
-        ? d < 0 ? "키 만료됨" : d == 0 ? "키 오늘 만료" : $"키 만료 {d}일 남음"
+        ? d < 0 ? L.T("키 만료됨") : d == 0 ? L.T("키 오늘 만료") : L.F("키 만료 {0}일 남음", d)
         : null;
 
     /// <summary>한도에 닿았으면 이유, 아니면 null</summary>
     public string? Blocked(AiUsageLedger ledger, string provider)
     {
-        if (Daily is { } d && ledger.Spent(AiUsageLedger.TodayStart, provider) >= d) return $"오늘 한도 {AiUsageLedger.Money(d)}에 닿았어요";
-        if (Weekly is { } w && ledger.Spent(AiUsageLedger.WeekStart, provider) >= w) return $"이번 주 한도 {AiUsageLedger.Money(w)}에 닿았어요";
-        if (Remaining(ledger, provider) is <= 0) return "충전한 크레딧을 다 쓴 것 같아요";
+        if (Daily is { } d && ledger.Spent(AiUsageLedger.TodayStart, provider) >= d) return L.F("오늘 한도 {0}에 닿았어요", AiUsageLedger.Money(d));
+        if (Weekly is { } w && ledger.Spent(AiUsageLedger.WeekStart, provider) >= w) return L.F("이번 주 한도 {0}에 닿았어요", AiUsageLedger.Money(w));
+        if (Remaining(ledger, provider) is <= 0) return L.T("충전한 크레딧을 다 쓴 것 같아요");
         return null;
     }
 

@@ -62,7 +62,7 @@ public sealed class LabelAffinity(DeezerClient deezer)
             // 같은 아티스트의 앨범일 때만 믿는다
             var ok = found?.Artist is { } fa && ListeningAnalyzer.NormalizeArtist(fa.Name) == ListeningAnalyzer.NormalizeArtist(a.Artist);
             _labels.Set(a.Key, ok ? found!.Label ?? "" : "");
-            if (Interlocked.Increment(ref done) % 25 == 0) progress?.Report($"좋아하는 레이블 찾는 중 {done}/{todo.Count}");
+            if (Interlocked.Increment(ref done) % 25 == 0) progress?.Report(L.F("좋아하는 레이블 찾는 중 {0}/{1}", done, todo.Count));
         });
         _labels.Save();
         return Score(albums, key => _labels.TryGet(key, out var l) ? l : null);

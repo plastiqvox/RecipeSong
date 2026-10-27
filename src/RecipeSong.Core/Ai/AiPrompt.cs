@@ -39,11 +39,11 @@ internal static class AiPrompt
         발매일은 검색 결과로 확인한 것만 넣고, 확인하지 못한 것은 넣지 마세요.
         신보 소식·리뷰 사이트, 레이블 신보 페이지, Bandcamp 신보 목록처럼 한 페이지에 여러 장이 모인 곳을 먼저 찾으면 효율적이에요.
         앨범이 모자라면 EP와 싱글도 넣어서 8장 이상 채워 주세요. 2~3장만 내지 마세요.
-        {howToSubmit} (8~15장)
+        {howToSubmit} (8~15장){(L.Lang == "en" ? "\nWrite each reason (the \"reason\" field) in English." : "")}
         """;
 
     /// <summary>결과 JSON 스키마 (strict: 모든 object에 additionalProperties: false, 모든 필드 required)</summary>
-    public static readonly object Schema = new
+    public static object Schema => new
     {
         type = "object",
         additionalProperties = false,
@@ -65,7 +65,9 @@ internal static class AiPrompt
                         ["release_date"] = new { type = "string", description = "YYYY-MM-DD" },
                         ["type"] = new { type = "string", @enum = new[] { "album", "ep", "single" } },
                         ["region"] = new { type = "string", @enum = new[] { "일본", "한국", "해외", "동남아" } },
-                        ["reason"] = new { type = "string", description = "추천 이유 한 문장 (한국어, 어떤 크레이트·뮤지션과 결이 비슷한지)" },
+                        ["reason"] = new { type = "string", description = L.Lang == "en"
+                            ? "One-sentence reason for the pick, in English (which crate/artists it is close to)"
+                            : "추천 이유 한 문장 (한국어, 어떤 크레이트·뮤지션과 결이 비슷한지)" },
                         ["source_url"] = new { type = "string", description = "발매일을 확인한 페이지" },
                     },
                 },

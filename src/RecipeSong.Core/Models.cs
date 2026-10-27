@@ -69,6 +69,15 @@ public readonly record struct Period(PeriodKind Kind, DateTime Start, DateTime E
     public bool Contains(DateTime t) => t >= Start && t < End;
     public bool Contains(DateOnly d) => Contains(d.ToDateTime(TimeOnly.MinValue));
     public bool OverlapsYear(int year) => Start.Year <= year && End.AddTicks(-1).Year >= year;
+
+    /// <summary>화면 표시용 이름 (언어를 따른다). Label은 캐시 키라서 그대로 둔다.</summary>
+    public string Display => Start == DateTime.MinValue ? L.T("전체") : Kind switch
+    {
+        PeriodKind.Year => L.F("{0}년", Start.Year),
+        PeriodKind.Month => L.F("{0}년 {1}월", Start.Year, Start.Month, Start),
+        _ => L.F("{0}년 {1}주차 ({2:M.d} – {3:M.d})",
+            System.Globalization.ISOWeek.GetYear(Start), System.Globalization.ISOWeek.GetWeekOfYear(Start), Start, Start.AddDays(6)),
+    };
 }
 
 public sealed record AlbumSummary(

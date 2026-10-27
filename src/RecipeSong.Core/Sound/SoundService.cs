@@ -77,7 +77,7 @@ public sealed class SoundService : IAsyncDisposable
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONUNBUFFERED"] = "1";
 
-        _proc = Process.Start(psi) ?? throw new InvalidOperationException("소리 분석 서비스를 시작하지 못했습니다.");
+        _proc = Process.Start(psi) ?? throw new InvalidOperationException(L.T("소리 분석 서비스를 시작하지 못했습니다."));
         _proc.StandardInput.AutoFlush = true;
         _ = Task.Run(ReadStdoutAsync);
         _ = Task.Run(ReadStderrAsync);
@@ -200,7 +200,7 @@ public sealed class SoundService : IAsyncDisposable
             else done.Done.TrySetException(new InvalidOperationException(msg.GetProperty("error").GetString()));
         }
         // 프로세스 종료: 기다리던 요청은 모두 실패 처리
-        var err = new InvalidOperationException($"소리 분석 서비스가 종료되었습니다. 로그: {LogPath}");
+        var err = new InvalidOperationException(L.F("소리 분석 서비스가 종료되었습니다. 로그: {0}", LogPath));
         _ready.TrySetException(err);
         foreach (var p in _pending.Values) p.Done.TrySetException(err);
         _pending.Clear();

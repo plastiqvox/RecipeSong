@@ -33,10 +33,13 @@ public sealed partial class ReleaseItem : ObservableObject
     public string? CoverUrl => Rec.CoverUrl;
     public string TypeLabel => Rec.RecordType.ToUpperInvariant();
     public string Meta => string.Join(" · ", new[] { Rec.ReleaseDate.ToString("yyyy.M.d"), Rec.Label, RegionLabel }.Where(s => !string.IsNullOrEmpty(s)));
-    public string RegionLabel => Labels.Region(Rec.Region);
+    /// <summary>표시용 지역 이름 (Labels.Region은 키로도 쓰이므로 여기서만 번역)</summary>
+    public string RegionLabel => L.T(Labels.Region(Rec.Region));
     public string CrateName => Rec.Crate ?? Labels.Unsorted;
+    /// <summary>표시용 레시피 이름 (CrateName은 그룹·필터 키라 번역하지 않는다)</summary>
+    public string CrateLabel => L.T(CrateName);
     public bool HasFit => Rec.CrateFit != null;
-    public string FitText => Rec.CrateFit is double p ? $"{Rec.Crate} 어울림 {p:P0}" : "";
+    public string FitText => Rec.CrateFit is double p ? L.F("{0} 어울림 {1:P0}", L.T(Rec.Crate ?? ""), p) : "";
     public bool[] FitDots { get; }
     public bool Known => Rec.IsKnownArtist;
     public bool IsMine => Rec.FromPlaylist != null;
@@ -63,31 +66,34 @@ public sealed partial class ReleaseItem : ObservableObject
         if (Rec.SourceUrl is { } url && Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme is "http" or "https")
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
-    public string? AiReason => Rec.AiReason;
+    /// <summary>추천 이유. 웹진 이유 "{이름}에서 소개"는 저장된 원문이라 표시할 때만 번역</summary>
+    public string? AiReason => Rec.AiReason is { } r && r.EndsWith("에서 소개", StringComparison.Ordinal)
+        ? L.F("{0}에서 소개", r[..^"에서 소개".Length]) : Rec.AiReason;
     /// <summary>제안한 AI 커넥터 ("Claude", "GPT") — 커넥터마다 배지 하나</summary>
     public IReadOnlyList<AiBadge> AiBy => [.. (Rec.AiBy ?? (IsAi ? ["AI"] : [])).Select(b => new AiBadge(b))];
-    public string Badge => IsMine ? $"내 플리 · {Rec.FromPlaylist}" : IsAi ? "" : Known ? "아는 아티스트" : "";
-    public string BadgeTip => IsMine ? $"{Rec.FromPlaylist} 플레이리스트에 있는 뮤지션의 신보"
-        : IsAi ? "AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보" : "내 라이브러리에 있는 아티스트";
+    public string Badge => IsMine ? L.F("내 플리 · {0}", L.T(Rec.FromPlaylist ?? "")) : IsAi ? "" : Known ? L.T("아는 아티스트") : "";
+    public string BadgeTip => IsMine ? L.F("{0} 플레이리스트에 있는 뮤지션의 신보", L.T(Rec.FromPlaylist ?? ""))
+        : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보") : L.T("내 라이브러리에 있는 아티스트");
     public System.Windows.Thickness BadgeMargin => HasFit ? new(8, 0, 0, 0) : new(0);
     public bool HasNear => Rec.NearTracks.Count > 0;
 
     /// <summary>비슷한 내 곡 (내 파일로 바로 재생). VM이 라이브러리에서 파일 경로를 찾아 채운다.</summary>
     public IReadOnlyList<NearTrackItem> NearItems { get; init; } = [];
     public string Near => string.Join("  /  ", Rec.NearTracks.Take(2).Select(Shorten));
-    public string Because => SavedNote ?? (IsMine || Rec.BecauseOf.Count == 0 ? "" : $"{string.Join(", ", Rec.BecauseOf)}에서 출발");
+    // BecauseOf는 아티스트 이름 또는 "웹진" → 표시할 때만 번역
+    public string Because => SavedNote ?? (IsMine || Rec.BecauseOf.Count == 0 ? "" : L.F("{0}에서 출발", string.Join(", ", Rec.BecauseOf.Select(L.T))));
 
     public IAsyncRelayCommand ToggleTracksCommand { get; }
     public IRelayCommand ToggleSaveCommand { get; }
 
     [ObservableProperty] private bool _isPlaying;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(SaveTip))] private bool _isSaved;
-    public string SaveTip => IsSaved ? "저장함에서 빼기" : "저장함에 넣기 (나중에 디깅)";
+    public string SaveTip => IsSaved ? L.T("저장함에서 빼기") : L.T("저장함에 넣기 (나중에 디깅)");
 
     /// <summary>앨범 하트: 좋아요 (취향 학습에 반영). 책갈피(저장함)는 위시리스트일 뿐 학습에는 쓰지 않는다.</summary>
     public Action<ReleaseItem>? ToggleLikeAction { get; init; }
     [ObservableProperty, NotifyPropertyChangedFor(nameof(LikeTip))] private bool _isLiked;
-    public string LikeTip => IsLiked ? "좋아요 취소" : "좋아요 · 이 앨범과 비슷한 소리를 더 추천";
+    public string LikeTip => IsLiked ? L.T("좋아요 취소") : L.T("좋아요 · 이 앨범과 비슷한 소리를 더 추천");
 
     [RelayCommand]
     private void ToggleLike() => ToggleLikeAction?.Invoke(this);
@@ -99,7 +105,7 @@ public sealed partial class ReleaseItem : ObservableObject
     /// <summary>별로: 추천에서 숨기고 학습에 반영 (저장함 탭 아래에서 되돌릴 수 있다)</summary>
     public Action<ReleaseItem>? ToggleDislikeAction { get; init; }
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DislikeTip))] private bool _isDisliked;
-    public string DislikeTip => IsDisliked ? "별로 취소 (다시 추천에 나와요)" : "별로예요 · 추천에서 숨기고 비슷한 소리·이 아티스트는 덜 추천";
+    public string DislikeTip => IsDisliked ? L.T("별로 취소 (다시 추천에 나와요)") : L.T("별로예요 · 추천에서 숨기고 비슷한 소리·이 아티스트는 덜 추천");
 
     [RelayCommand]
     private void ToggleDislike() => ToggleDislikeAction?.Invoke(this);
@@ -113,7 +119,7 @@ public sealed partial class ReleaseItem : ObservableObject
     public TrackItem? Current { get; set; }
     [ObservableProperty] private bool _showTracks;
     [ObservableProperty] private string? _tracksStatus;
-    public string TracksButton => ShowTracks ? "수록곡 접기" : Tracks.Count > 0 ? $"수록곡 {Tracks.Count}" : "수록곡";
+    public string TracksButton => ShowTracks ? L.T("수록곡 접기") : Tracks.Count > 0 ? L.F("수록곡 {0}", Tracks.Count) : L.T("수록곡");
     partial void OnShowTracksChanged(bool value) => OnPropertyChanged(nameof(TracksButton));
 
     /// <summary>새로 받은 수록곡으로 채운다. 같은 앨범이면 곡 객체는 두고 만료된 미리듣기 URL만 바꾼다.</summary>
@@ -156,7 +162,7 @@ public sealed partial class ReleaseItem : ObservableObject
         if (dash <= 40) return s;
         var artists = s[..dash];
         var comma = artists.IndexOf(',');
-        return (comma > 0 ? artists[..comma] : artists[..37]) + " 외" + s[dash..];
+        return L.F("{0} 외", comma > 0 ? artists[..comma] : artists[..37]) + s[dash..];
     }
 }
 
@@ -173,6 +179,8 @@ public sealed record AiBadge(string Text)
     /// <summary>Claude 오렌지 / GPT 초록, 비싼 모델일수록 진하게</summary>
     public System.Windows.Media.Brush Color => AiColors.For(Text);
     public System.Windows.Media.Brush Tint => AiColors.Background(Text);
+    /// <summary>배지에 보이는 글자: "웹진 · 이름"의 "웹진"만 번역 (Text는 색·순서·필터 키라 그대로)</summary>
+    public string Display => Text.StartsWith("웹진", StringComparison.Ordinal) ? L.T("웹진") + Text["웹진".Length..] : Text;
 }
 
 /// <summary>카드의 "비슷한 내 곡" 하나: 내 라이브러리 파일을 바로 재생한다.</summary>
@@ -181,7 +189,7 @@ public sealed partial class NearTrackItem(string label, string? path, Action<Nea
     public string Label { get; } = label;
     public string? Path { get; } = path;
     public bool CanPlay => Path != null;
-    public string Tip => Path != null ? $"내 파일로 듣기 · {Label}" : $"{Label} (내 라이브러리에서 파일을 못 찾았어요)";
+    public string Tip => Path != null ? L.F("내 파일로 듣기 · {0}", Label) : L.F("{0} (내 라이브러리에서 파일을 못 찾았어요)", Label);
     [ObservableProperty] private bool _isPlaying;
     public void SetPlaying(bool playing) => IsPlaying = playing;
 
@@ -200,7 +208,7 @@ public sealed partial class TrackItem : ObservableObject
         PopBars = [.. Enumerable.Range(0, 5).Select(i => i < level)];
         HasPopularity = albumMaxRank > 0;
         IsTop = albumMaxRank > 0 && singleTop && t.Rank == albumMaxRank;
-        PopTip = t.Rank > 0 ? $"Deezer 인기 {t.Rank:N0}" + (IsTop ? " · 앨범에서 가장 인기" : "") : "인기 정보 없음";
+        PopTip = t.Rank > 0 ? L.F("Deezer 인기 {0:N0}", t.Rank) + (IsTop ? " · " + L.T("앨범에서 가장 인기") : "") : L.T("인기 정보 없음");
         Release = release;
         Number = t.Number;
         Title = t.Title;
@@ -252,10 +260,13 @@ public sealed partial class TrackItem : ObservableObject
 public sealed partial class CrateSection(string name, IReadOnlyList<ReleaseItem> items, int total, int mine, bool canMore, Action<string> showOnly)
     : ObservableObject
 {
+    /// <summary>레시피 이름 (키: More → showOnly)</summary>
     public string Name { get; } = name;
+    /// <summary>표시용 이름 ("미분류" 같은 내장 이름만 번역되고 사용자 레시피 이름은 그대로)</summary>
+    public string DisplayName => L.T(Name);
     public IReadOnlyList<ReleaseItem> Items { get; } = items;
-    public string Meta => mine > 0 && mine < total ? $"{total}장 · 내 플리 {mine} · 추가 제안 {total - mine}"
-        : mine == total ? $"{total}장 · 모두 내 플리" : $"{total}장 · 추가 제안";
+    public string Meta => mine > 0 && mine < total ? L.F("{0}장 · 내 플리 {1} · 추가 제안 {2}", total, mine, total - mine)
+        : mine == total ? L.F("{0}장 · 모두 내 플리", total) : L.F("{0}장 · 추가 제안", total);
     public bool CanMore { get; } = canMore;
 
     [RelayCommand]
@@ -265,8 +276,10 @@ public sealed partial class CrateSection(string name, IReadOnlyList<ReleaseItem>
 /// <summary>크레이트 · 형식 · 지역 필터 칩.</summary>
 public sealed partial class FilterChip(string key, string label, Action<string> select) : ObservableObject
 {
+    /// <summary>키 (선택·순서 저장). 원문 그대로</summary>
     public string Key { get; } = key;
-    public string Label { get; } = label;
+    /// <summary>표시용: 내장 이름("전체", "미분류", 레시피 이름 등)은 번역, 모르는 이름은 그대로</summary>
+    public string Label { get; } = L.T(label);
     [ObservableProperty] private bool _isSelected;
     [ObservableProperty] private int? _count;
 
@@ -306,7 +319,7 @@ public sealed partial class DayCell(DateTime date, bool inMonth, Action<DateTime
 public sealed partial class MonthCell(int month, Action<int> select) : ObservableObject
 {
     public int Month { get; } = month;
-    public string Label => $"{Month}월";
+    public string Label => new DateTime(2000, Month, 1).ToString(L.T("M월"));
     [ObservableProperty] private bool _isSelected;
     [ObservableProperty] private int _heat;
     [ObservableProperty] private IReadOnlyList<AiBadge> _aiDots = [];
@@ -339,12 +352,12 @@ public sealed partial class LibraryAlbumItem : ObservableObject
 
     public AlbumSummary Album { get; }
     public IAsyncRelayCommand PlayCommand { get; }
-    public string Title => string.IsNullOrWhiteSpace(Album.Album) ? "(앨범 없음)" : Album.Album;
+    public string Title => string.IsNullOrWhiteSpace(Album.Album) ? L.T("(앨범 없음)") : Album.Album;
     public string Meta => string.Join(" · ", new[]
     {
         Album.ReleaseDate?.ToString("yyyy.M.d") ?? Album.Year?.ToString(),
-        $"{Album.TrackCount}곡",
-        Album.SampleTrackPath != null ? "내 파일" : null
+        L.F("{0}곡", Album.TrackCount),
+        Album.SampleTrackPath != null ? L.T("내 파일") : null
     }.Where(s => s != null));
     public bool CanPlay => Album.SampleTrackPath != null;
     [ObservableProperty] private string? _artUrl;
@@ -355,9 +368,15 @@ public sealed partial class LibraryAlbumItem : ObservableObject
 
 public static class Labels
 {
+    // 키로 쓰는 이름 (칩 키·그룹·순서 저장) — 번역하지 않는다. 표시할 때 L.T(...)
     public const string All = "전체";
     public const string Unsorted = "미분류";
 
+    /// <summary>달력 요일 머리글 (월~일), 현재 문화권의 짧은 요일 이름</summary>
+    public static string[] WeekDays =>
+        [.. Enumerable.Range(1, 7).Select(i => System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[i % 7])];
+
+    /// <summary>지역 이름 (키). 화면에는 L.T(Region(r))</summary>
     public static string Region(Region r) => r switch
     {
         Core.Region.Korea => "한국",

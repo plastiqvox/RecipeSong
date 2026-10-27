@@ -19,21 +19,21 @@ public partial class App : Application
             System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         DispatcherUnhandledException += (_, ex) =>
         {
-            MessageBox.Show(ex.Exception.Message, "RecipeSong 오류", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(ex.Exception.Message, L.T("RecipeSong 오류"), MessageBoxButton.OK, MessageBoxImage.Warning);
             ex.Handled = true;
         };
 
         // iTunes 라이브러리는 자동으로 찾고, 못 찾을 때만 한 번 묻는다
         var settings = AppSettings.Load();
-        L.Init(settings.Language);
+        L.Init(Environment.GetEnvironmentVariable("RECIPESONG_LANG") ?? settings.Language);  // 시험용: RECIPESONG_LANG=en
         // 캐시 폴더는 캐시를 처음 만들기 전에 정한다
         if (settings.CacheDirectory is { Length: > 0 } cacheDir) CacheLocation.Directory = cacheDir;
         if (settings.ITunesLibraryPath is not { } xml || !File.Exists(xml))
         {
             var dlg = new OpenFileDialog
             {
-                Title = "iTunes 라이브러리 XML을 선택하세요 (iTunes Music Library.xml)",
-                Filter = "iTunes 라이브러리 (*.xml)|*.xml",
+                Title = L.T("iTunes 라이브러리 XML을 선택하세요 (iTunes Music Library.xml)"),
+                Filter = L.T("iTunes 라이브러리 (*.xml)|*.xml"),
             };
             if (dlg.ShowDialog() != true) { Shutdown(); return; }
             settings.ITunesLibraryPath = dlg.FileName;

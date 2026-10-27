@@ -23,7 +23,7 @@ public sealed class LibraryReleases(DeezerClient deezer)
             var albums = new List<AlbumSummary>();
             foreach (var album in artist.Albums)
             {
-                progress?.Report($"발매일 확인 중… {++done}/{total}");
+                progress?.Report(L.F("발매일 확인 중… {0}/{1}", ++done, total));
                 DateOnly? released = null;
                 if (period.Kind != PeriodKind.Year && !string.IsNullOrWhiteSpace(album.Album))
                 {

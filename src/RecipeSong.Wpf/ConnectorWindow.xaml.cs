@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using RecipeSong.Core;
 using RecipeSong.Core.Ai;
 
 namespace RecipeSong.Wpf;
@@ -30,13 +31,13 @@ public partial class ConnectorWindow : Window
         {
             var rb = new RadioButton { Style = (Style)FindResource("Segment"), GroupName = "model", Tag = id,
                 Content = label[..label.IndexOf(" (", StringComparison.Ordinal)].Replace("Claude ", ""), IsChecked = id == settings.Model };
-            rb.Checked += (_, _) => ModelHint.Text = label;
+            rb.Checked += (_, _) => ModelHint.Text = L.T(label);
             ModelGrid.Children.Add(rb);
         }
-        ModelHint.Text = AiConnectorSettings.Models.FirstOrDefault(m => m.Id == settings.Model).Label ?? settings.Model;
+        ModelHint.Text = AiConnectorSettings.Models.FirstOrDefault(m => m.Id == settings.Model).Label is { } modelLabel ? L.T(modelLabel) : settings.Model;
         foreach (var n in SearchOptions)
             SearchGrid.Children.Add(new RadioButton { Style = (Style)FindResource("Segment"), GroupName = "searches", Tag = n,
-                Content = $"{n}회", IsChecked = n == settings.MaxSearches });
+                Content = L.F("{0}회", n), IsChecked = n == settings.MaxSearches });
         if (!SearchOptions.Contains(settings.MaxSearches)) ((RadioButton)SearchGrid.Children[1]).IsChecked = true;
 
         // ---- GPT ----
@@ -73,7 +74,7 @@ public partial class ConnectorWindow : Window
             KeyBox.Password = text;
             EnabledBox.IsChecked = true;
             _clearKey = false;
-            KeyHint.Text = "클립보드에서 키를 가져왔어요. 연결을 확인하는 중…";
+            KeyHint.Text = L.T("클립보드에서 키를 가져왔어요. 연결을 확인하는 중…");
             Test_Click(this, new RoutedEventArgs());
         }
         else
@@ -82,7 +83,7 @@ public partial class ConnectorWindow : Window
             GptKeyBox.Password = text;
             GptEnabledBox.IsChecked = true;
             _clearGptKey = false;
-            GptKeyHint.Text = "클립보드에서 키를 가져왔어요. 연결을 확인하는 중…";
+            GptKeyHint.Text = L.T("클립보드에서 키를 가져왔어요. 연결을 확인하는 중…");
             GptTest_Click(this, new RoutedEventArgs());
         }
     }
@@ -102,13 +103,13 @@ public partial class ConnectorWindow : Window
         if (box.Password.Length > 0)
         {
             hint.Text = box.Password.StartsWith(prefix, StringComparison.Ordinal)
-                ? "새 키를 입력했어요. 저장하면 이 키를 써요." : $"{vendor} 키는 보통 {prefix} 로 시작해요. 다시 확인해 주세요.";
+                ? L.T("새 키를 입력했어요. 저장하면 이 키를 써요.") : L.F("{0} 키는 보통 {1} 로 시작해요. 다시 확인해 주세요.", vendor, prefix);
             clear.Visibility = Visibility.Collapsed;
             return;
         }
-        hint.Text = clearing ? "저장하면 키를 지워요"
-            : stored ? "저장한 키가 있어요 (Windows 계정으로 암호화). 바꾸려면 새 키를 입력하세요."
-            : $"키를 입력하세요. 비워 두면 {envName} 환경 변수를 써요. (지금: {source})";
+        hint.Text = clearing ? L.T("저장하면 키를 지워요")
+            : stored ? L.T("저장한 키가 있어요 (Windows 계정으로 암호화). 바꾸려면 새 키를 입력하세요.")
+            : L.F("키를 입력하세요. 비워 두면 {0} 환경 변수를 써요. (지금: {1})", envName, L.T(source));
         clear.Visibility = stored && !clearing ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -155,13 +156,13 @@ public partial class ConnectorWindow : Window
         void Show(int? days)
         {
             var exp = days is { } d && b.KeySavedAt is { } at ? at.Date.AddDays(d) : (DateTime?)null;
-            text.Text = exp is { } e ? $"{e:yyyy.M.d} 만료 예정 (키 저장일 {b.KeySavedAt:M.d} 기준)"
-                : days != null ? "키를 저장하면 그날부터 계산해요" : "만료 없음";
+            text.Text = exp is { } e ? L.F("{0:yyyy.M.d} 만료 예정 (키 저장일 {1:M.d} 기준)", e, b.KeySavedAt)
+                : days != null ? L.T("키를 저장하면 그날부터 계산해요") : L.T("만료 없음");
         }
         foreach (var days in KeyDayOptions)
         {
             var rb = new RadioButton { Style = (Style)FindResource("Segment"), Height = 28, GroupName = grid.Name, Tag = days,
-                Content = days is { } d ? $"{d}일" : "없음", IsChecked = days == b.KeyDays };
+                Content = days is { } d ? L.F("{0}일", d) : L.T("없음"), IsChecked = days == b.KeyDays };
             rb.Checked += (_, _) => Show(days);
             grid.Children.Add(rb);
         }
@@ -180,12 +181,12 @@ public partial class ConnectorWindow : Window
         credit.Text = Format(b.Credit);
         var parts = new List<string>
         {
-            $"Crate에서 쓴 금액: 오늘 {AiUsageLedger.Money(_ledger.Spent(AiUsageLedger.TodayStart, provider))}",
-            $"이번 주 {AiUsageLedger.Money(_ledger.Spent(AiUsageLedger.WeekStart, provider))}",
+            L.F("Crate에서 쓴 금액: 오늘 {0}", AiUsageLedger.Money(_ledger.Spent(AiUsageLedger.TodayStart, provider))),
+            L.F("이번 주 {0}", AiUsageLedger.Money(_ledger.Spent(AiUsageLedger.WeekStart, provider))),
         };
         if (b.Remaining(_ledger, provider) is { } left)
-            parts.Add($"남은 크레딧 약 {AiUsageLedger.Money(Math.Max(0, left))} ({b.CreditSince:yyyy.M.d} 충전 기준, {b.CreditExpires:yyyy.M.d} 만료 예정)");
-        usage.Text = string.Join(" · ", parts) + ". 한도에 닿으면 그 커넥터는 다음 날·다음 주까지 쉬어요. 충전할 때마다 충전 후 잔액을 다시 넣어 주세요.";
+            parts.Add(L.F("남은 크레딧 약 {0} ({1:yyyy.M.d} 충전 기준, {2:yyyy.M.d} 만료 예정)", AiUsageLedger.Money(Math.Max(0, left)), b.CreditSince, b.CreditExpires));
+        usage.Text = string.Join(" · ", parts) + L.T(". 한도에 닿으면 그 커넥터는 다음 날·다음 주까지 쉬어요. 충전할 때마다 충전 후 잔액을 다시 넣어 주세요.");
     }
 
     private static string Format(double? v) => v?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) ?? "";
@@ -207,10 +208,10 @@ public partial class ConnectorWindow : Window
     }
 
     private void Test_Click(object sender, RoutedEventArgs e) =>
-        _ = RunTestAsync(s => new ClaudeScout(s), TestButton, TestResult, "결제 페이지에서 충전해 주세요");
+        _ = RunTestAsync(s => new ClaudeScout(s), TestButton, TestResult, L.T("결제 페이지에서 충전해 주세요"));
 
     private void GptTest_Click(object sender, RoutedEventArgs e) =>
-        _ = RunTestAsync(s => new GptScout(s), GptTestButton, GptTestResult, "결제 페이지에서 충전해 주세요");
+        _ = RunTestAsync(s => new GptScout(s), GptTestButton, GptTestResult, L.T("결제 페이지에서 충전해 주세요"));
 
     private async Task RunTestAsync(Func<AiConnectorSettings, IAiScout> make, Button button, TextBlock result, string chargeHint)
     {
@@ -218,21 +219,21 @@ public partial class ConnectorWindow : Window
         Apply(copy);
         button.IsEnabled = false;
         result.Foreground = (Brush)FindResource("Muted");
-        result.Text = "확인 중…";
+        result.Text = L.T("확인 중…");
         var error = await make(copy).TestAsync();
         button.IsEnabled = true;
         result.Foreground = (Brush)FindResource(error == null ? "Ok" : "AccentText");
-        result.Text = error == null ? "연결됐어요. 저장을 누르면 끝이에요." : $"연결 실패: {Explain(error, chargeHint)}";
+        result.Text = error == null ? L.T("연결됐어요. 저장을 누르면 끝이에요.") : L.F("연결 실패: {0}", Explain(error, chargeHint));
     }
 
     // 흔한 실패를 알아듣기 쉽게
     private static string Explain(string error, string chargeHint) =>
         error.Contains("credit balance", StringComparison.OrdinalIgnoreCase) || error.Contains("quota", StringComparison.OrdinalIgnoreCase)
-            ? $"크레딧이 없어요. {chargeHint}."
+            ? L.F("크레딧이 없어요. {0}.", chargeHint)
         : error.Contains("401") || error.Contains("authentication", StringComparison.OrdinalIgnoreCase) || error.Contains("api key", StringComparison.OrdinalIgnoreCase)
-            ? "키가 맞지 않아요. 다시 복사해 주세요."
+            ? L.T("키가 맞지 않아요. 다시 복사해 주세요.")
         : error.Contains("404") || error.Contains("model", StringComparison.OrdinalIgnoreCase) && error.Contains("not", StringComparison.OrdinalIgnoreCase)
-            ? "이 키로는 고른 모델을 쓸 수 없어요. 다른 모델을 골라 보세요."
+            ? L.T("이 키로는 고른 모델을 쓸 수 없어요. 다른 모델을 골라 보세요.")
         : error;
 
     private void Save_Click(object sender, RoutedEventArgs e)

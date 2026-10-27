@@ -106,13 +106,13 @@ public static class CacheLocation
         if (!System.IO.Directory.Exists(dir)) return [];
         static string Group(string name) => name switch
         {
-            _ when name.StartsWith("deezer-") => "Deezer 디스코그래피·앨범 정보",
-            _ when name.StartsWith("rec-") => "저장된 추천 결과",
-            _ when name.StartsWith("ai-") => "AI 결과·사용 기록",
-            "saved.json" => "저장함",
-            _ when name.StartsWith("art") => "앨범아트",
-            _ when name.EndsWith(".log") => "로그",
-            _ => "기타",
+            _ when name.StartsWith("deezer-") => L.T("Deezer 디스코그래피·앨범 정보"),
+            _ when name.StartsWith("rec-") => L.T("저장된 추천 결과"),
+            _ when name.StartsWith("ai-") => L.T("AI 결과·사용 기록"),
+            "saved.json" => L.T("저장함"),
+            _ when name.StartsWith("art") => L.T("앨범아트"),
+            _ when name.EndsWith(".log") => L.T("로그"),
+            _ => L.T("기타"),
         };
         return [.. new DirectoryInfo(dir).EnumerateFileSystemInfos()
             .Select(f => (Name: Group(f.Name), Bytes: Size(f)))

@@ -2,6 +2,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using RecipeSong.Core;
 
 namespace RecipeSong.Wpf.ViewModels;
 
@@ -14,8 +15,8 @@ public sealed partial class PlayerViewModel : ObservableObject
     private Action? _ended;
     private bool _dragging;
 
-    [ObservableProperty] private string _title = "재생 중인 곡 없음";
-    [ObservableProperty] private string _subtitle = "커버의 재생 버튼을 눌러 미리 들어 보세요";
+    [ObservableProperty] private string _title = L.T("재생 중인 곡 없음");
+    [ObservableProperty] private string _subtitle = L.T("커버의 재생 버튼을 눌러 미리 들어 보세요");
     [ObservableProperty] private string? _coverUrl;
     [ObservableProperty] private bool _isPlaying;
     [ObservableProperty] private bool _hasMedia;
@@ -72,7 +73,7 @@ public sealed partial class PlayerViewModel : ObservableObject
         _player.MediaFailed += (_, e) =>
         {
             SetPlaying(false);
-            Subtitle = $"재생할 수 없습니다: {e.ErrorException?.Message}";
+            Subtitle = L.F("재생할 수 없습니다: {0}", e.ErrorException?.Message);
         };
         _timer.Tick += (_, _) =>
         {

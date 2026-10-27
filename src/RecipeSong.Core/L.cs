@@ -35,5 +35,9 @@ public static class L
     public static string T(string ko) => _map.TryGetValue(ko, out var s) && s.Length > 0 ? s : ko;
 
     /// <summary>번역 + string.Format ({0}, {1:N0} …)</summary>
-    public static string F(string ko, params object?[] args) => string.Format(CultureInfo.CurrentCulture, T(ko), args);
+    public static string F(string ko, params object?[] args)
+    {
+        try { return string.Format(CultureInfo.CurrentCulture, T(ko), args); }
+        catch (FormatException) { return string.Format(CultureInfo.CurrentCulture, ko, args); }  // 번역의 자리표시자가 틀렸으면 원문으로
+    }
 }

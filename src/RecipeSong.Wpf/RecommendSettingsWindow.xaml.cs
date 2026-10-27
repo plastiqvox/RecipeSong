@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using RecipeSong.Core;
 
 namespace RecipeSong.Wpf;
 
@@ -47,11 +48,11 @@ public partial class RecommendSettingsWindow : Window
         for (int i = 0; i < options.Length; i++)
         {
             var (label, text) = options[i];
-            var rb = new RadioButton { Style = (Style)FindResource("Segment"), GroupName = grid.Name, Tag = i, Content = label, IsChecked = i == selected };
-            rb.Checked += (_, _) => hint.Text = text;
+            var rb = new RadioButton { Style = (Style)FindResource("Segment"), GroupName = grid.Name, Tag = i, Content = L.T(label), IsChecked = i == selected };
+            rb.Checked += (_, _) => hint.Text = L.T(text);
             grid.Children.Add(rb);
         }
-        hint.Text = options[Math.Clamp(selected, 0, options.Length - 1)].Hint;
+        hint.Text = L.T(options[Math.Clamp(selected, 0, options.Length - 1)].Hint);
     }
 
     // ---- 웹진: 체크를 끄면 그 웹진은 읽지도 보여 주지도 않는다 ----
@@ -59,7 +60,7 @@ public partial class RecommendSettingsWindow : Window
     {
         foreach (var f in RecipeSong.Core.WebzineFeeds.Defaults)
         {
-            var box = new CheckBox { Content = $"{f.Name} ({f.Region})", IsChecked = !_vm.DisabledWebzines.Contains(f.Name),
+            var box = new CheckBox { Content = $"{f.Name} ({L.T(f.Region)})", IsChecked = !_vm.DisabledWebzines.Contains(f.Name),
                 Foreground = (System.Windows.Media.Brush)FindResource("Text"), Margin = new Thickness(0, 0, 16, 6), Tag = f.Name };
             box.Checked += (_, _) => SaveWebzines();
             box.Unchecked += (_, _) => SaveWebzines();
@@ -72,9 +73,9 @@ public partial class RecommendSettingsWindow : Window
 
     private async void RefreshWebzines_Click(object sender, RoutedEventArgs e)
     {
-        WebzineRefreshText.Text = "읽는 중…";
+        WebzineRefreshText.Text = L.T("읽는 중…");
         await _vm.RefreshWebzinesAsync(force: true);
-        WebzineRefreshText.Text = "다 읽었어요";
+        WebzineRefreshText.Text = L.T("다 읽었어요");
     }
 
     // ---- 차단 목록: 칩을 누르면 해제 ----
@@ -84,13 +85,13 @@ public partial class RecommendSettingsWindow : Window
         void Add(string kind, string name, Action unblock)
         {
             var b = new Button { Style = (Style)FindResource("Bare"), Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(0, 0, 6, 6),
-                ToolTip = "눌러서 차단 해제" };
+                ToolTip = L.T("눌러서 차단 해제") };
             b.Content = new TextBlock { Text = $"{kind} · {name}  ✕", FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("Text2") };
             b.Click += (_, _) => { unblock(); ShowBlocked(); };
             BlockedPanel.Children.Add(b);
         }
-        foreach (var a in _blocked.Artists.ToList()) Add("아티스트", a, () => _blocked.UnblockArtist(a));
-        foreach (var l in _blocked.Labels.ToList()) Add("레이블", l, () => _blocked.UnblockLabel(l));
+        foreach (var a in _blocked.Artists.ToList()) Add(L.T("아티스트"), a, () => _blocked.UnblockArtist(a));
+        foreach (var l in _blocked.Labels.ToList()) Add(L.T("레이블"), l, () => _blocked.UnblockLabel(l));
         BlockedEmpty.Visibility = BlockedPanel.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
