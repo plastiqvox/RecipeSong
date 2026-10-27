@@ -475,7 +475,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _crate = target.CrateName;
         ApplyFilters();
 
-        target.ShowTracks = true;
+        Detail = target;
         await EnsureTracksAsync(target);
         // 재생 표시를 새 카드의 곡으로 옮긴다
         if (target.Tracks.FirstOrDefault(t => t.Number == trackNo) is { } track)
@@ -1820,7 +1820,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             Player.Toggle();
             return;
         }
-        item.ShowTracks = true;
+        Detail = item;  // 재생하면 상세 패널에 수록곡을 연다 (지금 어느 곡인지 보이게)
         if (!await EnsureTracksAsync(item)) return;
         target ??= item.Tracks.FirstOrDefault(t => t.HasPreview);
         if (target?.Preview is not { } url)
@@ -1841,10 +1841,25 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (next != null) _ = PlayReleaseAsync(item, next);
     }
 
+    // ---- 앨범 상세 패널 (오른쪽): 수록곡을 카드 안에서 펼치면 그 줄만 길어져 목록이 들쭉날쭉해서 따로 연다 ----
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasDetail))] private ReleaseItem? _detail;
+    public bool HasDetail => Detail != null;
+
+    /// <summary>열린 앨범의 카드는 ShowTracks 로 표시만 (수록곡 버튼이 주황)</summary>
+    partial void OnDetailChanged(ReleaseItem? oldValue, ReleaseItem? newValue)
+    {
+        if (oldValue != null) oldValue.ShowTracks = false;
+        if (newValue != null) newValue.ShowTracks = true;
+    }
+
+    [RelayCommand]
+    private void CloseDetail() => Detail = null;
+
     private async Task ToggleTracksAsync(ReleaseItem item)
     {
-        item.ShowTracks = !item.ShowTracks;
-        if (item.ShowTracks) await EnsureTracksAsync(item);
+        if (Detail == item) { Detail = null; return; }
+        Detail = item;
+        await EnsureTracksAsync(item);
     }
 
     /// <summary>수록곡을 받는다. 미리듣기 URL은 몇 시간 뒤 만료되므로 30분이 지났으면 새로 받는다.</summary>

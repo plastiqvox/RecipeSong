@@ -139,7 +139,7 @@ public sealed partial class ReleaseItem : ObservableObject
     public TrackItem? Current { get; set; }
     [ObservableProperty] private bool _showTracks;
     [ObservableProperty] private string? _tracksStatus;
-    public string TracksButton => ShowTracks ? L.T("수록곡 접기") : Tracks.Count > 0 ? L.F("수록곡 {0}", Tracks.Count) : L.T("수록곡");
+    public string TracksButton => ShowTracks ? L.T("수록곡 닫기") : Tracks.Count > 0 ? L.F("수록곡 {0}", Tracks.Count) : L.T("수록곡");
     partial void OnShowTracksChanged(bool value) => OnPropertyChanged(nameof(TracksButton));
 
     /// <summary>새로 받은 수록곡으로 채운다. 같은 앨범이면 곡 객체는 두고 만료된 미리듣기 URL만 바꾼다.</summary>

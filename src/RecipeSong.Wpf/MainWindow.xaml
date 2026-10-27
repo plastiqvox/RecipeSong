@@ -127,6 +127,49 @@
         </DataTemplate>
 
         <!-- 추천 카드 -->
+        <!-- 앨범 상세 패널 (오른쪽): 큰 커버 · 정보 · 장르 · 비슷한 내 곡 · 수록곡 (곡을 누르면 30초 미리듣기) -->
+        <DataTemplate x:Key="AlbumDetail" DataType="{x:Type vm:ReleaseItem}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top">
+                    <Border Width="200" Height="200" CornerRadius="10" Background="{StaticResource Surface3}" HorizontalAlignment="Left">
+                        <Border.Clip><RectangleGeometry Rect="0,0,200,200" RadiusX="10" RadiusY="10"/></Border.Clip>
+                        <Grid>
+                            <Image Source="{Binding CoverUrl, Converter={StaticResource Img}}" Stretch="UniformToFill"/>
+                            <Button Style="{StaticResource RoundPlay}" Command="{Binding PlayCommand}" Background="#B80F1012" Foreground="White"
+                                    ToolTip="{local:Tr '첫 곡부터 30초씩 미리듣기'}" AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='미리듣기: {0}'}"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock Text="{Binding Album}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" Margin="0,16,0,0"/>
+                    <TextBlock Text="{Binding Artist}" FontSize="14" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding Meta}" Style="{StaticResource MutedText}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    <ItemsControl ItemsSource="{Binding Genres}" Margin="0,8,0,0" Visibility="{Binding HasGenres, Converter={StaticResource BoolVis}}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,5,4" Padding="7,1" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource Line3}">
+                                    <TextBlock Text="{Binding}" FontSize="11" Foreground="{StaticResource Text2}"/>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Style="{StaticResource Bare}" Command="{Binding OpenAppleMusicCommand}" Padding="9,5" ToolTip="{local:Tr 'Apple Music에서 열기 (iTunes)'}">
+                            <Path Data="{StaticResource AppleMusicIcon}" Fill="#FA2D48" Width="13" Height="13" Stretch="Uniform"/>
+                        </Button>
+                        <Button Style="{StaticResource Bare}" Command="{Binding OpenYouTubeCommand}" Padding="9,5" Margin="6,0,0,0" ToolTip="{local:Tr 'YouTube에서 앨범 찾기 (전곡)'}">
+                            <Path Data="{StaticResource YouTubeIcon}" Fill="#FF3D3D" Width="17" Height="12" Stretch="Uniform"/>
+                        </Button>
+                    </StackPanel>
+                    <Border Height="1" Background="{StaticResource Line}" Margin="0,16,0,8"/>
+                    <TextBlock Text="{Binding TracksStatus}" Style="{StaticResource MutedText}" FontSize="12" Margin="4,4"
+                               Visibility="{Binding TracksStatus, Converter={StaticResource EmptyCollapsed}}"/>
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Tracks}" ItemTemplate="{StaticResource TrackRow}" Margin="0,0,6,0"/>
+                </ScrollViewer>
+            </DockPanel>
+        </DataTemplate>
+
         <DataTemplate x:Key="ReleaseCard" DataType="{x:Type vm:ReleaseItem}">
             <Border Width="400" Margin="0,0,16,16" Padding="14" CornerRadius="14" Background="{StaticResource Surface}"
                     BorderBrush="{StaticResource Line}" BorderThickness="1">
@@ -364,13 +407,7 @@
                                    Visibility="{Binding Because, Converter={StaticResource EmptyCollapsed}}"/>
                     </StackPanel>
 
-                    <!-- 수록곡: 곡을 눌러 30초 미리듣기, 끝나면 다음 곡 -->
-                    <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,12,0,0" Visibility="{Binding ShowTracks, Converter={StaticResource BoolVis}}">
-                        <Border Height="1" Background="{StaticResource Line}" Margin="0,0,0,6"/>
-                        <TextBlock Text="{Binding TracksStatus}" Style="{StaticResource MutedText}" FontSize="12" Margin="4,4"
-                                   Visibility="{Binding TracksStatus, Converter={StaticResource EmptyCollapsed}}"/>
-                        <ItemsControl ItemsSource="{Binding Tracks}" ItemTemplate="{StaticResource TrackRow}"/>
-                    </StackPanel>
+                    <!-- 수록곡은 오른쪽 상세 패널에 (카드 안에서 펼치면 그 줄만 길어졌다) -->
                 </Grid>
             </Border>
             <DataTemplate.Triggers>
@@ -406,7 +443,23 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="300"/>
             <ColumnDefinition/>
+            <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
+
+        <!-- ===== 앨범 상세 패널 (수록곡) ===== -->
+        <Border Grid.Column="2" Width="420" Background="{StaticResource Sidebar}" BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0"
+                Visibility="{Binding HasDetail, Converter={StaticResource BoolVis}}">
+            <DockPanel Margin="24,20,16,16">
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" BorderThickness="0" Padding="8,4" Command="{Binding CloseDetailCommand}"
+                            ToolTip="{local:Tr '닫기'}" AutomationProperties.Name="{local:Tr '상세 닫기'}">
+                        <TextBlock Text="✕" FontSize="14" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <TextBlock Text="{local:Tr '수록곡'}" Style="{StaticResource Kicker}" VerticalAlignment="Center"/>
+                </DockPanel>
+                <ContentControl Content="{Binding Detail}" ContentTemplate="{StaticResource AlbumDetail}" Focusable="False"/>
+            </DockPanel>
+        </Border>
 
         <!-- ===== 사이드바 ===== -->
         <Border Background="{StaticResource Sidebar}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
@@ -954,7 +1007,7 @@
         </ScrollViewer>
 
         <!-- ===== 재생 바 ===== -->
-        <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+        <Border Grid.Row="1" Grid.ColumnSpan="3" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
                 Padding="24,12" DataContext="{Binding Player}">
             <Grid>
                 <Grid.ColumnDefinitions>
