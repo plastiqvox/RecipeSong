@@ -98,7 +98,7 @@ public sealed class JsonCache<T>
 /// </summary>
 public static class CacheLocation
 {
-    public static string Default { get; } = Path.Combine(
+    public static string Default { get; } = AppSettings.TestDataDir is { } test ? Path.Combine(test, "cache") : Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RecipeSong");
 
     public static string Directory { get; set; } = Default;

@@ -467,6 +467,8 @@
                     </StackPanel>
                 </Border>
 
+                <!-- 창 높이가 낮으면 아래 고정 칸(취향 모델·AI 커넥터)에 달력이 가려져서 가운데만 스크롤 -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,-12,0" Padding="0,0,12,0">
                 <StackPanel Margin="0,28,0,20">
                     <TextBlock Text="{local:Tr '발매 기간'}" Style="{StaticResource Kicker}"/>
                     <Border Margin="0,10,0,0" Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
@@ -641,6 +643,7 @@
                     <TextBlock Text="{Binding SyncText}" Foreground="{StaticResource Accent}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
                                Visibility="{Binding SyncText, Converter={StaticResource EmptyCollapsed}}"/>
                 </StackPanel>
+                </ScrollViewer>
             </DockPanel>
         </Border>
 
@@ -738,6 +741,14 @@
                                 <TextBlock Text="{local:Tr '저장함'}" Foreground="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=ContentPresenter}}" FontSize="15"/>
                                 <Border Margin="8,0,0,0" Padding="6,2" CornerRadius="8" Background="{StaticResource Surface3}" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding SavedCount}" FontFamily="{StaticResource Mono}" FontSize="11" Foreground="{StaticResource Muted}"/>
+                                </Border>
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource Tab}" GroupName="tab" IsChecked="{Binding IsDislikedTab}" AutomationProperties.Name="{local:Tr '별로'}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{local:Tr '별로'}" Foreground="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=ContentPresenter}}" FontSize="15"/>
+                                <Border Margin="8,0,0,0" Padding="6,2" CornerRadius="8" Background="{StaticResource Surface3}" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding DislikedCount}" FontFamily="{StaticResource Mono}" FontSize="11" Foreground="{StaticResource Muted}"/>
                                 </Border>
                             </StackPanel>
                         </RadioButton>
@@ -873,6 +884,15 @@
                                 </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- 별로: 👎 한 앨범 (다시 누르면 되돌린다) -->
+                <StackPanel Margin="0,24,0,0" Visibility="{Binding IsDislikedTab, Converter={StaticResource BoolVis}}">
+                    <TextBlock Text="{local:Tr '별로 표시한 앨범이에요. 비슷한 소리의 신보는 덜 추천해요. 👎를 다시 누르면 되돌려요.'}" Style="{StaticResource MutedText}"
+                               FontSize="13" Margin="0,0,0,16" TextWrapping="Wrap"/>
+                    <ItemsControl ItemsSource="{Binding DislikedItems}" ItemTemplate="{StaticResource ReleaseCard}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                     </ItemsControl>
                 </StackPanel>
 

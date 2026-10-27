@@ -601,6 +601,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsRecsTab { get => SelectedTab == 0; set { if (value) SelectedTab = 0; } }
     public bool IsLibraryTab { get => SelectedTab == 1; set { if (value) SelectedTab = 1; } }
     public bool IsSavedTab { get => SelectedTab == 2; set { if (value) SelectedTab = 2; } }
+    /// <summary>별로 표시한 앨범 탭 (저장함은 즐겨찾기만 — 별로가 섞여 있으면 위시리스트를 보기 어렵다)</summary>
+    public bool IsDislikedTab { get => SelectedTab == 3; set { if (value) SelectedTab = 3; } }
 
     // ---- AI 커넥터 -----------------------------------------------------------
 
@@ -957,6 +959,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>배너가 묻는 중 (숨기기 버튼). false 면 자동으로 뺀 결과를 알리기만 한다</summary>
     [ObservableProperty] private bool _similarAsk = true;
     private List<long> _similarOffer = [];
+    /// <summary>다시 분석 후 물어본 것 (저장 키 → 앨범 id). 숨기기·그대로를 누르기 전에 앱을 껐다 켜도 그 기간을 열면 다시 묻는다</summary>
+    private readonly JsonCache<List<long>> _pendingDrops = new("pending-drops", TimeSpan.FromDays(90));
+    private string? _pendingKey;
+
+    /// <summary>저장된 결과를 열 때: 아직 답하지 않은 질문이 있으면 다시 띄운다 (목록에 남아 있는 것만)</summary>
+    private void RestorePendingDrops(string key)
+    {
+        if (!_pendingDrops.TryGet(key, out var ids) || ids.Count == 0) return;
+        var still = ids.Where(id => _all.Any(i => i.Rec.DeezerAlbumId == id)).ToList();
+        if (still.Count == 0) { _pendingDrops.Set(key, []); _pendingDrops.Save(); return; }
+        _similarOffer = still;
+        _pendingKey = key;
+        SimilarAsk = true;
+        SimilarOfferText = L.F("별로 표시한 앨범과 소리가 거의 같은 추천이 {0}장 있어요 · {1}", still.Count, ShortList(still));
+    }
 
     /// <summary>
     /// 다시 분석한 뒤: 별로 목록(별로·'소리 때문' 차단·바로 넘긴 앨범)과 아주 닮은(0.85) 추천을 설정대로 묻거나 뺀다.
@@ -986,6 +1003,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 SimilarAsk = true;
                 SimilarOfferText = L.F("별로 표시한 앨범과 소리가 거의 같은 추천이 {0}장 있어요 · {1}", hits.Count, names);
+                _pendingKey = key;
+                _pendingDrops.Set(key, _similarOffer);
+                _pendingDrops.Save();
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { }
@@ -1035,6 +1055,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _similarOffer = [];
         SimilarOfferText = "";
+        if (_pendingKey != null)  // 답했으니 다시 묻지 않는다
+        {
+            _pendingDrops.Set(_pendingKey, []);
+            _pendingDrops.Save();
+            _pendingKey = null;
+        }
     }
 
     private void ToggleSave(ReleaseItem item)
@@ -1087,16 +1113,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var list = g.ToList();
             SavedSections.Add(new CrateSection(g.Key, list, list.Count, list.Count(i => i.IsMine), false, _ => { }));
         }
-        // 별로 표시한 앨범은 맨 아래에 따로 (👎를 다시 누르면 되돌린다)
-        var disliked = _disliked.All.Select(d => MakeItem(d.Rec, L.F("{0:M.d} 별로", d.SavedAt))).ToList();
-        if (disliked.Count > 0)
-            SavedSections.Add(new CrateSection(L.T("별로 표시한 앨범"), disliked, disliked.Count, 0, false, _ => { }));
+        // 별로 표시한 앨범은 별로 탭에 (👎를 다시 누르면 되돌린다)
+        DislikedItems.Clear();
+        foreach (var d in _disliked.All.OrderByDescending(d => d.SavedAt)) DislikedItems.Add(MakeItem(d.Rec, L.F("{0:M.d} 별로", d.SavedAt)));
+        DislikedCount = DislikedItems.Count;
     }
+
+    public ObservableCollection<ReleaseItem> DislikedItems { get; } = [];
+    [ObservableProperty] private int _dislikedCount;
     partial void OnSelectedTabChanged(int value)
     {
         OnPropertyChanged(nameof(IsRecsTab));
         OnPropertyChanged(nameof(IsLibraryTab));
         OnPropertyChanged(nameof(IsSavedTab));
+        OnPropertyChanged(nameof(IsDislikedTab));
     }
 
     private void SelectCrate(string key)
@@ -1704,6 +1734,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         UpdateHeat();
         if (!IsBusy) MarkSeen();
         if (freshKey != null) _ = CheckDislikeMatchesAsync(period, freshKey);
+        else if (!IsBusy) RestorePendingDrops(key);
     }
 
     private async Task LoadLibraryAsync(Period period, CancellationToken ct)

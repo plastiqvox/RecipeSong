@@ -19,14 +19,17 @@ public sealed class AppSettings
     /// <summary>iTunes에 곡이 추가되면 자동으로 소리 분석 + 취향 모델 재학습</summary>
     public bool AutoRetrain { get; set; } = true;
 
-    public static string DefaultPath => Path.Combine(
+    /// <summary>시험용: 이 환경 변수가 있으면 설정·캐시를 그 폴더(settings.json, cache\)에서 쓴다 — 쓰고 있는 앱 데이터를 건드리지 않고 UI 시험</summary>
+    public static string? TestDataDir => Environment.GetEnvironmentVariable("RECIPESONG_DATA") is { Length: > 0 } d ? d : null;
+
+    public static string DefaultPath => TestDataDir is { } test ? Path.Combine(test, "settings.json") : Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RecipeSong", "settings.json");
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     public static AppSettings Load(string? path = null)
     {
-        MigrateFromCrate();
+        if (TestDataDir == null) MigrateFromCrate();
         path ??= DefaultPath;
         var s = File.Exists(path)
             ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings()
