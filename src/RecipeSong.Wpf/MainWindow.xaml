@@ -257,7 +257,11 @@
                             <ItemsControl ItemsSource="{Binding NearItems}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Button Command="{Binding PlayCommand}" IsEnabled="{Binding CanPlay}" ToolTip="{Binding Tip}" Cursor="Hand"
+                                        <StackPanel>
+                                        <!-- 곡 짝: 이 앨범 곡을 위에, 비슷한 내 곡을 아래 들여 써서 (옆으로 두면 카드 폭에 잘린다) -->
+                                        <TextBlock Text="{Binding Track, StringFormat='♪ {0}'}" FontSize="12" Foreground="{StaticResource Text}" TextTrimming="CharacterEllipsis"
+                                                   Margin="2,3,0,0" ToolTip="{Binding Track}" Visibility="{Binding Track, Converter={StaticResource EmptyCollapsed}}"/>
+                                        <Button Command="{Binding PlayCommand}" IsEnabled="{Binding CanPlay}" ToolTip="{Binding Tip}" Cursor="Hand" Margin="{Binding Indent}"
                                                 HorizontalContentAlignment="Left" AutomationProperties.Name="{Binding Label, Converter={StaticResource TrFmt}, ConverterParameter='내 파일 듣기: {0}'}">
                                             <Button.Template>
                                                 <ControlTemplate TargetType="Button">
@@ -274,9 +278,10 @@
                                             <DockPanel>
                                                 <Path x:Name="ic" DockPanel.Dock="Left" Data="{StaticResource PlayIcon}" Fill="{StaticResource Muted}" Width="8" Height="8"
                                                       Stretch="Uniform" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                                <TextBlock x:Name="tx" Text="{Binding Display}" FontSize="12" Foreground="{StaticResource Text2}" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock x:Name="tx" Text="{Binding Label}" FontSize="12" Foreground="{StaticResource Text2}" TextTrimming="CharacterEllipsis"/>
                                             </DockPanel>
                                         </Button>
+                                        </StackPanel>
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding CanPlay}" Value="True">
                                                 <Setter TargetName="ic" Property="Fill" Value="{StaticResource Text2}"/>

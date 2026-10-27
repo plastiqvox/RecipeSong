@@ -214,11 +214,12 @@ public sealed record AiBadge(string Text)
 
 /// <summary>카드의 "비슷한 내 곡" 하나: 내 라이브러리 파일을 바로 재생한다.</summary>
 /// <param name="label">내 곡 ("아티스트 – 곡명")</param>
-/// <param name="display">카드에 보일 글 (곡 짝이면 "이 앨범 곡 ≈ 내 곡"), 없으면 label</param>
-public sealed partial class NearTrackItem(string label, string? path, Action<NearTrackItem> play, string? display = null) : ObservableObject
+/// <param name="track">곡 짝이면 이 앨범의 곡 (내 곡 위에 한 줄, 내 곡은 들여 쓴다)</param>
+public sealed partial class NearTrackItem(string label, string? path, Action<NearTrackItem> play, string? track = null) : ObservableObject
 {
     public string Label { get; } = label;
-    public string Display { get; } = display ?? label;
+    public string? Track { get; } = track;
+    public System.Windows.Thickness Indent => Track != null ? new(14, 0, 0, 0) : new(0);
     public string? Path { get; } = path;
     public bool CanPlay => Path != null;
     public string Tip => Path != null ? L.F("내 파일로 듣기 · {0}", Label) : L.F("{0} (내 라이브러리에서 파일을 못 찾았어요)", Label);

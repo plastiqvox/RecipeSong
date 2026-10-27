@@ -849,9 +849,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
         {
             SavedNote = savedNote,
-            // 곡 짝을 알면 '♪ 이 앨범 곡 ≈ 내 곡' 2개, 모르면 앨범 전체와 닮은 내 곡 3개. 누르면 내 파일로
+            // 곡 짝을 알면 '♪ 이 앨범 곡' 아래 '▶ 내 곡' 2쌍, 모르면 앨범 전체와 닮은 내 곡 3개. 누르면 내 파일로
             NearItems = r.Pairs is { Count: > 0 } pairs
-                ? [.. pairs.Select(p => new NearTrackItem(p.Near, FindLocalFile(p.Near), PlayNear, $"{p.Track}  ≈  {p.Near}"))]
+                ? [.. pairs.Select(p => new NearTrackItem(p.Near, FindLocalFile(p.Near), PlayNear, p.Track))]
                 : [.. r.NearTracks.Take(3).Select(n => new NearTrackItem(n, FindLocalFile(n), PlayNear))],
             ToggleDislikeAction = ToggleDislike,
             IsDisliked = _disliked.Contains(r.DeezerAlbumId),
