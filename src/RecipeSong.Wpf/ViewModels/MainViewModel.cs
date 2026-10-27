@@ -107,16 +107,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void BlockArtist(ReleaseItem? item)
     {
         if (item == null) return;
-        _blocked.BlockArtist(item.Artist);
+        _blocked.BlockArtist(item.Artist, item.Rec.DeezerAlbumId, item.Rec.Label);
         ApplyFilters();
+        _ = SyncFavoritesAsync();
     }
 
     [RelayCommand]
     private void BlockLabel(ReleaseItem? item)
     {
         if (item?.Rec.Label is not { Length: > 0 } label) return;
-        _blocked.BlockLabel(label);
+        _blocked.BlockLabel(label, item.Rec.DeezerAlbumId, item.Artist);
         ApplyFilters();
+        _ = SyncFavoritesAsync();
     }
 
     /// <summary>추천 설정 창에서 웹진을 켜고 끈 뒤</summary>
@@ -128,7 +130,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>추천 설정 창에서 해제한 뒤 화면을 다시 거른다</summary>
-    public void RefreshBlocked() => ApplyFilters();
+    public void RefreshBlocked() { ApplyFilters(); _ = SyncFavoritesAsync(); }
 
     /// <summary>좋아하는 레이블 (많이 듣고 좋아한 앨범들의 레이블). 시작할 때 캐시로 바로, 빠진 건 뒤에서 Deezer로 채운다.</summary>
     private IReadOnlyDictionary<string, double> _labelAffinity = new Dictionary<string, double>();
@@ -827,13 +829,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_sound == null) return;
         try
         {
-            // 학습: 앨범 하트 + 곡 하트 (저장함은 위시리스트라 쓰지 않는다)
+            // 학습: 앨범 하트 + 곡 하트 (저장함은 위시리스트라 쓰지 않는다) / 별로: 별로 + 바로 넘긴 앨범 + 차단할 때 본 앨범
             var favs = _likedAlbums.All.Select(s => (s.Rec.DeezerAlbumId.ToString(), $"{s.Rec.Artist} – {s.Rec.Album}"))
                 .Concat(_likedTracks.All.Select(t => ($"t{t.TrackId}", $"{t.Artist} – {t.Title}")))
                 .Concat(ImplicitLikes().Where(x => !_disliked.Contains(x.Id)).Select(x => (x.Id.ToString(), x.Name)))
                 .DistinctBy(x => x.Item1).ToList();
             await _sound.SetFavoritesAsync(favs, _life.Token,
-                _disliked.All.Select(d => d.Rec.DeezerAlbumId).Concat(ImplicitSkips().Where(id => !_likedAlbums.Contains(id))).Distinct());
+                _disliked.All.Select(d => d.Rec.DeezerAlbumId).Concat(_blocked.AlbumIds)
+                    .Concat(ImplicitSkips().Where(id => !_likedAlbums.Contains(id))).Distinct());
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 아직 안 떴으면 시작할 때 다시 보낸다
     }
