@@ -131,7 +131,8 @@
                     BorderBrush="{StaticResource Line}" BorderThickness="1">
                 <!-- 우클릭: 뮤지션 팔로우 · 뮤지션/레이블 차단 -->
                 <Border.ContextMenu>
-                    <ContextMenu>
+                    <!-- 컨텍스트 메뉴는 시각 트리 밖이라 컨테이너가 재사용되면 예전 카드를 가리킬 수 있다 → 열 때마다 지금 카드를 본다 -->
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                         <MenuItem Header="{Binding FollowMenu}" Command="{Binding ToggleFollowCommand}"/>
                         <MenuItem Header="{local:Tr '뮤지션 차단…'}" Tag="artist" Click="Block_Click"/>
                         <MenuItem Header="{local:Tr '레이블 차단…'}" Tag="label" Click="Block_Click" IsEnabled="{Binding HasLabel}"/>
@@ -252,7 +253,7 @@
                         </TextBlock>
                         <!-- 비슷한 내 곡: 누르면 내 파일로 바로 재생 -->
                         <StackPanel Margin="0,6,0,0" Visibility="{Binding HasNear, Converter={StaticResource BoolVis}}">
-                            <TextBlock Text="{local:Tr '비슷한 내 곡'}" FontSize="11" Foreground="{StaticResource Muted}"/>
+                            <TextBlock Text="{Binding NearHeader}" FontSize="11" Foreground="{StaticResource Muted}"/>
                             <ItemsControl ItemsSource="{Binding NearItems}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -273,7 +274,7 @@
                                             <DockPanel>
                                                 <Path x:Name="ic" DockPanel.Dock="Left" Data="{StaticResource PlayIcon}" Fill="{StaticResource Muted}" Width="8" Height="8"
                                                       Stretch="Uniform" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                                <TextBlock x:Name="tx" Text="{Binding Label}" FontSize="12" Foreground="{StaticResource Text2}" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock x:Name="tx" Text="{Binding Display}" FontSize="12" Foreground="{StaticResource Text2}" TextTrimming="CharacterEllipsis"/>
                                             </DockPanel>
                                         </Button>
                                         <DataTemplate.Triggers>

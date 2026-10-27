@@ -125,7 +125,8 @@ public sealed class SoundService : IAsyncDisposable
                 Str(a, "fav_near"),
                 a.TryGetProperty("dis", out var dis) ? dis.GetDouble() : null,
                 a.TryGetProperty("with", out var with) && with.ValueKind == JsonValueKind.Array
-                    ? [.. with.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null);
+                    ? [.. with.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null,
+                Pairs(a));
         }
         return map;
     }
@@ -164,6 +165,18 @@ public sealed class SoundService : IAsyncDisposable
         return new SoundUpdateResult(
             r.GetProperty("added").GetInt32(), r.GetProperty("accepted").GetBoolean(),
             r.GetProperty("old_style_accuracy").GetDouble(), r.GetProperty("new_style_accuracy").GetDouble());
+    }
+
+    private static IReadOnlyList<TrackPair>? Pairs(JsonElement a) =>
+        a.TryGetProperty("pairs", out var p) && p.ValueKind == JsonValueKind.Array
+            ? [.. p.EnumerateArray().Select(x => new TrackPair(Str(x, "track") ?? "", Str(x, "near") ?? "", x.GetProperty("sim").GetDouble()))]
+            : null;
+
+    /// <summary>곡 짝 기능 전에 분석한 앨범의 짝 (없으면 미리듣기를 곡별로 다시 듣는다, 한 번만)</summary>
+    public async Task<Dictionary<long, IReadOnlyList<TrackPair>>> AlbumPairsAsync(IEnumerable<long> albumIds, CancellationToken ct = default)
+    {
+        var r = await CallAsync("album_pairs", new { ids = albumIds.ToList() }, null, ct);
+        return r.GetProperty("albums").EnumerateArray().ToDictionary(a => a.GetProperty("id").GetInt64(), a => Pairs(a) ?? []);
     }
 
     private static string? Str(JsonElement e, string name) =>

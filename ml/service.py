@@ -234,28 +234,61 @@ class Service:
             return r
         return {}
 
-    def album_detail(self, album_id: str) -> list[str]:
-        """앨범 상세 한 번으로 레이블·장르(캐시)와 미리듣기 URL(만료되므로 매번 새로)을 얻는다."""
+    def album_detail(self, album_id: str) -> list[tuple[int, str, str]]:
+        """앨범 상세 한 번으로 레이블·장르(캐시)와 미리듣기 곡 3개 (곡 id, 제목, URL — URL은 만료되므로 매번 새로)."""
         r = self.deezer(f"/album/{album_id}")
         genres = (r.get("genres") or {}).get("data") or []
         if r:
-            self.album_info[album_id] = {"label": r.get("label"), "genre": genres[0]["name"] if genres else None,
+            old = self.album_info.get(album_id, {})
+            self.album_info[album_id] = {**old, "label": r.get("label"), "genre": genres[0]["name"] if genres else None,
                                          "with": collaborators(r)}
-        return [t["preview"] for t in (r.get("tracks") or {}).get("data", []) if t.get("preview")][:3]
+        return [(t["id"], t.get("title", ""), t["preview"]) for t in (r.get("tracks") or {}).get("data", []) if t.get("preview")][:3]
 
-    def preview_clips(self, album_id: str) -> list[np.ndarray]:
-        clips: list[np.ndarray] = []
-        if album_id.startswith("t"):  # 곡 하나 (하트를 누른 곡)
+    def preview_tracks(self, album_id: str) -> list[tuple[int | None, str | None, list[np.ndarray]]]:
+        """미리듣기를 곡별 클립으로: [(곡 id, 제목, 클립)]. "t곡id" 는 곡 하나 (하트를 누른 곡)."""
+        if album_id.startswith("t"):
             preview = self.deezer(f"/track/{album_id[1:]}").get("preview")
-            urls = [preview] if preview else []
+            items = [(None, None, preview)] if preview else []
         else:
-            urls = self.album_detail(album_id)
-        for url in urls:
+            items = self.album_detail(album_id)
+        out = []
+        for tid, title, url in items:
             try:
-                clips += decode_preview(self._http.get(url, timeout=20).content, self.sr)
+                clips = decode_preview(self._http.get(url, timeout=20).content, self.sr)
             except requests.RequestException:
-                pass
-        return clips
+                continue
+            if clips:
+                out.append((tid, title, clips))
+        return out
+
+    def nearest(self, e: np.ndarray) -> tuple[str, float]:
+        """곡(앨범) 임베딩 하나 → 가장 닮은 내 곡 ("아티스트 – 곡명", 곡 가중치를 곱한 유사도)"""
+        x = train.preprocess(e[None, :], self.mean)[0]
+        sims = (self.lib @ x) * self.lib_w
+        j = int(np.argmax(sims))
+        return f"{self.meta[j][0]} – {self.meta[j][1]}", round(float(sims[j]), 4)
+
+    def analyze_albums(self, ids: list[str], pool: ThreadPoolExecutor) -> None:
+        """미리듣기를 곡별로 들어 곡 임베딩("t곡id")·앨범 임베딩(곡 평균)·곡 짝(이 앨범 곡 ≈ 내 곡, 상위 2개)을 만든다."""
+        per = list(pool.map(self.preview_tracks, ids))
+        flat = [(i, tid, title) for i, tr in enumerate(per) for tid, title, _ in tr]
+        embs = self.embed_clips([c for tr in per for _, _, c in tr])
+        by_album: dict[int, list] = {}
+        for (i, tid, title), e in zip(flat, embs):
+            if e is None:
+                continue
+            by_album.setdefault(i, []).append((tid, title, e))
+            if tid is not None:
+                self.album_cache[f"t{tid}"] = e
+        for i, aid in enumerate(ids):
+            items = by_album.get(i)
+            if not items:
+                continue
+            m = np.mean([e for *_, e in items], axis=0)
+            self.album_cache[aid] = (m / (np.linalg.norm(m) + 1e-8)).astype(np.float32)
+            if items[0][0] is not None:
+                pairs = [{"track": title, "near": near, "sim": sim} for tid, title, e in items for near, sim in [self.nearest(e)]]
+                self.album_info.setdefault(aid, {})["pairs"] = sorted(pairs, key=lambda x: -x["sim"])[:2]
 
     # ---- 신보 점수 --------------------------------------------------------
     def ensure_embedded(self, albums: list, rid, what: str = "미리듣기 소리 분석 중") -> None:
@@ -269,10 +302,7 @@ class Service:
             list(pool.map(self.album_detail, missing_info))
             for s in range(0, len(todo), 32):
                 batch = todo[s:s + 32]
-                clips = list(pool.map(lambda a: self.preview_clips(str(a["id"])), batch))
-                for a, e in zip(batch, self.embed_clips(clips)):
-                    if e is not None:
-                        self.album_cache[str(a["id"])] = e
+                self.analyze_albums([str(a["id"]) for a in batch], pool)
                 done += len(batch)
                 send({"id": rid, "event": "progress", "message": f"{what} {done}/{len(todo)}",
                       "done": done, "total": len(todo)})
@@ -317,6 +347,17 @@ class Service:
         log(f"[service] 좋아요 {len(self.fav_keys)}/{len(items)}개, 별로 {len(self.dis_keys)}/{len(dislikes)}장 반영")
         return {"count": len(self.fav_keys), "dislikes": len(self.dis_keys)}
 
+    # ---- 카드의 곡 짝 (이 앨범 곡 ≈ 내 곡) — 짝 기능 전에 분석한 앨범을 뒤에서 채운다 ----
+    def album_pairs(self, args: dict, rid) -> dict:
+        ids = [str(i) for i in args.get("ids") or []]
+        need = [i for i in ids if "pairs" not in self.album_info.get(i, {})]
+        if need:
+            with ThreadPoolExecutor(16) as pool:
+                self.analyze_albums(need, pool)
+            self.save_album_cache()
+            ALBUM_INFO.write_text(json.dumps(self.album_info, ensure_ascii=False), encoding="utf-8")
+        return {"albums": [{"id": int(i), "pairs": self.album_info.get(i, {}).get("pairs", [])} for i in ids]}
+
     # ---- 수록곡마다 비슷한 내 곡 (수록곡을 펼쳤을 때) ----------------------
     def track_near(self, args: dict, rid) -> dict:
         """[{id, preview}] → 곡마다 미리듣기를 들어 가장 닮은 내 곡 하나. 곡 임베딩은 "t곡id" 로 앨범 캐시에 같이 둔다 (곡 하트와 같은 키)."""
@@ -337,13 +378,9 @@ class Service:
             self.save_album_cache()
         out = []
         for k, _ in items:
-            e = self.album_cache.get(k)
-            if e is None:
-                continue
-            x = train.preprocess(e[None, :], self.mean)[0]
-            sims = (self.lib @ x) * self.lib_w
-            j = int(np.argmax(sims))
-            out.append({"id": int(k[1:]), "near": f"{self.meta[j][0]} – {self.meta[j][1]}", "sim": round(float(sims[j]), 4)})
+            if (e := self.album_cache.get(k)) is not None:
+                near, sim = self.nearest(e)
+                out.append({"id": int(k[1:]), "near": near, "sim": sim})
         return {"tracks": out}
 
     def stack(self, keys: list[str]) -> np.ndarray | None:
@@ -465,7 +502,7 @@ def main() -> None:
     svc = Service(args.xml)
     send({"event": "ready", "seconds": round(time.time() - t0, 1)})
     handlers = {"status": svc.status, "score_albums": svc.score_albums, "update": svc.update, "favorites": svc.favorites,
-                "track_near": svc.track_near}
+                "track_near": svc.track_near, "album_pairs": svc.album_pairs}
 
     for line in sys.stdin:
         line = line.strip().lstrip("﻿")

@@ -287,6 +287,7 @@
  "이 달 분석함 · {0:M.d HH:mm} · 추천 {1}장": "Month analyzed · {0:M.d HH:mm} · {1} picks",
  "이 레시피만 보기": "Show only this Recipe",
  "이 아티스트 팔로우 (신보를 항상 맨 앞에)": "Follow this artist (their releases always come first)",
+ "이 앨범 곡 ≈ 비슷한 내 곡": "Tracks here ≈ your tracks",
  "이 앨범을 별로로 학습해요. 비슷한 소리의 다른 신보도 덜 추천해요.": "Learns this album as 'Not for me', so similar-sounding releases are recommended less.",
  "이 앨범이 나온 주로 가서 수록곡 보기": "Go to this album's release week and show the tracklist",
  "이 조건에 맞는 발매작이 없어요. 형식·지역 필터를 넓혀 보세요.": "Nothing matches. Try widening the format or region filters.",

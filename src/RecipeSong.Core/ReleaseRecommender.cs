@@ -548,7 +548,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 FavNear: favZOf.GetValueOrDefault(i) >= 1.0 ? snd?.FavNear : null,
                 LikedLabel: labelAff >= 0.2 ? info.Label : null,
                 WithLiked: withLiked,
-                Fans: c.Fans));
+                Fans: c.Fans,
+                Pairs: snd?.Pairs));
         }
         return (recs, heard.Any(s => s != null));
     }
