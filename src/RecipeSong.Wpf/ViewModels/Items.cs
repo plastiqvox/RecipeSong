@@ -71,8 +71,10 @@ public sealed partial class ReleaseItem : ObservableObject
         ? L.F("{0}에서 소개", r[..^"에서 소개".Length]) : Rec.AiReason;
     /// <summary>제안한 AI 커넥터 ("Claude", "GPT") — 커넥터마다 배지 하나</summary>
     public IReadOnlyList<AiBadge> AiBy => [.. (Rec.AiBy ?? (IsAi ? ["AI"] : [])).Select(b => new AiBadge(b))];
+    // 내 플리 배지는 플레이리스트 이름만 (앞의 플레이리스트 아이콘이 '내 플리'를 뜻한다)
     public string Badge => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우")
-        : IsMine ? L.F("내 플리 · {0}", L.T(Rec.FromPlaylist ?? "")) : IsAi ? "" : Known ? L.T("아는 아티스트") : "";
+        : IsMine ? L.T(Rec.FromPlaylist ?? "") : IsAi ? "" : Known ? L.T("아는 아티스트") : "";
+    public bool BadgeIsPlaylist => IsMine && Rec.FromPlaylist != FollowList.Tag;
     public string BadgeTip => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우한 아티스트의 신보")
         : IsMine ? L.F("{0} 플레이리스트에 있는 뮤지션의 신보", L.T(Rec.FromPlaylist ?? ""))
         : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보") : L.T("내 라이브러리에 있는 아티스트");
@@ -210,8 +212,9 @@ public sealed record AiBadge(string Text)
     /// <summary>Claude 오렌지 / GPT 초록, 비싼 모델일수록 진하게</summary>
     public System.Windows.Media.Brush Color => AiColors.For(Text);
     public System.Windows.Media.Brush Tint => AiColors.Background(Text);
-    /// <summary>배지에 보이는 글자: "웹진 · 이름"의 "웹진"만 번역 (Text는 색·순서·필터 키라 그대로)</summary>
-    public string Display => Text.StartsWith("웹진", StringComparison.Ordinal) ? L.T("웹진") + Text["웹진".Length..] : Text;
+    /// <summary>웹진 배지는 보라색 + 잡지 아이콘에 웹진 이름만 (Text 는 색·순서·필터 키라 "웹진 · 이름" 그대로)</summary>
+    public bool IsWebzine => Text.StartsWith("웹진", StringComparison.Ordinal);
+    public string Display => IsWebzine ? Text.Replace("웹진 · ", "").Replace("웹진", "") : Text;
 }
 
 /// <summary>카드의 "비슷한 내 곡" 하나: 내 라이브러리 파일을 바로 재생한다.</summary>

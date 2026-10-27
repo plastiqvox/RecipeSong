@@ -216,7 +216,12 @@
                             </ItemsControl>
                             <Border Margin="{Binding BadgeMargin}" Padding="8,2" CornerRadius="10" Background="{StaticResource Accent}"
                                     Visibility="{Binding Badge, Converter={StaticResource EmptyCollapsed}}" ToolTip="{Binding BadgeTip}">
-                                <TextBlock Text="{Binding Badge}" FontSize="11" FontWeight="Medium" Foreground="{StaticResource OnAccent}"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="{StaticResource PlaylistIcon}" Width="11" Height="10" Stretch="Uniform" Margin="0,0,4,0" VerticalAlignment="Center"
+                                          Stroke="{StaticResource OnAccent}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Visibility="{Binding BadgeIsPlaylist, Converter={StaticResource BoolVis}}"/>
+                                    <TextBlock Text="{Binding Badge}" FontSize="11" FontWeight="Medium" Foreground="{StaticResource OnAccent}"/>
+                                </StackPanel>
                             </Border>
                             <Border Margin="6,0,0,0" Padding="6,1" CornerRadius="9" BorderThickness="1" BorderBrush="{StaticResource Accent}" VerticalAlignment="Center"
                                     Visibility="{Binding IsNew, Converter={StaticResource BoolVis}}" ToolTip="{local:Tr '이번에 처음 나온 앨범'}">
@@ -229,7 +234,12 @@
                                     <DataTemplate>
                                         <Border Margin="6,0,0,0" Padding="7,1" CornerRadius="10" BorderThickness="1"
                                                 BorderBrush="{Binding Color}" Background="{Binding Tint}">
-                                            <TextBlock Text="{Binding Display}" FontSize="11" FontWeight="Medium" Foreground="{Binding Color}"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Path Data="{StaticResource MagazineIcon}" Width="11" Height="11" Stretch="Uniform" Margin="0,0,4,0" VerticalAlignment="Center"
+                                                      Stroke="{Binding Color}" StrokeThickness="1.4" StrokeLineJoin="Round"
+                                                      Visibility="{Binding IsWebzine, Converter={StaticResource BoolVis}}"/>
+                                                <TextBlock Text="{Binding Display}" FontSize="11" FontWeight="Medium" Foreground="{Binding Color}"/>
+                                            </StackPanel>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
