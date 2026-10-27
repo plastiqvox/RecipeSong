@@ -98,7 +98,9 @@ public sealed partial class ReleaseItem : ObservableObject
     /// <summary>처음 보는 앨범 (이번 실행 동안 NEW 배지)</summary>
     [ObservableProperty] private bool _isNew;
     /// <summary>이 아티스트를 팔로우 중 (☆)</summary>
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(FollowTip))] private bool _isFollowed;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(FollowTip)), NotifyPropertyChangedFor(nameof(FollowMenu))] private bool _isFollowed;
+    public string FollowMenu => IsFollowed ? L.T("뮤지션 팔로우 해제") : L.T("뮤지션 팔로우");
+    public bool HasLabel => !string.IsNullOrEmpty(Rec.Label);
     public string FollowTip => IsFollowed ? L.T("팔로우 중 · 누르면 해제") : L.T("이 아티스트 팔로우 (신보를 항상 맨 앞에)");
     public Func<ReleaseItem, Task>? ToggleFollowAction { get; init; }
 

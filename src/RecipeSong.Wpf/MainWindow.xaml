@@ -129,13 +129,12 @@
         <DataTemplate x:Key="ReleaseCard" DataType="{x:Type vm:ReleaseItem}">
             <Border Width="400" Margin="0,0,16,16" Padding="14" CornerRadius="14" Background="{StaticResource Surface}"
                     BorderBrush="{StaticResource Line}" BorderThickness="1">
-                <!-- 우클릭: 차단 (아티스트·레이블 전체를 추천에서 뺀다) -->
+                <!-- 우클릭: 뮤지션 팔로우 · 뮤지션/레이블 차단 -->
                 <Border.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Header="{Binding Artist}" HeaderStringFormat="{local:Tr '팔로우 / 해제 · {0}'}" Command="{Binding ToggleFollowCommand}"/>
-                        <Separator/>
-                        <MenuItem Header="{Binding Artist}" HeaderStringFormat="{local:Tr '이 아티스트 차단… · {0}'}" Tag="artist" Click="Block_Click"/>
-                        <MenuItem Header="{Binding Rec.Label}" HeaderStringFormat="{local:Tr '이 레이블 차단… · {0}'}" Tag="label" Click="Block_Click"/>
+                        <MenuItem Header="{Binding FollowMenu}" Command="{Binding ToggleFollowCommand}"/>
+                        <MenuItem Header="{local:Tr '뮤지션 차단…'}" Tag="artist" Click="Block_Click"/>
+                        <MenuItem Header="{local:Tr '레이블 차단…'}" Tag="label" Click="Block_Click" IsEnabled="{Binding HasLabel}"/>
                     </ContextMenu>
                 </Border.ContextMenu>
                 <Grid>
@@ -305,14 +304,14 @@
                             <Button Style="{StaticResource Bare}" Command="{Binding ToggleLikeCommand}"
                                     Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding LikeTip}"
                                     AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='좋아요: {0}'}">
-                                <Path x:Name="like" Data="{StaticResource HeartIcon}" Width="13" Height="12" Stretch="Uniform"
+                                <Path x:Name="like" Data="{StaticResource ThumbUpIcon}" Width="13" Height="13" Stretch="Uniform"
                                       Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
                             </Button>
                             <!-- 별로: 숨기고 학습에 반영 -->
                             <Button Style="{StaticResource Bare}" Command="{Binding ToggleDislikeCommand}"
                                     Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding DislikeTip}"
                                     AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='별로: {0}'}">
-                                <Path x:Name="dislike" Data="{StaticResource TrashIcon}" Width="13" Height="13" Stretch="Uniform"
+                                <Path x:Name="dislike" Data="{StaticResource ThumbDownIcon}" Width="13" Height="13" Stretch="Uniform"
                                       Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
                             </Button>
                             <Button x:Name="tracksBtn" Style="{StaticResource Bare}" Command="{Binding ToggleTracksCommand}" Padding="9,5" Margin="0,0,6,0"
@@ -355,7 +354,7 @@
                     <Setter TargetName="like" Property="Stroke" Value="#F0607A"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsDisliked}" Value="True">
-                    <Setter TargetName="dislike" Property="Fill" Value="#33E06A6A"/>
+                    <Setter TargetName="dislike" Property="Fill" Value="#E06A6A"/>
                     <Setter TargetName="dislike" Property="Stroke" Value="#E06A6A"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsFollowed}" Value="True">
