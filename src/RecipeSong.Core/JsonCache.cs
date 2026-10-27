@@ -74,6 +74,9 @@ public sealed class JsonCache<T>
 
     public void Set(string key, T value) => _items[key] = new Entry(DateTime.UtcNow, value);
 
+    /// <summary>모두 지운다 (Save 해야 파일에 반영)</summary>
+    public void Clear() => _items.Clear();
+
     public async Task<T> GetOrAddAsync(string key, Func<Task<T>> factory)
     {
         if (TryGet(key, out var v)) return v;

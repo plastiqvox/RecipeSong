@@ -1303,6 +1303,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
     /// <summary>분석 이력 (달력 표시용): 기간마다 마지막 분석 시각과 추천 장수</summary>
     private readonly JsonCache<RecHistory> _recHistory = new("rec-history", TimeSpan.FromDays(3650));
+
+    /// <summary>
+    /// 설정 → 저장된 추천 비우기: 모델·설정이 바뀐 뒤 예전 추천을 버리고 지금 기간부터 새로 계산한다.
+    /// 지우는 것: 기간별 추천 결과·분석 이력(달력 회색 선). 남기는 것: AI·웹진 제안, 좋아요·별로·차단·팔로우, 소리 분석 캐시(다시 듣지 않아 빠르다).
+    /// </summary>
+    public async Task ClearSavedRecsAsync()
+    {
+        _recResults.Clear();
+        _recResults.Save();
+        _recHistory.Clear();
+        _recHistory.Save();
+        await _poolLock.WaitAsync(_life.Token);
+        try { _pools.Clear(); } finally { _poolLock.Release(); }
+        UpdateAiMarks();
+        await LoadAsync(force: true);
+    }
     public sealed record RecHistory(PeriodKind Kind, DateTime Start, DateTime End, DateTime At, int Count);
     [ObservableProperty] private string _recSavedNote = "";
     public bool HasRecSaved => RecSavedNote.Length > 0;

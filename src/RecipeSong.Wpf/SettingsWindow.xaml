@@ -55,6 +55,16 @@
         <TextBlock x:Name="MlSizes" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="19"/>
         <TextBlock x:Name="MoveResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"/>
 
+        <!-- 저장된 추천 비우기 -->
+        <DockPanel Margin="0,14,0,0">
+            <Button x:Name="ClearRecsButton" DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Click="ClearRecs_Click">
+                <TextBlock Text="{local:Tr '저장된 추천 비우기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+            </Button>
+            <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                       Text="{local:Tr '모델이나 설정이 바뀐 뒤 예전 추천을 버리고 새로 계산해요. 좋아요·별로·차단·팔로우와 AI·웹진 제안은 그대로예요.'}"/>
+        </DockPanel>
+        <TextBlock x:Name="ClearResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"/>
+
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,26,0,0">
             <Button Style="{StaticResource Bare}" Padding="18,8" IsCancel="True" IsDefault="True">
                 <TextBlock Text="{local:Tr '닫기'}" Foreground="{StaticResource Text2}"/>

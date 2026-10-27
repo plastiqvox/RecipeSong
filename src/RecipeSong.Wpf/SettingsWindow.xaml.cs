@@ -10,12 +10,14 @@ public partial class SettingsWindow : Window
 {
     private readonly AppSettings _app;
     private readonly string? _mlDir;
+    private readonly ViewModels.MainViewModel _vm;
 
     public SettingsWindow(AppSettings app, string? mlDir, ViewModels.MainViewModel vm)
     {
         InitializeComponent();
         _app = app;
         _mlDir = mlDir;
+        _vm = vm;
         AutoRetrainBox.IsChecked = vm.AutoUpdate;
         AutoRetrainBox.Checked += (_, _) => vm.AutoUpdate = true;
         AutoRetrainBox.Unchecked += (_, _) => vm.AutoUpdate = false;
@@ -93,6 +95,17 @@ public partial class SettingsWindow : Window
                 L.F("· 신보 미리듣기 분석 {0}", CacheLocation.Format(albums)) + Environment.NewLine +
                 L.F("· 내 곡 학습 데이터 {0} · 취향 모델 {1}", CacheLocation.Format(library), CacheLocation.Format(model));
         }
+    }
+
+    private async void ClearRecs_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this, L.T("저장된 추천을 모두 지우고 지금 기간부터 새로 계산할까요?\n다른 기간은 열 때 새로 계산해요 (기간마다 30초 안팎)."),
+                L.T("저장된 추천 비우기"), MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+        ClearRecsButton.IsEnabled = false;
+        ClearResult.Text = L.T("비우고 지금 기간을 새로 계산하는 중…");
+        await _vm.ClearSavedRecsAsync();
+        ClearResult.Text = L.T("비웠어요. 지금 기간은 새로 계산했고, 다른 기간은 열 때 새로 계산해요.");
+        ShowStorage();
     }
 
     private void OpenCache_Click(object sender, RoutedEventArgs e) =>
