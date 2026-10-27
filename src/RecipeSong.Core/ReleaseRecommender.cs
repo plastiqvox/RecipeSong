@@ -311,9 +311,11 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     /// <summary>
     /// AI 커넥터가 찾은 발매작: Deezer에서 실제로 있는지 확인하고 (없으면 버린다) 같은 방식으로 소리·지역·점수를 매긴다.
     /// </summary>
+    /// <param name="matched">Deezer 확인이 끝나면 소리 점수 전에 부른다 (점수 없는 추천) — 소리 서비스가 바빠 기다리는 사이 앱이 꺼져도 AI 비용이 날아가지 않게 먼저 저장한다</param>
     public async Task<(IReadOnlyList<ReleaseRecommendation> Recs, int Unverified)> ScoreAiPicksAsync(
         IReadOnlyList<AiPick> picks, OwnedLibrary owned, Period? period,
-        IProgress<string>? progress = null, CancellationToken ct = default)
+        IProgress<string>? progress = null, CancellationToken ct = default,
+        Action<IReadOnlyList<ReleaseRecommendation>>? matched = null)
     {
         progress?.Report(L.F("AI가 찾은 {0}장 Deezer에서 확인 중…", picks.Count));
         var found = await Task.WhenAll(picks.Select(async p => (p, m: await MatchAiPickAsync(p, period, ct))));
@@ -337,8 +339,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         var regionHints = byAlbum
             .Where(kv => SoundRegions.ContainsKey(kv.Value[0].Region ?? ""))
             .ToDictionary(kv => kv.Key, kv => SoundRegions[kv.Value[0].Region!]);
-        var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, new RecommendOptions(), progress, ct, regionHints);
-        return ([.. recs.Select(r =>
+        ReleaseRecommendation WithAi(ReleaseRecommendation r)
         {
             var ps = byAlbum[r.DeezerAlbumId].DistinctBy(p => p.By).ToList();
             return r with
@@ -348,7 +349,31 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 BecauseOf = ["AI 제안"],
                 SourceUrl = ps[0].Source,
             };
-        }).OrderByDescending(r => r.Score)], picks.Count - accepted);
+        }
+        matched?.Invoke([.. hits.Select(h => WithAi(Bare(h.c, h.a, regionHints.GetValueOrDefault(h.a.Id, Region.Unknown))))]);
+        var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, new RecommendOptions(), progress, ct, regionHints);
+        return ([.. recs.Select(WithAi).OrderByDescending(r => r.Score)], picks.Count - accepted);
+    }
+
+    /// <summary>소리 점수 전의 추천 (레시피·취향 없음). Taste == null 이면 아직 점수를 안 매긴 것</summary>
+    private static ReleaseRecommendation Bare(PoolArtist c, DzAlbum a, Region region) =>
+        new(c.Name, a.Title, a.RecordType ?? "album", a.Released ?? DateOnly.FromDateTime(DateTime.Today), null,
+            a.Cover, a.Id, a.Link, null, region, null, null, null, [], ["AI 제안"], false, -1, ArtistId: c.Id);
+
+    /// <summary>
+    /// 점수 없이 저장된 AI·웹진 추천(소리 서비스가 바쁠 때 먼저 저장한 것)에 소리 점수를 매긴다. AI 표시(배지·이유·출처)는 그대로 둔다.
+    /// </summary>
+    public async Task<List<ReleaseRecommendation>> RescoreAsync(IReadOnlyList<ReleaseRecommendation> bare, OwnedLibrary owned,
+        IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        var hits = bare.Select(r => (c: new PoolArtist(r.ArtistId, r.Artist, 0, ["AI"], []),
+            a: new DzAlbum(r.DeezerAlbumId, r.Album, r.CoverUrl, r.ReleaseDate.ToString("yyyy-MM-dd"), r.RecordType, r.Link))).ToList();
+        hits = [.. hits.Select(h => (h.c with { Albums = [h.a] }, h.a))];
+        var hints = bare.Where(r => r.Region != Region.Unknown).ToDictionary(r => r.DeezerAlbumId, r => r.Region);
+        var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, new RecommendOptions(), progress, ct, hints);
+        var byId = bare.ToDictionary(r => r.DeezerAlbumId);
+        return [.. recs.Select(r => byId.TryGetValue(r.DeezerAlbumId, out var o)
+            ? r with { AiReason = o.AiReason, AiBy = o.AiBy, BecauseOf = o.BecauseOf, SourceUrl = o.SourceUrl } : r)];
     }
 
     /// <summary>

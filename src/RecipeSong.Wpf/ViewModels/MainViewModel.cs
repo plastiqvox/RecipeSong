@@ -615,6 +615,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private static string AiKey(Period p) => p.Label;
 
     /// <summary>이 기간의 AI 결과. 예전 버전은 "기간|지역" 키로 저장했으니 그것도 합친다.</summary>
+    /// <summary>점수 없이 먼저 저장된 AI 추천(소리 서비스가 바빴을 때)에 점수를 매겨 다시 저장한다</summary>
+    private async Task RescoreAiAsync(Period period)
+    {
+        try
+        {
+            var all = AiPicksFor(period);
+            var bare = all.Where(r => r.Taste == null && r.Crate == null).ToList();
+            if (bare.Count == 0) return;
+            _owned ??= new OwnedLibrary(await _library.GetTracksAsync(_life.Token));
+            var scored = await _recommender.RescoreAsync(bare, _owned, ct: _life.Token);
+            var byId = scored.ToDictionary(r => r.DeezerAlbumId);
+            _aiPicks.Set(AiKey(period), [.. all.Select(r => byId.GetValueOrDefault(r.DeezerAlbumId, r))]);
+            _aiPicks.Save();
+            if (CurrentPeriod.Label != period.Label) return;
+            _all = [.. _all.Select(i => byId.TryGetValue(i.Rec.DeezerAlbumId, out var r) && !i.ShowTracks && !i.IsPlaying ? MakeItem(r, i.SavedNote) : i)];
+            ApplyFilters();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }
+    }
+
     private List<ReleaseRecommendation> AiPicksFor(Period p)
     {
         var all = new Dictionary<long, ReleaseRecommendation>();
@@ -774,8 +794,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }));
             var picks = runs.SelectMany(r => r.picks).ToList();
             _owned ??= new OwnedLibrary(tracks);
+            // Deezer 확인이 끝나면 점수 전에 먼저 저장한다: 소리 서비스가 다른 기간 분석으로 바쁘면 점수가 한참 걸리고,
+            // 그사이 앱을 끄면 AI 비용만 쓰고 결과가 사라졌다. 점수 없는 추천은 기간을 열 때 다시 점수를 매긴다
+            void SaveMatched(IReadOnlyList<ReleaseRecommendation> bare)
+            {
+                var have = AiPicksFor(period).ToDictionary(r => r.DeezerAlbumId);
+                foreach (var r in bare) have[r.DeezerAlbumId] = have.TryGetValue(r.DeezerAlbumId, out var o) ? MergeAi(o, r) : r;
+                _aiPicks.Set(AiKey(period), [.. have.Values]);
+                _aiPicks.Save();
+                if (_sound?.IsBusy == true)
+                    AiText = L.F("{0}장 확인해 저장했어요 · 소리 분석이 다른 작업 중이라 끝나면 점수를 매겨요", bare.Count);
+            }
             var (recs, unverified) = picks.Count == 0 ? ([], 0)
-                : await _recommender.ScoreAiPicksAsync(picks, _owned, period, progress, _life.Token);
+                : await _recommender.ScoreAiPicksAsync(picks, _owned, period, progress, _life.Token, SaveMatched);
 
             if (replace)
             {
@@ -1486,6 +1517,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // AI 결과 + 웹진 추천 (같은 앨범이면 배지를 합친다)
         var aiRecs = AiPicksFor(period).Concat(WebzinePicksFor(period)).GroupBy(r => r.DeezerAlbumId)
             .Select(g => g.Aggregate(MergeAi)).ToList();
+        if (aiRecs.Any(r => r.Taste == null && r.Crate == null && r.AiBy?.Any(b => !b.StartsWith("웹진", StringComparison.Ordinal)) == true))
+            _ = RescoreAiAsync(period);
         UpdateAiSaved();
 
         IsBusy = true;

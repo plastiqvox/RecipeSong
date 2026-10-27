@@ -121,6 +121,7 @@
  "{0}장 · 내 플리 {1} · 추가 제안 {2}": "{0} releases · {1} from my playlists · {2} more picks",
  "{0}장 · 모두 내 플리": "{0} releases · all from my playlists",
  "{0}장 · 추가 제안": "{0} releases · more picks",
+ "{0}장 확인해 저장했어요 · 소리 분석이 다른 작업 중이라 끝나면 점수를 매겨요": "Verified and saved {0} · scoring will finish once the sound analysis is free",
  "{0}회": "{0}",
  "· 내 곡 학습 데이터 {0} · 취향 모델 {1}": "· My songs training data {0} · Taste model {1}",
  "· 신보 미리듣기 분석 {0}": "· New-release preview analysis {0}",

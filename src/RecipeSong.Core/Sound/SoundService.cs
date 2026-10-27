@@ -187,6 +187,9 @@ public sealed class SoundService : IAsyncDisposable
     private static Dictionary<string, double> ToDict(JsonElement e) =>
         e.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetDouble());
 
+    /// <summary>다른 요청을 처리하는 중 (요청은 한 번에 하나씩 — 새 요청은 줄을 선다)</summary>
+    public bool IsBusy => _serial.CurrentCount == 0;
+
     private async Task<JsonElement> CallAsync(string cmd, object? args, IProgress<string>? progress, CancellationToken ct)
     {
         await StartAsync(ct);
