@@ -194,10 +194,11 @@ public sealed class SoundService : IAsyncDisposable
         return [.. r.GetProperty("albums").EnumerateArray().Select(a => (a.GetProperty("id").GetInt64(), a.GetProperty("sim").GetDouble()))];
     }
 
-    /// <summary>ids 중 별로 목록의 어느 앨범과 min 이상 닮은 것 (Like = 닮은 별로 앨범 id)</summary>
-    public async Task<List<(long Id, double Sim, long Like)>> DislikeMatchesAsync(IEnumerable<long> ids, double min = 0.85, CancellationToken ct = default)
+    /// <summary>ids 중 refs(직접 별로·차단한 앨범)의 어느 앨범과 min 이상 닮은 것 (Like = 닮은 별로 앨범 id)</summary>
+    public async Task<List<(long Id, double Sim, long Like)>> DislikeMatchesAsync(IEnumerable<long> ids, IEnumerable<long> refs,
+        double min = 0.92, CancellationToken ct = default)
     {
-        var r = await CallAsync("dislike_matches", new { ids = ids.ToList(), min }, null, ct);
+        var r = await CallAsync("dislike_matches", new { ids = ids.ToList(), refs = refs.ToList(), min }, null, ct);
         return [.. r.GetProperty("albums").EnumerateArray()
             .Select(a => (a.GetProperty("id").GetInt64(), a.GetProperty("sim").GetDouble(), a.GetProperty("like").GetInt64()))];
     }

@@ -803,9 +803,9 @@
                         </Button>
                         <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,5" Command="{Binding HideSimilarCommand}" VerticalAlignment="Center"
                                 BorderBrush="{StaticResource Accent}" Visibility="{Binding SimilarAsk, Converter={StaticResource BoolVis}}">
-                            <TextBlock Text="{local:Tr '같이 숨기기'}" FontSize="12" Foreground="{StaticResource AccentText}" FontWeight="Medium"/>
+                            <TextBlock Text="{local:Tr '숨기기'}" FontSize="12" Foreground="{StaticResource AccentText}" FontWeight="Medium"/>
                         </Button>
-                        <TextBlock Text="{Binding SimilarOfferText}" FontSize="12" Foreground="{StaticResource Text}" TextWrapping="Wrap" VerticalAlignment="Center"
+                        <TextBlock Text="{Binding SimilarOfferText}" FontSize="12" Foreground="{StaticResource Text}" TextWrapping="Wrap" VerticalAlignment="Center" MaxHeight="36" TextTrimming="CharacterEllipsis"
                                    ToolTip="{local:Tr '이 목록에서만 숨겨요. 별로로 학습하지는 않아요.'}"/>
                     </DockPanel>
                 </Border>

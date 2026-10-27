@@ -970,21 +970,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (candidates.Count == 0) return;
         try
         {
-            var hits = await _sound.DislikeMatchesAsync(candidates, ct: _life.Token);
+            // 기준은 직접 별로·'소리 때문' 차단한 앨범만 (바로 넘긴 앨범까지 넣으면 거의 다 걸린다)
+            var refs = _disliked.All.Select(d => d.Rec.DeezerAlbumId).Concat(_blocked.AlbumIds).Distinct();
+            var hits = await _sound.DislikeMatchesAsync(candidates, refs, ct: _life.Token);
             if (hits.Count == 0 || CurrentPeriod.Label != period.Label) return;
             _similarOffer = [.. hits.Select(h => h.Id)];
-            var names = string.Join(", ", hits.Take(5).Select(h => _all.First(i => i.Rec.DeezerAlbumId == h.Id)).Select(i => $"{i.Artist} – {i.Album}"))
-                        + (hits.Count > 5 ? " …" : "");
+            var names = ShortList(hits.Select(h => h.Id));
             if (_recPrefs.DropMode == 1)
             {
                 HideSimilar();  // 목록·저장 결과에서 뺀다 (배너를 닫는다)
                 SimilarAsk = false;
-                SimilarOfferText = L.F("별로·차단한 앨범과 아주 닮은 {0}장을 뺐어요: {1}", hits.Count, names);
+                SimilarOfferText = L.F("별로 표시한 앨범과 소리가 거의 같은 {0}장을 숨겼어요 · {1}", hits.Count, names);
             }
             else
             {
                 SimilarAsk = true;
-                SimilarOfferText = L.F("별로·차단한 앨범과 아주 닮은 추천 {0}장: {1}", hits.Count, names);
+                SimilarOfferText = L.F("별로 표시한 앨범과 소리가 거의 같은 추천이 {0}장 있어요 · {1}", hits.Count, names);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { }
@@ -1002,11 +1003,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var near = (await _sound.SimilarAlbumsAsync(item.Rec.DeezerAlbumId, candidates, ct: _life.Token)).Take(5).ToList();
             if (near.Count == 0) return;
             _similarOffer = [.. near.Select(n => n.Id)];
-            var names = near.Select(n => _all.First(i => i.Rec.DeezerAlbumId == n.Id)).Select(i => $"{i.Artist} – {i.Album}");
             SimilarAsk = true;
-            SimilarOfferText = L.F("'{0}'와 소리가 아주 닮은 추천 {1}장: {2}", item.Album, near.Count, string.Join(", ", names));
+            SimilarOfferText = L.F("방금 별로 표시한 '{0}'와 소리가 거의 같은 추천 {1}장 · {2}", item.Album, near.Count, ShortList(near.Select(n => n.Id)));
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 바쁘면 묻지 않는다
+    }
+
+    /// <summary>배너에 넣을 앨범 이름: 앞 3장 + '외 N장'</summary>
+    private string ShortList(IEnumerable<long> ids)
+    {
+        var names = ids.Select(id => _all.FirstOrDefault(i => i.Rec.DeezerAlbumId == id)).OfType<ReleaseItem>().Select(i => $"{i.Artist} – {i.Album}").ToList();
+        return string.Join(" · ", names.Take(3)) + (names.Count > 3 ? " " + L.F("외 {0}장", names.Count - 3) : "");
     }
 
     /// <summary>같이 숨기기: 이 목록과 저장된 결과에서만 뺀다 (별로로 학습하지 않는다 — 한 번 누른 것보다 학습이 커지지 않게)</summary>

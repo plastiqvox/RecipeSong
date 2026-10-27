@@ -459,16 +459,18 @@ class Service:
         return {"albums": out}
 
     def dislike_matches(self, args: dict, rid) -> dict:
-        """ids 중 별로 목록(별로·'소리 때문' 차단·바로 넘긴 앨범)의 어느 앨범과 min 이상 닮은 것. 다시 분석한 뒤 뺄지 묻는 데 쓴다."""
-        if self.dis_x is None:
+        """ids 중 refs(직접 별로·'소리 때문' 차단한 앨범)의 어느 앨범과 min 이상 닮은 것. 다시 분석한 뒤 뺄지 묻는 데 쓴다.
+        바로 넘긴 앨범까지 넣으면 기준이 93장이 되어 '어느 하나와는 닮은' 앨범이 1만 장 중 1천 장 넘게 걸렸다 →
+        직접 고른 앨범만, 0.92 (직접 별로 30장 기준 1만 장 중 31장, 한 주 250장이면 1장 안팎)."""
+        refs = [str(r) for r in args.get("refs") or [] if str(r) in self.album_cache]
+        ids = [str(i) for i in args.get("ids") or [] if str(i) in self.album_cache and str(i) not in refs]
+        if not refs or not ids:
             return {"albums": []}
-        ids = [str(i) for i in args.get("ids") or [] if str(i) in self.album_cache and str(i) not in self.dis_keys]
-        if not ids:
-            return {"albums": []}
-        sims = train.preprocess(np.stack([self.album_cache[i] for i in ids]), self.mean) @ self.dis_x.T
+        R = train.preprocess(np.stack([self.album_cache[r] for r in refs]), self.mean)
+        sims = train.preprocess(np.stack([self.album_cache[i] for i in ids]), self.mean) @ R.T
         best = sims.argmax(axis=1)
-        lo = float(args.get("min", 0.85))
-        out = [{"id": int(i), "sim": round(float(sims[k, best[k]]), 4), "like": int(self.dis_keys[best[k]])}
+        lo = float(args.get("min", 0.92))
+        out = [{"id": int(i), "sim": round(float(sims[k, best[k]]), 4), "like": int(refs[best[k]])}
                for k, i in enumerate(ids) if sims[k, best[k]] >= lo]
         return {"albums": sorted(out, key=lambda a: -a["sim"])}
 
