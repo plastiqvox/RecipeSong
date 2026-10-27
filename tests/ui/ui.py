@@ -95,7 +95,7 @@ def start(english: bool = False) -> None:
         env["RECIPESONG_LANG"] = "en"
     p = subprocess.Popen([str(EXE)], env=env, cwd=str(BIN))
     PID_FILE.write_text(str(p.pid))
-    window()
+    behind(window().handle)  # 사용자 작업을 가리지 않게 맨 뒤로
     print(f"시험용 앱 pid {p.pid}")
 
 
@@ -104,6 +104,17 @@ def stop() -> None:
         subprocess.run(["taskkill", "/PID", PID_FILE.read_text().strip(), "/T", "/F"], capture_output=True)
         PID_FILE.unlink()
         print("시험용 앱을 닫았어요")
+
+
+def behind(hwnd: int) -> None:
+    """시험 창을 사용자 작업 뒤에 둔다: 최소화돼 있으면 포커스를 빼앗지 않고 펴고(최소화된 창은 제목 줄만 찍힌다), 맨 뒤로.
+    가려져 있어도 PrintWindow 로 이 창만 찍힌다."""
+    import win32con
+    import win32gui
+    if win32gui.IsIconic(hwnd):
+        win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
+    win32gui.SetWindowPos(hwnd, win32con.HWND_BOTTOM, 0, 0, 0, 0,
+                          win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
 
 
 def live_hwnd() -> int:
@@ -138,6 +149,7 @@ def shot(name: str, hwnd: int | None = None) -> None:
     import win32ui
     from PIL import Image
     hwnd = hwnd or window().handle
+    behind(hwnd)
     l, t, r, b = win32gui.GetWindowRect(hwnd)
     w, h = r - l, b - t
     src = win32ui.CreateDCFromHandle(win32gui.GetWindowDC(hwnd))
@@ -206,9 +218,9 @@ def size(w: int, h: int) -> None:
     import win32con
     import win32gui
     hwnd = window().handle
-    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)  # 최대화돼 있으면 풀고
+    win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE if win32gui.IsIconic(hwnd) else win32con.SW_RESTORE)  # 최대화·최소화를 풀고
     x, y, _, _ = win32gui.GetWindowRect(hwnd)
-    win32gui.MoveWindow(hwnd, x, y, w, h, True)
+    win32gui.SetWindowPos(hwnd, win32con.HWND_BOTTOM, x, y, w, h, win32con.SWP_NOACTIVATE)
 
 
 def main() -> None:
@@ -222,6 +234,27 @@ def main() -> None:
     idx = int(rest[rest.index("--index") + 1]) if "--index" in rest else 0
     if cmd == "setup":
         setup()
+    elif cmd == "dialog":  # dialog <창 제목> <이름> [--close]: 모달 창(설정 등)을 찍고 닫는다
+        import win32gui
+        import win32process
+        pid, want, found = int(PID_FILE.read_text()), pos[0], []
+        def visit(h, _):
+            if win32gui.IsWindowVisible(h) and win32process.GetWindowThreadProcessId(h)[1] == pid and win32gui.GetWindowText(h) == want:
+                found.append(h)
+        for _ in range(20):
+            win32gui.EnumWindows(visit, None)
+            if found:
+                break
+            time.sleep(0.5)
+        if not found:
+            raise SystemExit(f"'{want}' 창이 없어요")
+        shot(pos[1], found[0])
+        if flag("--close"):
+            import win32con
+            win32gui.PostMessage(found[0], win32con.WM_CLOSE, 0, 0)
+    elif cmd == "open":  # open <버튼 이름>: 모달 창을 여는 버튼 — invoke 가 창이 닫힐 때까지 막히므로 따로 띄워 누른다
+        subprocess.Popen([sys.executable, "-W", "ignore", __file__, "click", pos[0]])
+        time.sleep(2)
     elif cmd == "live":  # 쓰고 있는 앱 찍기 (누르거나 움직이지 않는다)
         shot(pos[0] if pos else "live-" + time.strftime("%H%M%S"), live_hwnd())
     elif cmd == "build":
