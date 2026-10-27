@@ -42,6 +42,9 @@ public sealed partial class ReleaseItem : ObservableObject
     public bool IsMine => Rec.FromPlaylist != null;
     /// <summary>저장함 앨범과 특히 닮았을 때: 가장 닮은 저장 앨범</summary>
     public string? FavNear => Rec.FavNear;
+    /// <summary>좋아하는 레이블에서 나온 신보면 그 레이블</summary>
+    public string? LikedLabel => Rec.LikedLabel;
+    public bool HasLikedLabel => !string.IsNullOrEmpty(Rec.LikedLabel);
     public bool HasFavNear => !string.IsNullOrEmpty(Rec.FavNear);
     public bool IsAi => Rec.AiReason != null;
     public string? AiReason => Rec.AiReason;

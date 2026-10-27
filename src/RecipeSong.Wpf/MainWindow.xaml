@@ -182,6 +182,13 @@
                         <TextBlock Margin="0,6,0,0" FontSize="12" Text="{Binding AiReason}" Foreground="{StaticResource AccentText}" TextWrapping="Wrap"
                                    MaxHeight="34" TextTrimming="CharacterEllipsis" ToolTip="{Binding AiReason}"
                                    Visibility="{Binding IsAi, Converter={StaticResource BoolVis}}"/>
+                        <!-- 좋아하는 레이블 (많이 듣고 좋아한 앨범들의 레이블) -->
+                        <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis"
+                                   ToolTip="많이 듣고 좋아한 앨범들이 나온 레이블이에요"
+                                   Visibility="{Binding HasLikedLabel, Converter={StaticResource BoolVis}}">
+                            <Run Text="좋아하는 레이블" Foreground="{StaticResource AccentText}"/>
+                            <Run Text="{Binding LikedLabel, Mode=OneWay}" Foreground="{StaticResource Text2}"/>
+                        </TextBlock>
                         <!-- 즐겨찾기 학습: 저장한 앨범과 특히 닮은 신보 -->
                         <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding FavNear}"
                                    Visibility="{Binding HasFavNear, Converter={StaticResource BoolVis}}">

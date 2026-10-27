@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote
 
-# Crate.Core ITunesLibraryParser.SystemKeys 와 같은 규칙
+# RecipeSong.Core ITunesLibraryParser.SystemKeys 와 같은 규칙
 SYSTEM_KEYS = ("Master", "Distinguished Kind", "Music", "Movies", "TV Shows",
                "Podcasts", "Audiobooks", "Purchased Music", "Books")
 
@@ -25,6 +25,31 @@ class Track:
     loved: bool
     path: Path | None
     playlists: list[str] = field(default_factory=list)
+    rating: int = 0          # 직접 매긴 별점 0~100 (별 하나 = 20). 앨범 별점에서 자동으로 채워진 값은 0
+    disliked: bool = False
+
+    @property
+    def weight(self) -> float:
+        """취향 학습 가중치 0.1~1.0: 하트·별 4개 이상은 최대, 낮은 별점·'좋아하지 않음'은 낮게, 그 외는 재생 수."""
+        return track_weight(self.play_count, self.loved, self.rating, self.disliked)
+
+
+PLAYS_FULL = 12  # 이만큼 들으면 재생 수만으로 최대 (라이브러리 상위 5% 수준)
+
+
+def track_weight(plays: int, loved: bool, rating: int, disliked: bool) -> float:
+    """.NET TasteProfile.TrackWeight 와 같은 식."""
+    import math
+    if disliked:
+        return 0.1
+    if loved or rating >= 80:
+        return 1.0
+    w = 0.35 + 0.65 * min(1.0, math.log1p(plays) / math.log1p(PLAYS_FULL))
+    if rating >= 60:
+        w = max(w, 0.8)
+    elif 0 < rating <= 40:
+        w = min(w, 0.4)
+    return round(w, 3)
 
 
 def location_to_path(url: str | None) -> Path | None:
@@ -55,6 +80,8 @@ def load(xml_path: str | Path, min_playlist_size: int = 15) -> tuple[dict[str, T
             play_count=t.get("Play Count", 0),
             loved=bool(t.get("Loved") or t.get("Favorited")),
             path=location_to_path(t.get("Location")),
+            rating=0 if t.get("Rating Computed") else int(t.get("Rating", 0)),
+            disliked=bool(t.get("Disliked")),
         )
         by_id[t["Track ID"]] = pid
 

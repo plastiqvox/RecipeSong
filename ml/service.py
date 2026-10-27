@@ -92,6 +92,8 @@ class Service:
         self.keyset = set(keys)
         self.lib = train.preprocess(emb, self.mean).astype(np.float32)
         self.meta = [(self.tracks[k].artist, self.tracks[k].title) if k in self.tracks else ("?", "?") for k in keys]
+        # 곡 가중치: 취향 유사도에서 많이 듣고 좋아한 곡과 닮을수록 더 쳐준다 (0.6~1.0배)
+        self.lib_w = np.array([0.6 + 0.4 * self.tracks[k].weight if k in self.tracks else 0.8 for k in keys], np.float32)
         self.heads = {name: (np.array(self.model[name]["coef"], np.float32),
                              np.array(self.model[name]["intercept"], np.float32),
                              self.model[name]["classes"]) for name in ("style", "region")}
@@ -256,7 +258,7 @@ class Service:
         res = {}
         for name, (coef, icpt, classes) in self.heads.items():
             res[name] = {c: round(float(p), 4) for c, p in zip(classes, softmax(coef @ x + icpt))}
-        sims = self.lib @ x
+        sims = (self.lib @ x) * self.lib_w
         near = np.argpartition(-sims, KNN)[:KNN]
         near = near[np.argsort(-sims[near])]
         res["taste"] = round(float(sims[near].mean()), 4)

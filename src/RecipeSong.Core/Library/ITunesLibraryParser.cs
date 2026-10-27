@@ -109,6 +109,8 @@ public static class ITunesLibraryParser
             Year = int.TryParse(Str(f, "Year"), out var y) ? y : null,
             PlayCount = int.TryParse(Str(f, "Play Count"), out var pc) ? pc : 0,
             Loved = f.GetValueOrDefault("Loved") is true || f.GetValueOrDefault("Favorited") is true,
+            Rating = f.GetValueOrDefault("Rating Computed") is true ? 0 : int.TryParse(Str(f, "Rating"), out var rt) ? rt : 0,
+            Disliked = f.GetValueOrDefault("Disliked") is true,
             DateAdded = ParseDate(Str(f, "Date Added")),
             LastPlayed = ParseDate(Str(f, "Play Date UTC")),
             Duration = long.TryParse(Str(f, "Total Time"), out var ms) ? TimeSpan.FromMilliseconds(ms) : null,

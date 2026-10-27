@@ -46,7 +46,24 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly JsonCache<RecPrefs> _recPrefsStore = new("rec-prefs", TimeSpan.FromDays(36500));
     private RecPrefs _recPrefs = new();
     private RecommendOptions RecOptions => RecommendOptions.Create(_recPrefs.Amount, _recPrefs.Adventure, _recPrefs.ExcludeKnown)
-        with { DislikedArtists = DislikedArtists };
+        with { DislikedArtists = DislikedArtists, LabelAffinity = _labelAffinity };
+
+    /// <summary>좋아하는 레이블 (많이 듣고 좋아한 앨범들의 레이블). 시작할 때 캐시로 바로, 빠진 건 뒤에서 Deezer로 채운다.</summary>
+    private IReadOnlyDictionary<string, double> _labelAffinity = new Dictionary<string, double>();
+
+    private async Task BuildLabelAffinityAsync(IReadOnlyList<TrackRecord> tracks)
+    {
+        var affinity = new LabelAffinity(_deezer);
+        _labelAffinity = affinity.FromCache(tracks);
+        try
+        {
+            var progress = new Progress<string>(m => { if (!SyncText.Contains("플리 뮤지션")) SyncText = m; });
+            _labelAffinity = await Task.Run(() => affinity.BuildAsync(tracks, progress: progress, ct: _life.Token));
+            if (SyncText.StartsWith("좋아하는 레이블")) SyncText = "";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is HttpRequestException or IOException) { SyncText = ""; }
+    }
 
     [RelayCommand]
     private async Task OpenRecommendSettingsAsync()
@@ -832,6 +849,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _owned = new OwnedLibrary(tracks);
         WatchLibrary();
         _ = StartSoundAsync();
+        _ = BuildLabelAffinityAsync(tracks);
         await LoadAsync();
     }
 

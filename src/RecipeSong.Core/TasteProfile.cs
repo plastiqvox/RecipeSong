@@ -21,15 +21,16 @@ public static class TasteProfile
             var top = p.Tracks
                 .GroupBy(t => t.GroupArtist, StringComparer.OrdinalIgnoreCase)
                 .Where(g => !Excluded.Contains(ListeningAnalyzer.NormalizeArtist(g.Key)))
-                .Select(g => (Artist: g.Key, Plays: g.Sum(t => Math.Max(t.PlayCount, 1))))
-                .OrderByDescending(x => x.Plays)
+                // 곡 가중치 합: 많이 듣고, 하트·별점을 준 곡이 많은 아티스트가 먼저
+                .Select(g => (Artist: g.Key, Score: g.Sum(t => t.Weight), Plays: g.Sum(t => t.PlayCount)))
+                .OrderByDescending(x => x.Score)
                 .Take(perPlaylist)
                 .ToList();
             if (top.Count == 0) continue;
-            double max = top[0].Plays;
-            foreach (var (artist, plays) in top)
+            double max = top[0].Score;
+            foreach (var (artist, score, plays) in top)
             {
-                var w = Math.Round(0.5 + 0.5 * plays / max, 3);
+                var w = Math.Round(0.5 + 0.5 * score / max, 3);
                 if (!best.TryGetValue(artist, out var cur) || cur.Weight < w)
                     best[artist] = new TasteArtist(artist, w, plays, p.Name);
             }

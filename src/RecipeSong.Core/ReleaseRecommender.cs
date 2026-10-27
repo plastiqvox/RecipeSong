@@ -20,6 +20,9 @@ public sealed record RecommendOptions
     public double FavoriteWeight { get; init; } = 1.0;
     /// <summary>점수에서 "별로 표시한 앨범과 닮은 정도"를 빼는 비중</summary>
     public double DislikeWeight { get; init; } = 1.0;
+    /// <summary>좋아하는 레이블 (LabelAffinity.Normalize 이름 → 0~1). 같은 레이블 신보에 가산점</summary>
+    public IReadOnlyDictionary<string, double> LabelAffinity { get; init; } = new Dictionary<string, double>();
+    public double LabelWeight { get; init; } = 1.0;
     /// <summary>별로 표시한 앨범의 아티스트 (정규화 이름): 추가 제안에서 뺀다 (내 플리 뮤지션은 그대로)</summary>
     public IReadOnlySet<string> DislikedArtists { get; init; } = new HashSet<string>();
     /// <summary>추가 제안에서 내 라이브러리에 있는 아티스트는 뺀다 (처음 듣는 사람만)</summary>
@@ -454,6 +457,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             else score = -1 + (c.Mine == null ? options.GraphWeight * graphZ[i] : 0);  // 소리를 못 들은 앨범은 뒤로
 
             var info = infos[i];
+            // 좋아하는 레이블이면 가산점
+            var labelAff = RecipeSong.Core.LabelAffinity.Of(options.LabelAffinity, info.Label);
+            score += options.LabelWeight * labelAff;
             if (regionOf[c.Id] == Region.International && c.Mine?.Style == null)
             {
                 // 해외는 Deezer 장르로 나눈다. 어울림 점은 일본 크레이트 기준이라 표시하지 않는다.
@@ -469,7 +475,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 c.Mine != null || owned.HasArtist(c.Name), Math.Round(score, 3),
                 c.Mine?.Playlist,
                 // 저장한 앨범과 특히 닮았을 때만 (상위 약 15%) 카드에 표시
-                FavNear: favZOf.GetValueOrDefault(i) >= 1.0 ? snd?.FavNear : null));
+                FavNear: favZOf.GetValueOrDefault(i) >= 1.0 ? snd?.FavNear : null,
+                LikedLabel: labelAff >= 0.2 ? info.Label : null));
         }
         return (recs, heard.Any(s => s != null));
     }

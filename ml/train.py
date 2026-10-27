@@ -42,18 +42,20 @@ def preprocess(x: np.ndarray, mean: np.ndarray) -> np.ndarray:
     return x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-8)
 
 
-def fit_eval(x, y, groups, classes, title, C, log=print):
-    """교차검증 결과를 출력하고, 전체 데이터로 학습한 모델과 정확도를 돌려준다."""
+def fit_eval(x, y, groups, classes, title, C, log=print, weights=None):
+    """교차검증 결과를 출력하고, 전체 데이터로 학습한 모델과 정확도를 돌려준다.
+    weights: 곡 가중치 (많이 듣고 좋아한 곡을 더 중요하게 배운다). 정확도는 가중치 없이 잰다."""
     cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=0)
     pred = np.empty_like(y)
+    w = np.ones(len(y)) if weights is None else np.asarray(weights)
     for tr, te in cv.split(x, y, groups):
-        pred[te] = LogisticRegression(C=C, class_weight="balanced", max_iter=3000).fit(x[tr], y[tr]).predict(x[te])
+        pred[te] = LogisticRegression(C=C, class_weight="balanced", max_iter=3000).fit(x[tr], y[tr], sample_weight=w[tr]).predict(x[te])
     acc = float((pred == y).mean())
     log(f"\n[{title}] 정확도 {acc:.1%} (찍기 {Counter(y).most_common(1)[0][1] / len(y):.1%})")
     for i, c in enumerate(classes):
         m = y == i
         log(f"   {c:8s} {m.sum():5d}곡  맞힘 {(pred[m] == i).mean():.0%}")
-    clf = LogisticRegression(C=C, class_weight="balanced", max_iter=3000).fit(x, y)
+    clf = LogisticRegression(C=C, class_weight="balanced", max_iter=3000).fit(x, y, sample_weight=w)
     return clf, acc
 
 
@@ -84,7 +86,7 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
     keys, emb = load_embeddings(emb_folder)
     index = {k: i for i, k in enumerate(keys)}
 
-    rows, styles, regions, groups = [], [], [], []
+    rows, styles, regions, groups, weights = [], [], [], [], []
     for t in tracks.values():
         pls = [p for p in t.playlists if p not in ignore]
         if len(pls) != 1 or pls[0] not in mapping or t.pid not in index:
@@ -94,20 +96,24 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
         regions.append(mapping[pls[0]]["region"])
         va = t.artist.lower() in ("various artists", "va", "v.a.")
         groups.append(f"{t.artist}|{t.album}" if va else t.artist)
+        weights.append(t.weight)
 
     mean = emb[rows].mean(axis=0)
     x = preprocess(emb[rows], mean)
     groups = np.array(groups)
+    weights = np.array(weights)
+    log(f"곡 가중치: 평균 {weights.mean():.2f} · 최대(하트·별 4개 이상) {int((weights >= 1.0).sum())}곡")
     log(f"학습 데이터 {len(rows)}곡 (제외 플레이리스트: {', '.join(sorted(ignore)) or '없음'})")
 
     style_classes = sorted({s for s in styles if s})
     has_style = np.array([s is not None for s in styles])
     ys = np.array([style_classes.index(s) if s else -1 for s in styles])
-    style_clf, style_acc = fit_eval(x[has_style], ys[has_style], groups[has_style], style_classes, "스타일 (크레이트)", C, log)
+    style_clf, style_acc = fit_eval(x[has_style], ys[has_style], groups[has_style], style_classes, "스타일 (크레이트)", C, log,
+                                    weights[has_style])
 
     region_classes = sorted(set(regions))
     yr = np.array([region_classes.index(r) for r in regions])
-    region_clf, region_acc = fit_eval(x, yr, groups, region_classes, "지역", C, log)
+    region_clf, region_acc = fit_eval(x, yr, groups, region_classes, "지역", C, log, weights)
 
     # 스타일 라벨이 없는 곡(해외·한국)에 스타일 추정 결과 분포
     no_style = ~has_style

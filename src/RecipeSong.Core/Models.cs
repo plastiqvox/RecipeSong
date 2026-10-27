@@ -16,6 +16,27 @@ public sealed record TrackRecord
     public int? Year { get; init; }
     public int PlayCount { get; init; }
     public bool Loved { get; init; }
+    /// <summary>직접 매긴 별점 0~100 (별 하나 = 20). 앨범 별점에서 자동으로 채워진 값은 0.</summary>
+    public int Rating { get; init; }
+    /// <summary>iTunes에서 '좋아하지 않음'</summary>
+    public bool Disliked { get; init; }
+
+    /// <summary>
+    /// 취향 가중치 0.1~1.0 (ml/library.py track_weight 와 같은 식):
+    /// 하트·별 4개 이상은 최대, 별 3개는 0.8 이상, 별 1~2개는 0.4 이하, '좋아하지 않음'은 0.1, 그 외는 재생 수 (12회 이상이면 최대).
+    /// </summary>
+    public double Weight
+    {
+        get
+        {
+            if (Disliked) return 0.1;
+            if (Loved || Rating >= 80) return 1.0;
+            var w = 0.35 + 0.65 * Math.Min(1.0, Math.Log(1 + PlayCount) / Math.Log(1 + 12));
+            if (Rating >= 60) w = Math.Max(w, 0.8);
+            else if (Rating is > 0 and <= 40) w = Math.Min(w, 0.4);
+            return Math.Round(w, 3);
+        }
+    }
     public DateTime? DateAdded { get; init; }
     public DateTime? LastPlayed { get; init; }
     public TimeSpan? Duration { get; init; }
@@ -79,7 +100,7 @@ public sealed record ReleaseRecommendation(
     string? Crate, double? CrateFit, double? Taste, IReadOnlyList<string> NearTracks,
     IReadOnlyList<string> BecauseOf, bool IsKnownArtist, double Score,
     string? FromPlaylist = null, string? AiReason = null, IReadOnlyList<string>? AiBy = null,
-    string? FavNear = null);
+    string? FavNear = null, string? LikedLabel = null);
 
 /// <summary>
 /// AI 커넥터가 웹에서 찾은 발매작 (Deezer 확인 전). Region은 crates.json 이름 (일본/한국/해외/동남아).
