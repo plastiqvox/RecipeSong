@@ -597,31 +597,47 @@
                         </ItemsControl>
                     </StackPanel>
                     <TextBlock Text="{local:Tr '날짜를 누르면 그 주 발매작 · 진한 날일수록 취향 신보가 많음'}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                    <!-- 달력 범례: 아래 점 = AI · 웹진이 찾은 앨범 발매일, 위 회색 선 = 내 PC 소리 모델로 분석해 둔 기간 -->
-                    <StackPanel Margin="0,6,0,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse Width="6" Height="6" Fill="#FFC98E" Margin="0,0,2,0" VerticalAlignment="Center"/>
-                            <Ellipse Width="6" Height="6" Fill="#FF9838" Margin="0,0,2,0" VerticalAlignment="Center"/>
-                            <Ellipse Width="6" Height="6" Fill="#F26B0A" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="Claude" Style="{StaticResource MutedText}" FontSize="11" Margin="0,0,10,0"/>
-                            <Ellipse Width="6" Height="6" Fill="#9CE6C6" Margin="0,0,2,0" VerticalAlignment="Center"/>
-                            <Ellipse Width="6" Height="6" Fill="#2FC088" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="GPT" Style="{StaticResource MutedText}" FontSize="11" Margin="0,0,10,0"/>
-                            <Ellipse Width="6" Height="6" Fill="#A88BFF" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="{local:Tr '웹진'}" Style="{StaticResource MutedText}" FontSize="11"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                            <Rectangle Height="2" Width="14" RadiusX="1" RadiusY="1" Fill="{StaticResource Text2}" Opacity="0.55" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="{local:Tr '로컬 소리 모델로 분석한 기간'}" Margin="0,0,10,0" Style="{StaticResource MutedText}" FontSize="11"
-                                       ToolTip="{local:Tr '내 PC의 소리 모델(LLM 아님)이 추천을 계산해 저장해 둔 주예요. 다시 열면 바로 나와요.'}"/>
-                            <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="{local:Tr '처음 보는 앨범'}" Style="{StaticResource MutedText}" FontSize="11"
-                                       ToolTip="{local:Tr '웹진·AI·정밀 분석이 찾아 두었지만 아직 화면에서 보지 않은 앨범이 있는 날이에요.'}"/>
-                            <TextBlock Text="★" FontSize="9" Foreground="#F5C04A" Margin="10,0,4,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="{local:Tr '팔로우 신보'}" Style="{StaticResource MutedText}" FontSize="11"/>
-                        </StackPanel>
-                        <TextBlock Text="{local:Tr '점은 그 앨범의 발매일 · 진할수록 비싼 AI 모델 · 마우스를 올리면 자세히'}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
+                    <!-- 달력 범례: 2열. 칸 아래 점 = AI·웹진이 찾은 앨범의 발매일, 위 회색 선 = 분석해 둔 기간, 오른쪽 위 점 = 처음 보는 앨범, 왼쪽 위 ★ = 팔로우 신보 -->
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <DockPanel Grid.Row="0" Grid.Column="0" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr 'Claude 가 찾은 앨범의 발매일. 진할수록 비싼 모델'}">
+                            <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center"><Ellipse Width="5" Height="5" Fill="#FFC98E" Margin="0,0,1.5,0"/><Ellipse Width="5" Height="5" Fill="#FF9838" Margin="0,0,1.5,0"/><Ellipse Width="5" Height="5" Fill="#F26B0A" Margin="0,0,1.5,0"/></StackPanel>
+                            </Grid>
+                            <TextBlock Text="{local:Tr 'Claude'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                        <DockPanel Grid.Row="0" Grid.Column="1" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr 'GPT 가 찾은 앨범의 발매일. 진할수록 비싼 모델'}">
+                            <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center"><Ellipse Width="5" Height="5" Fill="#9CE6C6" Margin="0,0,1.5,0"/><Ellipse Width="5" Height="5" Fill="#2FC088" Margin="0,0,1.5,0"/></StackPanel>
+                            </Grid>
+                            <TextBlock Text="{local:Tr 'GPT'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                        <DockPanel Grid.Row="1" Grid.Column="0" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr '웹진이 소개한 앨범의 발매일'}">
+                            <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center"><Ellipse Width="5" Height="5" Fill="#A88BFF" Margin="0,0,1.5,0"/></StackPanel>
+                            </Grid>
+                            <TextBlock Text="{local:Tr '웹진'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                        <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr '팔로우한 아티스트의 발매일'}">
+                            <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <TextBlock Text="★" FontSize="10" Foreground="#F5C04A" HorizontalAlignment="Left"/>
+                            </Grid>
+                            <TextBlock Text="{local:Tr '팔로우 신보'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                        <DockPanel Grid.Row="2" Grid.Column="0" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr '내 PC의 소리 모델(LLM 아님)이 추천을 계산해 저장해 둔 주예요. 다시 열면 바로 나와요.'}">
+                            <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <Rectangle Height="2" Width="16" RadiusX="1" RadiusY="1" Fill="{StaticResource Text2}" Opacity="0.55" HorizontalAlignment="Left"/>
+                            </Grid>
+                            <TextBlock Text="{local:Tr '분석한 기간'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                        <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr '웹진·AI·정밀 분석이 찾아 두었지만 아직 화면에서 보지 않은 앨범이 있는 날이에요.'}">
+                            <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" HorizontalAlignment="Left"/>
+                            </Grid>
+                            <TextBlock Text="{local:Tr '처음 보는 앨범'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                    </Grid>
                     <TextBlock Text="{Binding SyncText}" Foreground="{StaticResource Accent}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
                                Visibility="{Binding SyncText, Converter={StaticResource EmptyCollapsed}}"/>
                 </StackPanel>
