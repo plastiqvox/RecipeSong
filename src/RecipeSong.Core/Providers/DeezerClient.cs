@@ -90,7 +90,8 @@ public sealed record DzArtist(
     [property: JsonPropertyName("id")] long Id,
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("picture_big")] string? Picture,
-    [property: JsonPropertyName("link")] string? Link);
+    [property: JsonPropertyName("link")] string? Link,
+    [property: JsonPropertyName("nb_fan")] int Fans = 0);
 
 public sealed record DzAlbum(
     [property: JsonPropertyName("id")] long Id,
@@ -119,4 +120,5 @@ public sealed record DzTrack(
     [property: JsonPropertyName("link")] string? Link,
     [property: JsonPropertyName("duration")] int Duration = 0,
     [property: JsonPropertyName("artist")] DzArtist? Artist = null,
-    [property: JsonPropertyName("rank")] int Rank = 0);
+    [property: JsonPropertyName("rank")] int Rank = 0,
+    [property: JsonPropertyName("id")] long Id = 0);

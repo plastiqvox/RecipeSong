@@ -44,6 +44,9 @@ public sealed partial class ReleaseItem : ObservableObject
     public string? FavNear => Rec.FavNear;
     /// <summary>좋아하는 레이블에서 나온 신보면 그 레이블</summary>
     public string? LikedLabel => Rec.LikedLabel;
+    /// <summary>수록곡에 참여한 좋아하는 아티스트</summary>
+    public string? WithLiked => Rec.WithLiked;
+    public bool HasWithLiked => !string.IsNullOrEmpty(Rec.WithLiked);
     public bool HasLikedLabel => !string.IsNullOrEmpty(Rec.LikedLabel);
     public bool HasFavNear => !string.IsNullOrEmpty(Rec.FavNear);
     public bool IsAi => Rec.AiReason != null;
@@ -55,6 +58,9 @@ public sealed partial class ReleaseItem : ObservableObject
         : IsAi ? "AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보" : "내 라이브러리에 있는 아티스트";
     public System.Windows.Thickness BadgeMargin => HasFit ? new(8, 0, 0, 0) : new(0);
     public bool HasNear => Rec.NearTracks.Count > 0;
+
+    /// <summary>비슷한 내 곡 (내 파일로 바로 재생). VM이 라이브러리에서 파일 경로를 찾아 채운다.</summary>
+    public IReadOnlyList<NearTrackItem> NearItems { get; init; } = [];
     public string Near => string.Join("  /  ", Rec.NearTracks.Take(2).Select(Shorten));
     public string Because => SavedNote ?? (IsMine || Rec.BecauseOf.Count == 0 ? "" : $"{string.Join(", ", Rec.BecauseOf)}에서 출발");
 
@@ -64,6 +70,18 @@ public sealed partial class ReleaseItem : ObservableObject
     [ObservableProperty] private bool _isPlaying;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(SaveTip))] private bool _isSaved;
     public string SaveTip => IsSaved ? "저장함에서 빼기" : "저장함에 넣기 (나중에 디깅)";
+
+    /// <summary>앨범 하트: 좋아요 (취향 학습에 반영). 책갈피(저장함)는 위시리스트일 뿐 학습에는 쓰지 않는다.</summary>
+    public Action<ReleaseItem>? ToggleLikeAction { get; init; }
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(LikeTip))] private bool _isLiked;
+    public string LikeTip => IsLiked ? "좋아요 취소" : "좋아요 · 이 앨범과 비슷한 소리를 더 추천";
+
+    [RelayCommand]
+    private void ToggleLike() => ToggleLikeAction?.Invoke(this);
+
+    /// <summary>곡 하트: VM이 채운다 (곡 ID → 하트 여부, 하트 토글)</summary>
+    public Func<long, bool>? IsTrackLiked { get; init; }
+    public Action<TrackItem>? ToggleTrackLikeAction { get; init; }
 
     /// <summary>별로: 추천에서 숨기고 학습에 반영 (저장함 탭 아래에서 되돌릴 수 있다)</summary>
     public Action<ReleaseItem>? ToggleDislikeAction { get; init; }
@@ -97,7 +115,12 @@ public sealed partial class ReleaseItem : ObservableObject
             // 갓 나온 앨범은 곡마다 인기 점수가 같다 → 그때는 인기도를 표시하지 않는다
             int maxRank = tracks.Count > 1 && tracks.Max(t => t.Rank) > tracks.Min(t => t.Rank) ? tracks.Max(t => t.Rank) : 0;
             bool singleTop = tracks.Count(t => t.Rank == maxRank) == 1;
-            foreach (var t in tracks) Tracks.Add(new TrackItem(this, t, Artist, maxRank, singleTop, _play));
+            foreach (var t in tracks)
+                Tracks.Add(new TrackItem(this, t, Artist, maxRank, singleTop, _play)
+                {
+                    IsLiked = t.Id != 0 && IsTrackLiked?.Invoke(t.Id) == true,
+                    ToggleLikeAction = ToggleTrackLikeAction,
+                });
         }
         TracksLoadedAt = DateTime.Now;
         OnPropertyChanged(nameof(TracksButton));
@@ -139,6 +162,20 @@ public sealed record AiBadge(string Text)
     public System.Windows.Media.Brush Tint => AiColors.Background(Text);
 }
 
+/// <summary>카드의 "비슷한 내 곡" 하나: 내 라이브러리 파일을 바로 재생한다.</summary>
+public sealed partial class NearTrackItem(string label, string? path, Action<NearTrackItem> play) : ObservableObject
+{
+    public string Label { get; } = label;
+    public string? Path { get; } = path;
+    public bool CanPlay => Path != null;
+    public string Tip => Path != null ? $"내 파일로 듣기 · {Label}" : $"{Label} (내 라이브러리에서 파일을 못 찾았어요)";
+    [ObservableProperty] private bool _isPlaying;
+    public void SetPlaying(bool playing) => IsPlaying = playing;
+
+    [RelayCommand]
+    private void Play() => play(this);
+}
+
 /// <summary>카드 안 수록곡 목록의 한 줄.</summary>
 public sealed partial class TrackItem : ObservableObject
 {
@@ -159,6 +196,7 @@ public sealed partial class TrackItem : ObservableObject
         ArtistSuffix = t.Artist != null && !string.Equals(t.Artist, albumArtist, StringComparison.OrdinalIgnoreCase) ? $"· {t.Artist}" : "";
         DurationText = t.Duration > TimeSpan.Zero ? t.Duration.ToString(@"m\:ss") : "";
         _preview = t.Preview;
+        Id = t.Id;
         PlayCommand = new AsyncRelayCommand(() => play(release, this));
     }
 
@@ -167,6 +205,14 @@ public sealed partial class TrackItem : ObservableObject
     public string Title { get; }
     public string Artist { get; }
     public string ArtistSuffix { get; }
+    /// <summary>Deezer 곡 ID (곡 하트에 쓴다)</summary>
+    public long Id { get; }
+    public bool CanLike => Id != 0;
+    public Action<TrackItem>? ToggleLikeAction { get; init; }
+    [ObservableProperty] private bool _isLiked;
+
+    [RelayCommand]
+    private void ToggleLike() => ToggleLikeAction?.Invoke(this);
     public bool[] PopBars { get; }
     public bool HasPopularity { get; }
     public bool IsTop { get; }

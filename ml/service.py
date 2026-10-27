@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import re
 import os
 import sys
 import threading
@@ -182,12 +183,18 @@ class Service:
         r = self.deezer(f"/album/{album_id}")
         genres = (r.get("genres") or {}).get("data") or []
         if r:
-            self.album_info[album_id] = {"label": r.get("label"), "genre": genres[0]["name"] if genres else None}
+            self.album_info[album_id] = {"label": r.get("label"), "genre": genres[0]["name"] if genres else None,
+                                         "with": collaborators(r)}
         return [t["preview"] for t in (r.get("tracks") or {}).get("data", []) if t.get("preview")][:3]
 
     def preview_clips(self, album_id: str) -> list[np.ndarray]:
         clips: list[np.ndarray] = []
-        for url in self.album_detail(album_id):
+        if album_id.startswith("t"):  # 곡 하나 (하트를 누른 곡)
+            preview = self.deezer(f"/track/{album_id[1:]}").get("preview")
+            urls = [preview] if preview else []
+        else:
+            urls = self.album_detail(album_id)
+        for url in urls:
             try:
                 clips += decode_preview(self._http.get(url, timeout=20).content)
             except requests.RequestException:
@@ -201,7 +208,8 @@ class Service:
         done = 0
         with ThreadPoolExecutor(16) as pool:
             # 이미 소리를 아는 앨범도 레이블·장르가 없으면 채운다
-            missing_info = [str(a["id"]) for a in albums if str(a["id"]) in self.album_cache and str(a["id"]) not in self.album_info]
+            missing_info = [str(a["id"]) for a in albums if str(a["id"]) in self.album_cache and str(a["id"]) not in self.album_info
+                            and not str(a["id"]).startswith("t")]
             list(pool.map(self.album_detail, missing_info))
             for s in range(0, len(todo), 32):
                 batch = todo[s:s + 32]
@@ -235,7 +243,7 @@ class Service:
 
     # ---- 즐겨찾기 (저장함) --------------------------------------------------
     def favorites(self, args: dict, rid) -> dict:
-        """저장함 앨범 목록을 받는다: [{id, name}]. 소리를 모르는 앨범은 미리듣기로 분석한다."""
+        """좋아요 목록을 받는다: [{id, name}] — 앨범 하트는 앨범 id, 곡 하트는 "t곡id". 소리를 모르면 미리듣기로 분석한다."""
         items = args.get("albums") or []
         self.ensure_embedded(items, rid, "저장한 앨범 소리 분석 중")
         self.fav_names = {str(a["id"]): a.get("name", "") for a in items}
@@ -246,7 +254,7 @@ class Service:
             self.ensure_embedded(dislikes, rid, "별로 표시한 앨범 소리 분석 중")
         self.dis_keys = [str(a["id"]) for a in dislikes if str(a["id"]) in self.album_cache]
         self.dis_x = self.stack(self.dis_keys)
-        log(f"[service] 저장함 {len(self.fav_keys)}/{len(items)}장, 별로 {len(self.dis_keys)}/{len(dislikes)}장 반영")
+        log(f"[service] 좋아요 {len(self.fav_keys)}/{len(items)}개, 별로 {len(self.dis_keys)}/{len(dislikes)}장 반영")
         return {"count": len(self.fav_keys), "dislikes": len(self.dis_keys)}
 
     def stack(self, keys: list[str]) -> np.ndarray | None:
@@ -313,6 +321,22 @@ class Service:
         self.reload()
         return {"added": len(keys), "accepted": accepted,
                 "old_style_accuracy": old["style"]["cv_accuracy"], "new_style_accuracy": new["style"]["cv_accuracy"]}
+
+
+FEAT = re.compile(r"[\(\[](?:feat\.?|ft\.?|featuring|with)\s+([^\)\]]+)[\)\]]", re.IGNORECASE)
+
+
+def collaborators(album: dict) -> list[str]:
+    """수록곡에 참여한 다른 아티스트: 곡 아티스트가 앨범 아티스트와 다르거나, 제목의 (feat. X)."""
+    main = ((album.get("artist") or {}).get("name") or "").lower()
+    names: list[str] = []
+    for t in (album.get("tracks") or {}).get("data", []):
+        a = (t.get("artist") or {}).get("name") or ""
+        if a and a.lower() != main:
+            names.append(a)
+        for m in FEAT.findall(t.get("title") or ""):
+            names += [x.strip() for x in re.split(r",|&| and | x ", m) if x.strip()]
+    return list(dict.fromkeys(names))[:8]
 
 
 def decode_preview(data: bytes) -> list[np.ndarray]:

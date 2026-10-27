@@ -28,11 +28,15 @@ public partial class RecommendSettingsWindow : Window
     private readonly RecipeSong.Core.AppSettings _app;
     private readonly string? _mlDir;
 
-    public RecommendSettingsWindow(RecPrefs prefs, RecipeSong.Core.AppSettings app, string? mlDir)
+    private readonly RecipeSong.Core.BlockList _blocked;
+
+    public RecommendSettingsWindow(RecPrefs prefs, RecipeSong.Core.AppSettings app, string? mlDir, RecipeSong.Core.BlockList blocked)
     {
         InitializeComponent();
         _app = app;
         _mlDir = mlDir;
+        _blocked = blocked;
+        ShowBlocked();
         ShowStorage();
         Result = prefs;
         Build(AmountGrid, AmountHint, Amounts, prefs.Amount);
@@ -50,6 +54,23 @@ public partial class RecommendSettingsWindow : Window
             grid.Children.Add(rb);
         }
         hint.Text = options[Math.Clamp(selected, 0, options.Length - 1)].Hint;
+    }
+
+    // ---- 차단 목록: 칩을 누르면 해제 ----
+    private void ShowBlocked()
+    {
+        BlockedPanel.Children.Clear();
+        void Add(string kind, string name, Action unblock)
+        {
+            var b = new Button { Style = (Style)FindResource("Bare"), Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(0, 0, 6, 6),
+                ToolTip = "눌러서 차단 해제" };
+            b.Content = new TextBlock { Text = $"{kind} · {name}  ✕", FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("Text2") };
+            b.Click += (_, _) => { unblock(); ShowBlocked(); };
+            BlockedPanel.Children.Add(b);
+        }
+        foreach (var a in _blocked.Artists.ToList()) Add("아티스트", a, () => _blocked.UnblockArtist(a));
+        foreach (var l in _blocked.Labels.ToList()) Add("레이블", l, () => _blocked.UnblockLabel(l));
+        BlockedEmpty.Visibility = BlockedPanel.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ---- 저장 위치와 용량 ----

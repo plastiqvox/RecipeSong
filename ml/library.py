@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import plistlib
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -27,18 +28,23 @@ class Track:
     playlists: list[str] = field(default_factory=list)
     rating: int = 0          # 직접 매긴 별점 0~100 (별 하나 = 20). 앨범 별점에서 자동으로 채워진 값은 0
     disliked: bool = False
+    skip_count: int = 0
+    last_touched: datetime | None = None  # 마지막 재생과 추가 중 늦은 쪽
 
     @property
     def weight(self) -> float:
-        """취향 학습 가중치 0.1~1.0: 하트·별 4개 이상은 최대, 낮은 별점·'좋아하지 않음'은 낮게, 그 외는 재생 수."""
-        return track_weight(self.play_count, self.loved, self.rating, self.disliked)
+        """취향 학습 가중치 0.1~1.0: 하트·별 4개 이상은 최대, 낮은 별점·'좋아하지 않음'은 낮게, 그 외는 재생 수·스킵·최근성."""
+        return track_weight(self.play_count, self.loved, self.rating, self.disliked, self.skip_count, self.last_touched)
 
 
 PLAYS_FULL = 12  # 이만큼 들으면 재생 수만으로 최대 (라이브러리 상위 5% 수준)
 
 
-def track_weight(plays: int, loved: bool, rating: int, disliked: bool) -> float:
-    """.NET TasteProfile.TrackWeight 와 같은 식."""
+def track_weight(plays: int, loved: bool, rating: int, disliked: bool, skips: int = 0,
+                 last_touched: datetime | None = None, now: datetime | None = None) -> float:
+    """.NET TrackRecord.Weight 와 같은 식.
+    스킵: 넘긴 비율만큼 최대 절반까지 낮춘다 (2번 이상 넘겼을 때). 최근성: 반년이 지나면 3년에 걸쳐 0.7배까지.
+    하트·별 4개 이상은 언제 들었든 최대."""
     import math
     if disliked:
         return 0.1
@@ -49,7 +55,18 @@ def track_weight(plays: int, loved: bool, rating: int, disliked: bool) -> float:
         w = max(w, 0.8)
     elif 0 < rating <= 40:
         w = min(w, 0.4)
-    return round(w, 3)
+    if skips >= 2:
+        w *= 1 - 0.5 * skips / (plays + skips)
+    if last_touched is not None:
+        age = ((now or datetime.now(timezone.utc)) - last_touched).days
+        if age > 180:
+            w *= 1 - 0.3 * min(1.0, (age - 180) / (3 * 365))
+    return round(max(w, 0.1), 3)
+
+
+def _latest(*dates) -> datetime | None:
+    ds = [d if d.tzinfo else d.replace(tzinfo=timezone.utc) for d in dates if isinstance(d, datetime)]
+    return max(ds) if ds else None
 
 
 def location_to_path(url: str | None) -> Path | None:
@@ -82,6 +99,8 @@ def load(xml_path: str | Path, min_playlist_size: int = 15) -> tuple[dict[str, T
             path=location_to_path(t.get("Location")),
             rating=0 if t.get("Rating Computed") else int(t.get("Rating", 0)),
             disliked=bool(t.get("Disliked")),
+            skip_count=int(t.get("Skip Count", 0)),
+            last_touched=_latest(t.get("Play Date UTC"), t.get("Date Added")),
         )
         by_id[t["Track ID"]] = pid
 

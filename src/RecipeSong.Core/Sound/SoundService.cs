@@ -121,7 +121,9 @@ public sealed class SoundService : IAsyncDisposable
                 Str(a, "label"), Str(a, "genre"),
                 a.TryGetProperty("fav", out var fav) ? fav.GetDouble() : null,
                 Str(a, "fav_near"),
-                a.TryGetProperty("dis", out var dis) ? dis.GetDouble() : null);
+                a.TryGetProperty("dis", out var dis) ? dis.GetDouble() : null,
+                a.TryGetProperty("with", out var with) && with.ValueKind == JsonValueKind.Array
+                    ? [.. with.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null);
         }
         return map;
     }
@@ -130,12 +132,13 @@ public sealed class SoundService : IAsyncDisposable
     /// 저장함 앨범을 알려 준다. 이후 신보 점수에 "저장한 앨범과 닮은 정도"(fav)가 붙는다.
     /// 소리를 모르는 저장 앨범은 서비스가 미리듣기로 분석한다.
     /// </summary>
-    public async Task<int> SetFavoritesAsync(IEnumerable<(long Id, string Name)> albums, CancellationToken ct = default,
+    /// <param name="likes">앨범 하트는 앨범 ID, 곡 하트는 "t곡ID"</param>
+    public async Task<int> SetFavoritesAsync(IEnumerable<(string Key, string Name)> likes, CancellationToken ct = default,
         IEnumerable<long>? dislikes = null)
     {
         var args = new
         {
-            albums = albums.Select(a => new { id = a.Id, name = a.Name }).ToList(),
+            albums = likes.Select(a => new { id = a.Key, name = a.Name }).ToList(),
             dislikes = (dislikes ?? []).Select(id => new { id }).ToList(),
         };
         var r = await CallAsync("favorites", args, null, ct);

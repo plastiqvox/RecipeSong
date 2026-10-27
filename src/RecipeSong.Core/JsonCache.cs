@@ -65,6 +65,10 @@ public sealed class JsonCache<T>
         return false;
     }
 
+    /// <summary>만료되지 않은 (키, 값) 전부</summary>
+    public IEnumerable<KeyValuePair<string, T>> FreshValuesWithKeys() =>
+        _items.Where(kv => DateTime.UtcNow - kv.Value.At < _ttl).Select(kv => new KeyValuePair<string, T>(kv.Key, kv.Value.Value));
+
     /// <summary>만료되지 않은 값 전부 (달력 표시처럼 전체를 훑을 때)</summary>
     public IEnumerable<T> FreshValues => _items.Values.Where(e => DateTime.UtcNow - e.At < _ttl).Select(e => e.Value);
 

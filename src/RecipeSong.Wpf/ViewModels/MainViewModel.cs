@@ -46,7 +46,81 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly JsonCache<RecPrefs> _recPrefsStore = new("rec-prefs", TimeSpan.FromDays(36500));
     private RecPrefs _recPrefs = new();
     private RecommendOptions RecOptions => RecommendOptions.Create(_recPrefs.Amount, _recPrefs.Adventure, _recPrefs.ExcludeKnown)
-        with { DislikedArtists = DislikedArtists, LabelAffinity = _labelAffinity };
+        with
+        {
+            DislikedArtists = DislikedArtists, LabelAffinity = _labelAffinity,
+            BlockedArtists = _blocked.ArtistKeys, BlockedLabels = _blocked.LabelKeys,
+            LikedArtists = _likedArtists, TypeBonus = _typeBonus,
+        };
+
+    // ---- 좋아하는 아티스트 (피처링·참여 가산점) · 형식 취향 ----
+    private HashSet<string> _likedArtists = [];
+    private Dictionary<string, double> _typeBonus = [];
+
+    /// <summary>
+    /// 라이브러리에서: 곡 가중치 합 상위 300명 + 레시피 플리 뮤지션 = 좋아하는 아티스트.
+    /// 형식 취향: 앨범(7곡 이상)·EP(4~6곡)·싱글(1~3곡)로 묶어 가중치 몫을 보고, 많이 듣는 형식에 최대 ±0.3.
+    /// </summary>
+    private void BuildTasteExtras(IReadOnlyList<TrackRecord> tracks)
+    {
+        _likedArtists = [.. tracks.GroupBy(t => t.GroupArtist).OrderByDescending(g => g.Sum(t => t.Weight)).Take(300)
+            .Select(g => ListeningAnalyzer.NormalizeArtist(g.Key))];
+        if (_mine != null) _likedArtists.UnionWith(_mine.Select(m => ListeningAnalyzer.NormalizeArtist(m.Artist)));
+        var share = tracks.Where(t => t.Album.Length > 0).GroupBy(t => (t.GroupArtist, t.Album))
+            .Select(g => (Type: g.Count() >= 7 ? "album" : g.Count() >= 4 ? "ep" : "single", W: g.Sum(t => t.Weight)))
+            .GroupBy(x => x.Type).ToDictionary(g => g.Key, g => g.Sum(x => x.W));
+        double total = share.Values.Sum();
+        if (total <= 0) return;
+        _typeBonus = new[] { "album", "ep", "single" }
+            .ToDictionary(t => t, t => Math.Round(Math.Clamp(0.9 * (share.GetValueOrDefault(t) / total - 1.0 / 3), -0.3, 0.3), 3));
+    }
+
+    // ---- 앱에서 들은 행동: 끝까지 들은 앨범은 은근한 좋아요, 몇 초 만에 넘긴 앨범은 은근한 별로 ----
+    private readonly JsonCache<ListenStat> _listens = new("listen-log", TimeSpan.FromDays(36500));
+    public sealed record ListenStat(int Completed, int Skipped, string Name);
+
+    private void OnListened(ReleaseItem item, double seconds, bool completed)
+    {
+        var key = item.Rec.DeezerAlbumId.ToString();
+        var s = _listens.TryGet(key, out var old) ? old : new ListenStat(0, 0, $"{item.Artist} – {item.Album}");
+        if (completed) s = s with { Completed = s.Completed + 1 };
+        else if (seconds < 8) s = s with { Skipped = s.Skipped + 1 };
+        else return;  // 중간까지 들은 건 신호로 보지 않는다
+        _listens.Set(key, s);
+        _listens.Save();
+        _ = SyncFavoritesAsync();
+    }
+
+    /// <summary>은근한 좋아요: 미리듣기를 끝까지 2곡 이상, 넘긴 것보다 훨씬 많이 / 은근한 별로: 2번 이상 바로 넘기고 끝까지 들은 적 없음</summary>
+    private IEnumerable<(long Id, string Name)> ImplicitLikes() =>
+        _listens.FreshValuesWithKeys().Where(x => x.Value.Completed >= 2 && x.Value.Completed >= 2 * x.Value.Skipped)
+            .Select(x => (long.Parse(x.Key), x.Value.Name));
+
+    private IEnumerable<long> ImplicitSkips() =>
+        _listens.FreshValuesWithKeys().Where(x => x.Value.Skipped >= 2 && x.Value.Completed == 0).Select(x => long.Parse(x.Key));
+
+    // ---- 차단: 카드 우클릭으로 아티스트·레이블 전체를 뺀다 (추천 설정에서 해제) ----
+    private readonly BlockList _blocked = new();
+    public BlockList Blocked => _blocked;
+
+    [RelayCommand]
+    private void BlockArtist(ReleaseItem? item)
+    {
+        if (item == null) return;
+        _blocked.BlockArtist(item.Artist);
+        ApplyFilters();
+    }
+
+    [RelayCommand]
+    private void BlockLabel(ReleaseItem? item)
+    {
+        if (item?.Rec.Label is not { Length: > 0 } label) return;
+        _blocked.BlockLabel(label);
+        ApplyFilters();
+    }
+
+    /// <summary>추천 설정 창에서 해제한 뒤 화면을 다시 거른다</summary>
+    public void RefreshBlocked() => ApplyFilters();
 
     /// <summary>좋아하는 레이블 (많이 듣고 좋아한 앨범들의 레이블). 시작할 때 캐시로 바로, 빠진 건 뒤에서 Deezer로 채운다.</summary>
     private IReadOnlyDictionary<string, double> _labelAffinity = new Dictionary<string, double>();
@@ -68,9 +142,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private async Task OpenRecommendSettingsAsync()
     {
-        var win = new RecommendSettingsWindow(_recPrefs, _settings, _sound?.MlDirectory ?? _settings.MlDirectory ?? SoundService.FindMlDirectory())
+        var win = new RecommendSettingsWindow(_recPrefs, _settings, _sound?.MlDirectory ?? _settings.MlDirectory ?? SoundService.FindMlDirectory(), _blocked)
             { Owner = Application.Current.MainWindow };
         if (win.ShowDialog() != true || win.Result == _recPrefs) return;
+        RefreshBlocked();  // 창에서 차단을 해제했을 수 있다
         bool poolChanged = win.Result.Amount != _recPrefs.Amount;
         _recPrefs = win.Result;
         _recPrefsStore.Set("prefs", _recPrefs);
@@ -135,6 +210,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>고른 형식 (비어 있으면 전체). 기본: 앨범 + EP</summary>
     private readonly HashSet<string> _types = ["album", "ep"];
     private readonly SavedReleases _saved = new();
+    /// <summary>좋아요: 앨범 하트(liked-albums.json)와 곡 하트(liked-tracks.json). 취향 학습에 쓴다.</summary>
+    private readonly SavedReleases _likedAlbums = new(Path.Combine(JsonCache<object>.Dir, "liked-albums.json"));
+    private readonly LikedTracks _likedTracks = new();
     /// <summary>별로 표시한 앨범: 추천에서 숨기고, 닮은 소리는 점수를 깎고, 그 아티스트는 추가 제안에서 뺀다</summary>
     private readonly SavedReleases _disliked = new(Path.Combine(JsonCache<object>.Dir, "disliked.json"));
 
@@ -170,6 +248,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _aiLedger.Changed += () => Application.Current?.Dispatcher.BeginInvoke(RefreshAiStatus);
         _ = CheckKeysAsync();
         Player.OpenNowRequested = () => _ = GoToNowPlayingAsync();
+        Player.Listened += OnListened;
     }
 
     /// <summary>오늘 포함 가장 최근 금요일</summary>
@@ -664,9 +743,40 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
         {
             SavedNote = savedNote,
+            NearItems = [.. r.NearTracks.Take(3).Select(n => new NearTrackItem(n, FindLocalFile(n), PlayNear))],
             ToggleDislikeAction = ToggleDislike,
             IsDisliked = _disliked.Contains(r.DeezerAlbumId),
+            ToggleLikeAction = ToggleLike,
+            IsLiked = _likedAlbums.Contains(r.DeezerAlbumId),
+            IsTrackLiked = _likedTracks.Contains,
+            ToggleTrackLikeAction = ToggleTrackLike,
         };
+
+    /// <summary>앨범 하트 ↔ 해제 (별로였으면 별로는 푼다)</summary>
+    private void ToggleLike(ReleaseItem item)
+    {
+        var id = item.Rec.DeezerAlbumId;
+        bool like = !_likedAlbums.Contains(id);
+        if (like)
+        {
+            _likedAlbums.Add(item.Rec);
+            if (_disliked.Contains(id)) _disliked.Remove(id);
+        }
+        else _likedAlbums.Remove(id);
+        foreach (var i in _all.Where(i => i.Rec.DeezerAlbumId == id)) { i.IsLiked = like; if (like) i.IsDisliked = false; }
+        item.IsLiked = like;
+        if (like) item.IsDisliked = false;
+        _ = SyncFavoritesAsync();
+    }
+
+    /// <summary>곡 하트 ↔ 해제</summary>
+    private void ToggleTrackLike(TrackItem track)
+    {
+        if (track.Id == 0) return;
+        var rec = track.Release.Rec;
+        track.IsLiked = _likedTracks.Toggle(new LikedTrack(track.Id, rec.DeezerAlbumId, track.Artist, track.Title, DateTime.Now));
+        _ = SyncFavoritesAsync();
+    }
 
     /// <summary>별로 ↔ 되돌리기. 별로로 하면 저장함에서는 뺀다 (둘 다일 수는 없으니)</summary>
     private void ToggleDislike(ReleaseItem item)
@@ -676,12 +786,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (dislike)
         {
             _disliked.Add(item.Rec);
-            if (_saved.Contains(id)) _saved.Remove(id);
+            if (_likedAlbums.Contains(id)) _likedAlbums.Remove(id);
         }
         else _disliked.Remove(id);
-        foreach (var i in _all.Where(i => i.Rec.DeezerAlbumId == id)) { i.IsDisliked = dislike; if (dislike) i.IsSaved = false; }
+        foreach (var i in _all.Where(i => i.Rec.DeezerAlbumId == id)) { i.IsDisliked = dislike; if (dislike) i.IsLiked = false; }
         item.IsDisliked = dislike;
-        if (dislike) item.IsSaved = false;
+        if (dislike) item.IsLiked = false;
         ApplyFilters();   // 추천에서 바로 숨긴다
         RebuildSaved();
         _ = SyncFavoritesAsync();
@@ -708,15 +818,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_sound == null) return;
         try
         {
-            var favs = _saved.All.Select(s => (s.Rec.DeezerAlbumId, $"{s.Rec.Artist} – {s.Rec.Album}")).ToList();
-            await _sound.SetFavoritesAsync(favs, _life.Token, _disliked.All.Select(d => d.Rec.DeezerAlbumId));
+            // 학습: 앨범 하트 + 곡 하트 (저장함은 위시리스트라 쓰지 않는다)
+            var favs = _likedAlbums.All.Select(s => (s.Rec.DeezerAlbumId.ToString(), $"{s.Rec.Artist} – {s.Rec.Album}"))
+                .Concat(_likedTracks.All.Select(t => ($"t{t.TrackId}", $"{t.Artist} – {t.Title}")))
+                .Concat(ImplicitLikes().Where(x => !_disliked.Contains(x.Id)).Select(x => (x.Id.ToString(), x.Name)))
+                .DistinctBy(x => x.Item1).ToList();
+            await _sound.SetFavoritesAsync(favs, _life.Token,
+                _disliked.All.Select(d => d.Rec.DeezerAlbumId).Concat(ImplicitSkips().Where(id => !_likedAlbums.Contains(id))).Distinct());
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 아직 안 떴으면 시작할 때 다시 보낸다
     }
 
     /// <summary>저장함이 바뀌면 추천 결과·후보 풀 저장 키가 바뀐다 (저장 앨범이 점수와 시드에 들어가니까)</summary>
-    private string FavoritesVersion => _saved.All.Count == 0 ? "0"
-        : $"{_saved.All.Count}-{_saved.All.Sum(s => s.Rec.DeezerAlbumId % 100_000):x}";
+    private string FavoritesVersion =>
+        $"{_likedAlbums.All.Count}-{_likedAlbums.All.Sum(s => s.Rec.DeezerAlbumId % 100_000):x}-{_likedTracks.All.Count}";
 
     private void RebuildSaved()
     {
@@ -780,7 +895,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         bool keepUnknown = _resultsRegion == _region;
         var dislikedArtists = DislikedArtists;
         // 별로 표시한 앨범은 숨기고, 그 아티스트의 추가 제안도 숨긴다 (내 플리 뮤지션 신보는 그대로)
-        return _all.Where(i => !i.IsDisliked
+        return _all.Where(i => !_blocked.IsBlocked(i.Rec.Artist, i.Rec.Label))
+            .Where(i => !i.IsDisliked
             && !(i.Rec.FromPlaylist == null && dislikedArtists.Contains(ListeningAnalyzer.NormalizeArtist(i.Rec.Artist))))
             .Where(i => (_types.Count == 0 || _types.Contains(i.Rec.RecordType))
             && (region == null || i.Rec.Region == region || keepUnknown && i.Rec.Region == Region.Unknown));
@@ -847,9 +963,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         BusyText = "라이브러리 읽는 중…";
         var tracks = await _library.GetTracksAsync(_life.Token);
         _owned = new OwnedLibrary(tracks);
+        BuildFileIndex(tracks);
         WatchLibrary();
         _ = StartSoundAsync();
         _ = BuildLabelAffinityAsync(tracks);
+        BuildTasteExtras(tracks);
         await LoadAsync();
     }
 
@@ -888,12 +1006,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var tracks = await _library.GetTracksAsync(ct);
             var seeds = TasteProfile.FromCrates(playlists, _crates, focusRegion: focus);
             // 저장함 아티스트도 출발점으로 (플레이리스트 시드와 겹치면 플레이리스트 쪽을 둔다)
-            var savedSeeds = _saved.All.Select(s => s.Rec.Artist).Distinct(StringComparer.OrdinalIgnoreCase)
+            // 좋아요(앨범·곡 하트)한 아티스트도 출발점으로
+            var savedSeeds = _likedAlbums.All.Select(s => s.Rec.Artist).Concat(_likedTracks.All.Select(t => t.Artist))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Where(a => seeds.All(x => !string.Equals(x.Artist, a, StringComparison.OrdinalIgnoreCase)))
-                .Select(a => new TasteArtist(a, 0.9, 0, "저장함"));
+                .Select(a => new TasteArtist(a, 0.9, 0, "좋아요"));
             seeds = [.. seeds, .. savedSeeds];
             if (seeds.Count == 0) seeds = TasteProfile.Build(tracks);
             _mine ??= TasteProfile.PlaylistArtists(playlists, tracks, _crates);
+            _likedArtists.UnionWith(_mine.Select(m => ListeningAnalyzer.NormalizeArtist(m.Artist)));  // 피처링 가산점용
             p = await _recommender.BuildPoolAsync(seeds, _mine, RecOptions, progress, ct);
             _pools[key] = p;
             _poolFavVersion[key] = FavoritesVersion;
@@ -1251,6 +1372,42 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             item.TracksStatus = "수록곡을 불러오지 못했어요";
             return !first;
         }
+    }
+
+    // ---- 비슷한 내 곡: "아티스트 – 곡명" → 내 라이브러리 파일 ----
+    private Dictionary<string, string>? _fileByTitle;
+
+    private static string FileKey(string artist, string title) =>
+        ListeningAnalyzer.NormalizeArtist(artist) + "|" + ListeningAnalyzer.NormalizeArtist(title);
+
+    private void BuildFileIndex(IEnumerable<TrackRecord> tracks)
+    {
+        var map = new Dictionary<string, string>();
+        foreach (var t in tracks)
+        {
+            if (t.Location is not { } path) continue;
+            map.TryAdd(FileKey(t.GroupArtist, t.Title), path);
+            map.TryAdd(FileKey(t.Artist, t.Title), path);
+        }
+        _fileByTitle = map;
+    }
+
+    private string? FindLocalFile(string near)
+    {
+        if (_fileByTitle == null) return null;
+        var dash = near.IndexOf(" – ", StringComparison.Ordinal);
+        if (dash < 0) return null;
+        var path = _fileByTitle.GetValueOrDefault(FileKey(near[..dash], near[(dash + 3)..]));
+        return path != null && File.Exists(path) ? path : null;
+    }
+
+    private void PlayNear(NearTrackItem item)
+    {
+        if (item.Path is not { } path) return;
+        if (Player.IsCurrent(item.SetPlaying)) { Player.Toggle(); return; }
+        var dash = item.Label.IndexOf(" – ", StringComparison.Ordinal);
+        var (artist, title) = dash > 0 ? (item.Label[..dash], item.Label[(dash + 3)..]) : ("", item.Label);
+        Player.Play(new Uri(path), $"{title} — {artist}", "비슷한 내 곡 · 내 파일 (전곡)", null, item.SetPlaying);
     }
 
     private Task PlayLibraryAsync(LibraryAlbumItem item)

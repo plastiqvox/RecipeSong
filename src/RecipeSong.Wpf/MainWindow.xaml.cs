@@ -46,6 +46,13 @@ public partial class MainWindow : Window
         return null;
     }
 
+    // ---- 카드 우클릭: 차단 (ContextMenu는 카드의 DataContext를 물려받는다) ----
+    private void BlockArtist_Click(object sender, RoutedEventArgs e) =>
+        _vm.BlockArtistCommand.Execute((sender as FrameworkElement)?.DataContext as ReleaseItem);
+
+    private void BlockLabel_Click(object sender, RoutedEventArgs e) =>
+        _vm.BlockLabelCommand.Execute((sender as FrameworkElement)?.DataContext as ReleaseItem);
+
     // ---- 크레이트 칩 드래그로 순서 바꾸기 ----
 
     private const string CrateFormat = "Crate.CrateKey";

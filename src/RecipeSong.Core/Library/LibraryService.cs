@@ -78,6 +78,7 @@ public sealed class LibraryService(AppSettings settings)
                 Loved = g.Any(t => t.Loved),
                 Rating = g.Max(t => t.Rating),
                 Disliked = g.All(t => t.Disliked),
+                SkipCount = g.Sum(t => t.SkipCount),
                 LastPlayed = g.Max(t => t.LastPlayed),
                 DateAdded = g.Min(t => t.DateAdded),
                 Location = g.Select(t => t.Location).FirstOrDefault(File.Exists) ?? g.First().Location

@@ -20,10 +20,13 @@ public sealed record TrackRecord
     public int Rating { get; init; }
     /// <summary>iTunes에서 '좋아하지 않음'</summary>
     public bool Disliked { get; init; }
+    /// <summary>iTunes가 센 건너뛴 횟수</summary>
+    public int SkipCount { get; init; }
 
     /// <summary>
     /// 취향 가중치 0.1~1.0 (ml/library.py track_weight 와 같은 식):
     /// 하트·별 4개 이상은 최대, 별 3개는 0.8 이상, 별 1~2개는 0.4 이하, '좋아하지 않음'은 0.1, 그 외는 재생 수 (12회 이상이면 최대).
+    /// 그 외 곡은 스킵(넘긴 비율만큼 최대 절반)과 최근성(반년 지나면 3년에 걸쳐 0.7배까지)으로 낮춘다.
     /// </summary>
     public double Weight
     {
@@ -34,7 +37,11 @@ public sealed record TrackRecord
             var w = 0.35 + 0.65 * Math.Min(1.0, Math.Log(1 + PlayCount) / Math.Log(1 + 12));
             if (Rating >= 60) w = Math.Max(w, 0.8);
             else if (Rating is > 0 and <= 40) w = Math.Min(w, 0.4);
-            return Math.Round(w, 3);
+            if (SkipCount >= 2) w *= 1 - 0.5 * SkipCount / (double)(PlayCount + SkipCount);
+            var touched = new[] { LastPlayed, DateAdded }.Max();
+            if (touched is { } t && (DateTime.UtcNow - t.ToUniversalTime()).TotalDays is var age && age > 180)
+                w *= 1 - 0.3 * Math.Min(1.0, (age - 180) / (3 * 365));
+            return Math.Round(Math.Max(w, 0.1), 3);
         }
     }
     public DateTime? DateAdded { get; init; }
@@ -100,7 +107,7 @@ public sealed record ReleaseRecommendation(
     string? Crate, double? CrateFit, double? Taste, IReadOnlyList<string> NearTracks,
     IReadOnlyList<string> BecauseOf, bool IsKnownArtist, double Score,
     string? FromPlaylist = null, string? AiReason = null, IReadOnlyList<string>? AiBy = null,
-    string? FavNear = null, string? LikedLabel = null);
+    string? FavNear = null, string? LikedLabel = null, string? WithLiked = null, int Fans = 0);
 
 /// <summary>
 /// AI 커넥터가 웹에서 찾은 발매작 (Deezer 확인 전). Region은 crates.json 이름 (일본/한국/해외/동남아).
@@ -121,7 +128,7 @@ public sealed record RecommendationResult(
 public sealed record AlbumSound(
     IReadOnlyDictionary<string, double>? Style, IReadOnlyDictionary<string, double>? Region,
     double? Taste, IReadOnlyList<string> Near, string? Label, string? Genre,
-    double? Fav = null, string? FavNear = null, double? Dis = null)
+    double? Fav = null, string? FavNear = null, double? Dis = null, IReadOnlyList<string>? With = null)
 {
     /// <summary>Fav: 저장함 앨범과 닮은 정도, FavNear: 가장 닮은 저장 앨범 ("아티스트 – 앨범")</summary>
     public bool Heard => Style != null;
@@ -136,4 +143,4 @@ public sealed record SoundUpdateResult(int Added, bool Accepted, double OldStyle
 public sealed record AlbumArt(string? ArtworkUrl, long? DeezerAlbumId = null);
 
 /// <summary>앨범 수록곡 한 곡 (Deezer). Preview는 30초 미리듣기 URL, Rank는 Deezer 인기 점수 (0~1,000,000).</summary>
-public sealed record AlbumTrack(int Number, string Title, string? Artist, TimeSpan Duration, string? Preview, int Rank = 0);
+public sealed record AlbumTrack(int Number, string Title, string? Artist, TimeSpan Duration, string? Preview, int Rank = 0, long Id = 0);

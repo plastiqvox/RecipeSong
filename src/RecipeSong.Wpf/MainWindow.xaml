@@ -12,9 +12,17 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
+            <!-- 곡 하트: 학습에 반영 -->
+            <Button Grid.Column="1" Style="{StaticResource Bare}" BorderThickness="0" Padding="5,4" VerticalAlignment="Center"
+                    Command="{Binding ToggleLikeCommand}" ToolTip="이 곡 좋아요 (비슷한 소리를 더 추천)" Visibility="{Binding CanLike, Converter={StaticResource BoolVis}}"
+                    AutomationProperties.Name="{Binding Title, StringFormat=곡 좋아요: {0}}">
+                <Path x:Name="heart" Data="{StaticResource HeartIcon}" Width="12" Height="11" Stretch="Uniform"
+                      Stroke="{StaticResource Line3}" StrokeThickness="1.4" Fill="Transparent"/>
+            </Button>
             <!-- YouTube: 미리듣기가 없는 곡도 누를 수 있게 줄 버튼 바깥에 둔다 -->
-            <Button Grid.Column="1" Style="{StaticResource Bare}" BorderThickness="0" Padding="6,4" VerticalAlignment="Center"
+            <Button Grid.Column="2" Style="{StaticResource Bare}" BorderThickness="0" Padding="6,4" VerticalAlignment="Center"
                     Command="{Binding OpenYouTubeCommand}" ToolTip="YouTube에서 이 곡 찾기 (전곡)"
                     AutomationProperties.Name="{Binding Title, StringFormat=YouTube 곡: {0}}">
                 <Path x:Name="yt" Data="{StaticResource YouTubeIcon}" Fill="{StaticResource Line3}" Width="14" Height="10" Stretch="Uniform"/>
@@ -83,6 +91,11 @@
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsMouseOver, ElementName=line}" Value="True">
                     <Setter TargetName="yt" Property="Fill" Value="#FF3D3D"/>
+                    <Setter TargetName="heart" Property="Stroke" Value="{StaticResource Text2}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsLiked}" Value="True">
+                    <Setter TargetName="heart" Property="Fill" Value="#F0607A"/>
+                    <Setter TargetName="heart" Property="Stroke" Value="#F0607A"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsMouseOver, ElementName=row}" Value="True">
                     <Setter TargetName="icon" Property="Data" Value="{StaticResource PlayIcon}"/>
@@ -108,6 +121,15 @@
         <DataTemplate x:Key="ReleaseCard" DataType="{x:Type vm:ReleaseItem}">
             <Border Width="400" Margin="0,0,16,16" Padding="14" CornerRadius="14" Background="{StaticResource Surface}"
                     BorderBrush="{StaticResource Line}" BorderThickness="1">
+                <!-- 우클릭: 차단 (아티스트·레이블 전체를 추천에서 뺀다) -->
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{Binding Artist}" HeaderStringFormat="이 아티스트 차단 · {0}"
+                                  Click="BlockArtist_Click"/>
+                        <MenuItem Header="{Binding Rec.Label}" HeaderStringFormat="이 레이블 차단 · {0}"
+                                  Click="BlockLabel_Click"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="120"/>
@@ -182,6 +204,13 @@
                         <TextBlock Margin="0,6,0,0" FontSize="12" Text="{Binding AiReason}" Foreground="{StaticResource AccentText}" TextWrapping="Wrap"
                                    MaxHeight="34" TextTrimming="CharacterEllipsis" ToolTip="{Binding AiReason}"
                                    Visibility="{Binding IsAi, Converter={StaticResource BoolVis}}"/>
+                        <!-- 수록곡에 좋아하는 아티스트가 참여 -->
+                        <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis"
+                                   ToolTip="수록곡에 내가 좋아하는 아티스트가 참여했어요 (피처링 등)"
+                                   Visibility="{Binding HasWithLiked, Converter={StaticResource BoolVis}}">
+                            <Run Text="좋아하는 아티스트 참여" Foreground="{StaticResource AccentText}"/>
+                            <Run Text="{Binding WithLiked, Mode=OneWay}" Foreground="{StaticResource Text2}"/>
+                        </TextBlock>
                         <!-- 좋아하는 레이블 (많이 듣고 좋아한 앨범들의 레이블) -->
                         <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis"
                                    ToolTip="많이 듣고 좋아한 앨범들이 나온 레이블이에요"
@@ -192,20 +221,65 @@
                         <!-- 즐겨찾기 학습: 저장한 앨범과 특히 닮은 신보 -->
                         <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding FavNear}"
                                    Visibility="{Binding HasFavNear, Converter={StaticResource BoolVis}}">
-                            <Run Text="저장한 앨범과 닮음" Foreground="{StaticResource AccentText}"/>
+                            <Run Text="좋아요와 닮음" Foreground="{StaticResource AccentText}"/>
                             <Run Text="{Binding FavNear, Mode=OneWay}" Foreground="{StaticResource Text2}"/>
                         </TextBlock>
-                        <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis" Visibility="{Binding HasNear, Converter={StaticResource BoolVis}}"
-                                   ToolTip="{Binding Near}">
-                            <Run Text="비슷한 내 곡" Foreground="{StaticResource Muted}"/>
-                            <Run Text="{Binding Near, Mode=OneWay}" Foreground="{StaticResource Text2}"/>
-                        </TextBlock>
+                        <!-- 비슷한 내 곡: 누르면 내 파일로 바로 재생 -->
+                        <StackPanel Margin="0,6,0,0" Visibility="{Binding HasNear, Converter={StaticResource BoolVis}}">
+                            <TextBlock Text="비슷한 내 곡" FontSize="11" Foreground="{StaticResource Muted}"/>
+                            <ItemsControl ItemsSource="{Binding NearItems}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Command="{Binding PlayCommand}" IsEnabled="{Binding CanPlay}" ToolTip="{Binding Tip}" Cursor="Hand"
+                                                HorizontalContentAlignment="Left" AutomationProperties.Name="{Binding Label, StringFormat=내 파일 듣기: {0}}">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="b" Background="Transparent" CornerRadius="4" Padding="2,1">
+                                                        <ContentPresenter/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="b" Property="Background" Value="{StaticResource Hover}"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                            <DockPanel>
+                                                <Path x:Name="ic" DockPanel.Dock="Left" Data="{StaticResource PlayIcon}" Fill="{StaticResource Muted}" Width="8" Height="8"
+                                                      Stretch="Uniform" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="tx" Text="{Binding Label}" FontSize="12" Foreground="{StaticResource Text2}" TextTrimming="CharacterEllipsis"/>
+                                            </DockPanel>
+                                        </Button>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding CanPlay}" Value="True">
+                                                <Setter TargetName="ic" Property="Fill" Value="{StaticResource Text2}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding CanPlay}" Value="False">
+                                                <Setter TargetName="tx" Property="Foreground" Value="{StaticResource Muted}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                <Setter TargetName="ic" Property="Data" Value="{StaticResource PauseIcon}"/>
+                                                <Setter TargetName="ic" Property="Fill" Value="{StaticResource Accent}"/>
+                                                <Setter TargetName="tx" Property="Foreground" Value="{StaticResource Accent}"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Style="{StaticResource Bare}" Command="{Binding ToggleSaveCommand}"
                                     Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding SaveTip}"
                                     AutomationProperties.Name="{Binding Album, StringFormat=저장: {0}}">
                                 <Path x:Name="mark" Data="{StaticResource BookmarkIcon}" Width="11" Height="13" Stretch="Uniform"
                                       Stroke="{StaticResource Text2}" StrokeThickness="1.6" Fill="Transparent"/>
+                            </Button>
+                            <!-- 좋아요(앨범 하트): 학습에 반영 -->
+                            <Button Style="{StaticResource Bare}" Command="{Binding ToggleLikeCommand}"
+                                    Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding LikeTip}"
+                                    AutomationProperties.Name="{Binding Album, StringFormat=좋아요: {0}}">
+                                <Path x:Name="like" Data="{StaticResource HeartIcon}" Width="13" Height="12" Stretch="Uniform"
+                                      Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
                             </Button>
                             <!-- 별로: 숨기고 학습에 반영 -->
                             <Button Style="{StaticResource Bare}" Command="{Binding ToggleDislikeCommand}"
@@ -245,6 +319,10 @@
                 <DataTrigger Binding="{Binding IsSaved}" Value="True">
                     <Setter TargetName="mark" Property="Fill" Value="{StaticResource Accent}"/>
                     <Setter TargetName="mark" Property="Stroke" Value="{StaticResource Accent}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsLiked}" Value="True">
+                    <Setter TargetName="like" Property="Fill" Value="#F0607A"/>
+                    <Setter TargetName="like" Property="Stroke" Value="#F0607A"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsDisliked}" Value="True">
                     <Setter TargetName="dislike" Property="Fill" Value="#E06A6A"/>

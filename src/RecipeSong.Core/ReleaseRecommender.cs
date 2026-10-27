@@ -20,6 +20,18 @@ public sealed record RecommendOptions
     public double FavoriteWeight { get; init; } = 1.0;
     /// <summary>점수에서 "별로 표시한 앨범과 닮은 정도"를 빼는 비중</summary>
     public double DislikeWeight { get; init; } = 1.0;
+    /// <summary>좋아하는 아티스트 (정규화 이름): 수록곡에 참여했으면 가산점 (피처링·참여 연결)</summary>
+    public IReadOnlySet<string> LikedArtists { get; init; } = new HashSet<string>();
+    public double WithLikedWeight { get; init; } = 0.6;
+    /// <summary>형식 취향: album/ep/single → 가산점 (내 라이브러리에서 그 형식을 얼마나 듣는지)</summary>
+    public IReadOnlyDictionary<string, double> TypeBonus { get; init; } = new Dictionary<string, double>();
+    /// <summary>작은 아티스트 우대 (Deezer 팬 수) 비중. 디깅 앱이라 기본으로 켠다.</summary>
+    public double SmallArtistWeight { get; init; } = 1.0;
+
+    /// <summary>차단한 아티스트(정규화 이름)·레이블(LabelAffinity 키): 어디서도 추천하지 않는다</summary>
+    public IReadOnlySet<string> BlockedArtists { get; init; } = new HashSet<string>();
+    public IReadOnlySet<string> BlockedLabels { get; init; } = new HashSet<string>();
+
     /// <summary>좋아하는 레이블 (LabelAffinity.Normalize 이름 → 0~1). 같은 레이블 신보에 가산점</summary>
     public IReadOnlyDictionary<string, double> LabelAffinity { get; init; } = new Dictionary<string, double>();
     public double LabelWeight { get; init; } = 1.0;
@@ -58,7 +70,7 @@ public sealed record CandidatePool(IReadOnlyList<PoolArtist> Artists, DateTime B
 
 /// <param name="Mine">플레이리스트 뮤지션이면 그 정보 (신보를 항상 보여준다)</param>
 public sealed record PoolArtist(long Id, string Name, double Score, IReadOnlyList<string> Because, IReadOnlyList<DzAlbum> Albums,
-    PlaylistArtist? Mine = null);
+    PlaylistArtist? Mine = null, int Fans = 0);
 
 /// <summary>
 /// 발매일 기준 추천: 선택한 기간(달력의 주/월/연)에 발매된 앨범·EP·싱글 중 내 크레이트 취향에 맞는 것.
@@ -76,7 +88,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     private readonly JsonCache<List<DzAlbum>> _discography = new("deezer-discography", TimeSpan.FromDays(3));
     private readonly JsonCache<AlbumInfo> _albumInfo = new("deezer-album-info", TimeSpan.FromDays(365));
 
-    private sealed record AlbumInfo(string? Label, string? Genre);
+    private sealed record AlbumInfo(string? Label, string? Genre, IReadOnlyList<string>? With = null);
 
     private static readonly Dictionary<string, Region> SoundRegions = new()
     {
@@ -224,7 +236,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             for (int i = 0; i < rel.Count; i++)
             {
                 double sc = s.Weight * (1 - 0.7 * i / rel.Count);
-                Add(cands, rel[i].Id, rel[i].Name, sc, s.Artist);
+                Add(cands, rel[i].Id, rel[i].Name, sc, s.Artist, rel[i].Fans);
                 hop1.Add((rel[i], sc, s.Artist));
             }
 
@@ -234,7 +246,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         {
             progress?.Report($"비슷한 아티스트 넓히는 중… {++n2}/{hop2Seeds.Count}");
             for (int i = 0; i < rel.Count; i++)
-                Add(cands, rel[i].Id, rel[i].Name, 0.5 * h.score * (1 - 0.7 * i / rel.Count), h.seed);
+                Add(cands, rel[i].Id, rel[i].Name, 0.5 * h.score * (1 - 0.7 * i / rel.Count), h.seed, rel[i].Fans);
         }
 
         // 2) 기간 내 발매작
@@ -248,7 +260,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             return (c, albums);
         }));
         SaveCaches();
-        return [.. discos.Select(x => new PoolArtist(x.c.Id, x.c.Name, x.c.Score, [.. x.c.Because.Distinct().Take(3)], x.albums))];
+        return [.. discos.Select(x => new PoolArtist(x.c.Id, x.c.Name, x.c.Score, [.. x.c.Because.Distinct().Take(3)], x.albums, Fans: x.c.Fans))];
     }
 
     /// <summary>
@@ -266,6 +278,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 .Where(a => !owned.HasAlbum(c.Name, a.Title))
                 .Select(a => (c, a)))
             .DistinctBy(x => x.a.Id)
+            .Where(x => !options.BlockedArtists.Contains(ListeningAnalyzer.NormalizeArtist(x.c.Name)))
             .ToList();
         var mineHits = inPeriod.Where(x => x.c.Mine != null)
             .OrderByDescending(x => x.c.Mine!.Tracks * TypeWeight(x.a.RecordType)).ToList();
@@ -279,6 +292,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         // 연·월 단위면 플리 뮤지션 발매작이 수백 장이라 앞쪽만 소리를 듣는다
         var toScore = mineHits.Take(options.MaxMineScored).Concat(others).Select(h => h.a.Id).ToList();
         var (recs, heardAny) = await ScoreHitsAsync(hits, toScore, owned, options, progress, ct);
+        // 차단 레이블은 레이블을 알게 된 뒤에 뺀다
+        if (options.BlockedLabels.Count > 0)
+            recs.RemoveAll(r => RecipeSong.Core.LabelAffinity.Keys(r.Label).Any(options.BlockedLabels.Contains));
         progress?.Report($"추천 {recs.Count}장");
         return new RecommendationResult(period,
             [.. recs.OrderByDescending(r => r.FromPlaylist != null).ThenByDescending(r => r.Score)],
@@ -390,7 +406,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         }
         // 소리 서비스 결과가 없으면 레이블·장르만 직접 조회 (캐시, 많을 때는 캐시에 있는 것만)
         var infos = await Task.WhenAll(hits.Select(async h =>
-            sounds.TryGetValue(h.a.Id, out var s) ? new AlbumInfo(s.Label, s.Genre)
+            sounds.TryGetValue(h.a.Id, out var s) ? new AlbumInfo(s.Label, s.Genre, s.With)
             : _albumInfo.TryGet(h.a.Id.ToString(), out var cached) ? cached
             : !detailed.Contains(h.a.Id) ? new AlbumInfo(null, null)
             : await _albumInfo.GetOrAddAsync(h.a.Id.ToString(), async () =>
@@ -460,6 +476,15 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             // 좋아하는 레이블이면 가산점
             var labelAff = RecipeSong.Core.LabelAffinity.Of(options.LabelAffinity, info.Label);
             score += options.LabelWeight * labelAff;
+            // 피처링·참여: 수록곡에 좋아하는 아티스트가 있으면
+            var withLiked = info.With?.FirstOrDefault(n => options.LikedArtists.Contains(ListeningAnalyzer.NormalizeArtist(n))
+                && ListeningAnalyzer.NormalizeArtist(n) != ListeningAnalyzer.NormalizeArtist(c.Name));
+            if (withLiked != null) score += options.WithLikedWeight;
+            // 형식 취향
+            score += options.TypeBonus.GetValueOrDefault(a.RecordType ?? "album");
+            // 작은 아티스트 우대 (추가 제안만, 팬 수를 알 때)
+            if (c.Mine == null && c.Fans > 0)
+                score += options.SmallArtistWeight * (c.Fans < 5_000 ? 0.4 : c.Fans < 50_000 ? 0.2 : c.Fans > 1_000_000 ? -0.2 : 0);
             if (regionOf[c.Id] == Region.International && c.Mine?.Style == null)
             {
                 // 해외는 Deezer 장르로 나눈다. 어울림 점은 일본 크레이트 기준이라 표시하지 않는다.
@@ -476,7 +501,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 c.Mine?.Playlist,
                 // 저장한 앨범과 특히 닮았을 때만 (상위 약 15%) 카드에 표시
                 FavNear: favZOf.GetValueOrDefault(i) >= 1.0 ? snd?.FavNear : null,
-                LikedLabel: labelAff >= 0.2 ? info.Label : null));
+                LikedLabel: labelAff >= 0.2 ? info.Label : null,
+                WithLiked: withLiked,
+                Fans: c.Fans));
         }
         return (recs, heard.Any(s => s != null));
     }
@@ -502,7 +529,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     /// <summary>앨범 전체 수록곡과 미리듣기 URL (재생 직전에 받는다). URL은 몇 시간 뒤 만료된다.</summary>
     public async Task<IReadOnlyList<AlbumTrack>> AlbumTracksAsync(long deezerAlbumId, CancellationToken ct = default) =>
         [.. (await deezer.AlbumTracksAsync(deezerAlbumId, 200, ct)).Select((t, i) =>
-            new AlbumTrack(i + 1, t.Title, t.Artist?.Name, TimeSpan.FromSeconds(t.Duration), string.IsNullOrEmpty(t.Preview) ? null : t.Preview, t.Rank))];
+            new AlbumTrack(i + 1, t.Title, t.Artist?.Name, TimeSpan.FromSeconds(t.Duration), string.IsNullOrEmpty(t.Preview) ? null : t.Preview, t.Rank, t.Id))];
 
     private Task<List<DzArtist>> RelatedAsync(long id, int limit, CancellationToken ct) =>
         _related.GetOrAddAsync($"{id}:{limit}", async () => [.. await deezer.RelatedArtistsAsync(id, limit, ct)]);
@@ -534,11 +561,12 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         _discography.Save();
     }
 
-    private static void Add(Dictionary<long, Candidate> map, long id, string name, double score, string because)
+    private static void Add(Dictionary<long, Candidate> map, long id, string name, double score, string because, int fans = 0)
     {
         if (!map.TryGetValue(id, out var c)) map[id] = c = new Candidate(id, name);
         c.Score += score;
         c.Because.Add(because);
+        if (fans > 0) c.Fans = fans;
     }
 
     private sealed class Candidate(long id, string name)
@@ -546,6 +574,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         public long Id { get; } = id;
         public string Name { get; } = name;
         public double Score { get; set; }
+        public int Fans { get; set; }
         public List<string> Because { get; } = [];
     }
 }

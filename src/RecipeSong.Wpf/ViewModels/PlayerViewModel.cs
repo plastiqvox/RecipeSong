@@ -64,6 +64,7 @@ public sealed partial class PlayerViewModel : ObservableObject
         };
         _player.MediaEnded += (_, _) =>
         {
+            if (NowRelease is { } done) Listened?.Invoke(done, Duration, true);
             _player.Stop(); // 다시 누르면 처음부터
             SetPlaying(false);
             _ended?.Invoke();
@@ -99,9 +100,16 @@ public sealed partial class PlayerViewModel : ObservableObject
         owner(IsPlaying);
     }
 
+    /// <summary>
+    /// 미리듣기를 어떻게 들었는지 (앱 안에서 들은 행동 학습): 앨범, 들은 초, 끝까지 들었는지.
+    /// 다른 곡으로 넘어가거나 끝까지 들었을 때 알린다.
+    /// </summary>
+    public event Action<ReleaseItem, double, bool>? Listened;
+
     public void Play(Uri source, string title, string subtitle, string? cover, Action<bool> owner, Action? ended = null,
         ReleaseItem? release = null)
     {
+        if (NowRelease is { } prev && HasMedia) Listened?.Invoke(prev, _player.Position.TotalSeconds, false);
         NowRelease = release;
         OnPropertyChanged(nameof(HasNowRelease));
         _setOwnerPlaying?.Invoke(false);
