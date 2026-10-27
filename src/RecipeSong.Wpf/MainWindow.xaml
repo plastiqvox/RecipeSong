@@ -227,8 +227,12 @@
                                     Visibility="{Binding IsNew, Converter={StaticResource BoolVis}}" ToolTip="{local:Tr '이번에 처음 나온 앨범'}">
                                 <TextBlock Text="NEW" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentText}"/>
                             </Border>
-                            <!-- AI 커넥터 배지: Claude / GPT -->
-                            <ItemsControl ItemsSource="{Binding AiBy}" VerticalAlignment="Center" ToolTip="{local:Tr 'AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보'}">
+                            <!-- AI·웹진 배지: 누르면 원문 (웹진 리뷰 · AI 출처) -->
+                            <Button Command="{Binding OpenSourceCommand}" Cursor="Hand" VerticalAlignment="Center" ToolTip="{local:Tr 'AI·웹진이 찾은 신보 · 누르면 원문'}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button"><ContentPresenter/></ControlTemplate>
+                                </Button.Template>
+                            <ItemsControl ItemsSource="{Binding AiBy}" VerticalAlignment="Center" IsHitTestVisible="False">
                                 <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -244,10 +248,11 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+                            </Button>
                         </StackPanel>
                         <!-- 추천 이유 (AI·웹진). 누르면 원문 -->
                         <Button Margin="0,6,0,0" Command="{Binding OpenSourceCommand}" Cursor="Hand" HorizontalContentAlignment="Left"
-                                ToolTip="{Binding Rec.SourceUrl}" Visibility="{Binding IsAi, Converter={StaticResource BoolVis}}">
+                                ToolTip="{Binding Rec.SourceUrl}" Visibility="{Binding HasAiReason, Converter={StaticResource BoolVis}}">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button"><ContentPresenter/></ControlTemplate>
                             </Button.Template>

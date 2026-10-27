@@ -66,9 +66,10 @@ public sealed partial class ReleaseItem : ObservableObject
         if (Rec.SourceUrl is { } url && Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme is "http" or "https")
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
-    /// <summary>추천 이유. 웹진 이유 "{이름}에서 소개"는 저장된 원문이라 표시할 때만 번역</summary>
-    public string? AiReason => Rec.AiReason is { } r && r.EndsWith("에서 소개", StringComparison.Ordinal)
-        ? L.F("{0}에서 소개", r[..^"에서 소개".Length]) : Rec.AiReason;
+    /// <summary>추천 이유. 웹진의 'OO에서 소개'는 보라 배지와 겹쳐서 뺀다 (AI 이유와 합쳐진 경우 그 부분만)</summary>
+    public string? AiReason => Rec.AiReason?.Split("  /  ").Where(r => !r.EndsWith("에서 소개", StringComparison.Ordinal)).ToList() is { Count: > 0 } rs
+        ? string.Join("  /  ", rs) : null;
+    public bool HasAiReason => AiReason != null;
     /// <summary>제안한 AI 커넥터 ("Claude", "GPT") — 커넥터마다 배지 하나</summary>
     public IReadOnlyList<AiBadge> AiBy => [.. (Rec.AiBy ?? (IsAi ? ["AI"] : [])).Select(b => new AiBadge(b))];
     // 내 플리 배지는 플레이리스트 이름만 (앞의 플레이리스트 아이콘이 '내 플리'를 뜻한다)
