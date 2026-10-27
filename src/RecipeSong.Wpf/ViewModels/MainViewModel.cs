@@ -638,6 +638,35 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         catch (Exception ex) when (ex is not OperationCanceledException) { }
     }
 
+    /// <summary>
+    /// AI 에게 보내는 취향 요약 (영어 머리글): 레시피별 대표 뮤지션 + 앱에서 남긴 신호.
+    /// 신호를 안 보내면 AI 는 차단한 아티스트도 찾아오고(앱에서 걸러질 뿐) 좋아요 방향을 모른다.
+    /// </summary>
+    private string AiTaste()
+    {
+        static string Line(string head, IEnumerable<string> items) =>
+            items.Where(x => x.Length > 0).Distinct().ToList() is { Count: > 0 } l ? $"- {head}: {string.Join("; ", l)}" : "";
+        var crates = string.Join("\n", _mine!.GroupBy(m => m.Playlist).Select(g =>
+        {
+            var e = _crates.Playlists[g.Key];
+            var crate = e.Style ?? (e.Region == "한국" ? ReleaseRecommender.KoreanCrate : $"{e.Region} (genre split by Deezer)");
+            return $"- playlist {g.Key} → crate {crate}, region {e.Region}: " +
+                   string.Join(", ", g.OrderByDescending(m => m.Tracks).Take(10).Select(m => m.Artist));
+        }));
+        var signals = new[]
+        {
+            Line("Liked (more like these)", _likedAlbums.All.Take(15).Select(s => $"{s.Rec.Artist} – {s.Rec.Album}")
+                .Concat(_likedTracks.All.TakeLast(10).Select(t => $"{t.Artist} – {t.Title}"))),
+            Line("Following (their scenes matter)", _follows.All.Select(f => f.Name)),
+            Line("Favorite labels", _labelAffinity.OrderByDescending(kv => kv.Value).Take(12).Select(kv => kv.Key)),
+            Line("Not for me (avoid similar sounds)", _disliked.All.Take(15).Select(d => $"{d.Rec.Artist} – {d.Rec.Album}")),
+            Line("Blocked artists (never suggest)", _blocked.Artists),
+            Line("Blocked labels (never suggest)", _blocked.Labels),
+        }.Where(x => x.Length > 0);
+        return "My crates (playlist → crate, region: representative artists):\n" + crates
+               + (signals.Any() ? "\n\nSignals from my listening in this app:\n" + string.Join("\n", signals) : "");
+    }
+
     private List<ReleaseRecommendation> AiPicksFor(Period p)
     {
         var all = new Dictionary<long, ReleaseRecommendation>();
@@ -824,13 +853,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var playlists = await _library.GetPlaylistsAsync(_life.Token);
             var tracks = await _library.GetTracksAsync(_life.Token);
             _mine ??= TasteProfile.PlaylistArtists(playlists, tracks, _crates);
-            var taste = string.Join("\n", _mine.GroupBy(m => m.Playlist).Select(g =>
-            {
-                var e = _crates.Playlists[g.Key];
-                var crate = e.Style ?? (e.Region == "한국" ? ReleaseRecommender.KoreanCrate : $"{e.Region} (장르는 Deezer 기준)");
-                return $"- {g.Key} 플레이리스트 → 레시피 {crate}, 지역 {e.Region}: " +
-                       string.Join(", ", g.OrderByDescending(m => m.Tracks).Take(10).Select(m => m.Artist));
-            }));
+            var taste = AiTaste();
             // 다시 찾기면 지난 AI 결과도 다시 나올 수 있게 제외 목록에서 뺀다
             var exclude = _all.Where(i => !(replace && i.IsAi)).Select(i => $"{i.Artist} – {i.Album}").ToList();
 

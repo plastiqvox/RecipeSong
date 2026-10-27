@@ -55,11 +55,14 @@ public sealed class GptScout(AiConnectorSettings settings, AiUsageLedger? ledger
     {
         var key = settings.GetGptKey() ?? throw new InvalidOperationException(L.T("OpenAI API 키가 없어요"));
         progress?.Report(L.T("GPT가 웹에서 신보 찾는 중… (1~2분)"));
+        var prompt = AiPrompt.Build(period, taste, exclude, focusRegion, "Answer with what you found in the required JSON format.");
+        AiDebugLog.Write(Name, "보낸 지시:
+" + prompt);
         var body = new JsonObject
         {
             ["model"] = settings.GptModel,
             ["instructions"] = AiPrompt.System,
-            ["input"] = AiPrompt.Build(period, taste, exclude, focusRegion, "찾은 결과를 정해진 JSON 형식으로 답하세요."),
+            ["input"] = prompt,
             ["tools"] = new JsonArray { new JsonObject { ["type"] = "web_search" } },
             ["text"] = new JsonObject
             {
