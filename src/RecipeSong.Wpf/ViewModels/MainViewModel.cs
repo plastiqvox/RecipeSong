@@ -849,10 +849,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
         {
             SavedNote = savedNote,
-            // 곡 짝을 알면 '♪ 이 앨범 곡' 아래 '▶ 내 곡' 2쌍, 모르면 앨범 전체와 닮은 내 곡 3개. 누르면 내 파일로
-            NearItems = r.Pairs is { Count: > 0 } pairs
-                ? [.. pairs.Select(p => new NearTrackItem(p.Near, FindLocalFile(p.Near), PlayNear, p.Track))]
-                : [.. r.NearTracks.Take(3).Select(n => new NearTrackItem(n, FindLocalFile(n), PlayNear))],
+            // 카드: 앨범 전체와 닮은 내 곡 3개 (곡마다의 짝은 수록곡 목록에서 곡 아래 하위 줄로)
+            NearItems = [.. r.NearTracks.Take(3).Select(n => new NearTrackItem(n, FindLocalFile(n), PlayNear))],
             ToggleDislikeAction = ToggleDislike,
             IsDisliked = _disliked.Contains(r.DeezerAlbumId),
             IsNew = _newThisRun.Contains(r.DeezerAlbumId),
@@ -1553,29 +1551,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         ApplyFilters();
         UpdateHeat();
-        if (!IsBusy) { MarkSeen(); _ = FillPairsAsync(period); }
-    }
-
-    /// <summary>곡 짝 기능 전에 저장된 추천: 뒤에서 8장씩 곡 짝을 채운다 (서비스가 album_info 에 남겨 한 번만 듣는다)</summary>
-    private async Task FillPairsAsync(Period period)
-    {
-        if (_sound == null) return;
-        var todo = _all.Where(i => i.Rec.Pairs == null).Select(i => i.Rec.DeezerAlbumId).Distinct().ToList();
-        try
-        {
-            for (int s = 0; s < todo.Count; s += 8)
-            {
-                var got = await _sound.AlbumPairsAsync(todo.Skip(s).Take(8), _life.Token);
-                if (CurrentPeriod.Label != period.Label) return;  // 다른 기간으로 옮겼으면 그만
-                // 수록곡을 펼쳤거나 재생 중인 카드는 다시 만들지 않는다 (펼침·재생 상태가 풀리니까) — 다음에 열 때 채워진다
-                var updated = _all.Select(i => got.TryGetValue(i.Rec.DeezerAlbumId, out var p) && p.Count > 0 && i.Rec.Pairs == null
-                    && !i.ShowTracks && !i.IsPlaying ? MakeItem(i.Rec with { Pairs = p }, i.SavedNote) : i).ToList();
-                if (updated.SequenceEqual(_all)) continue;
-                _all = updated;
-                ApplyFilters();
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 바쁘거나 꺼져 있으면 다음에
+        if (!IsBusy) MarkSeen();
     }
 
     private async Task LoadLibraryAsync(Period period, CancellationToken ct)

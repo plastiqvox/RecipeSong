@@ -99,8 +99,6 @@ public sealed partial class ReleaseItem : ObservableObject
     [ObservableProperty] private bool _isNew;
     /// <summary>이 아티스트를 팔로우 중 (☆)</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(FollowTip)), NotifyPropertyChangedFor(nameof(FollowMenu))] private bool _isFollowed;
-    /// <summary>곡 짝을 알면 '이 앨범 곡 ≈ 내 곡', 모르면 앨범 전체와 닮은 내 곡</summary>
-    public string NearHeader => Rec.Pairs is { Count: > 0 } ? L.T("이 앨범 곡 ≈ 비슷한 내 곡") : L.T("비슷한 내 곡");
     public string FollowMenu => IsFollowed ? L.T("뮤지션 팔로우 해제") : L.T("뮤지션 팔로우");
     public bool HasLabel => !string.IsNullOrEmpty(Rec.Label);
     public string FollowTip => IsFollowed ? L.T("팔로우 중 · 누르면 해제") : L.T("이 아티스트 팔로우 (신보를 항상 맨 앞에)");
@@ -213,13 +211,9 @@ public sealed record AiBadge(string Text)
 }
 
 /// <summary>카드의 "비슷한 내 곡" 하나: 내 라이브러리 파일을 바로 재생한다.</summary>
-/// <param name="label">내 곡 ("아티스트 – 곡명")</param>
-/// <param name="track">곡 짝이면 이 앨범의 곡 (내 곡 위에 한 줄, 내 곡은 들여 쓴다)</param>
-public sealed partial class NearTrackItem(string label, string? path, Action<NearTrackItem> play, string? track = null) : ObservableObject
+public sealed partial class NearTrackItem(string label, string? path, Action<NearTrackItem> play) : ObservableObject
 {
     public string Label { get; } = label;
-    public string? Track { get; } = track;
-    public System.Windows.Thickness Indent => Track != null ? new(14, 0, 0, 0) : new(0);
     public string? Path { get; } = path;
     public bool CanPlay => Path != null;
     public string Tip => Path != null ? L.F("내 파일로 듣기 · {0}", Label) : L.F("{0} (내 라이브러리에서 파일을 못 찾았어요)", Label);
@@ -282,7 +276,7 @@ public sealed partial class TrackItem : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NearText))] private string? _near;
     /// <summary>수록곡 중 내 곡과 가장 닮은 곡</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NearText))] private bool _isClosest;
-    public string NearText => Near == null ? "" : (IsClosest ? L.T("가장 닮음") + " · " : "") + L.F("≈ 비슷한 내 곡: {0}", Near);
+    public string NearText => Near == null ? "" : "└ " + L.F("비슷한 내 곡: {0}", Near) + (IsClosest ? " · " + L.T("가장 닮음") : "");
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasPreview))] private string? _preview;
     public bool HasPreview => Preview != null;
