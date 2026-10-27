@@ -350,7 +350,7 @@ public sealed partial class DayCell(DateTime date, bool inMonth, Action<DateTime
     [ObservableProperty] private string? _aiTip;
     /// <summary>이 기간을 일반 추천으로 분석해 둔 적이 있다 (칸 위쪽 회색 선)</summary>
     [ObservableProperty] private bool _analyzed;
-    /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 점)</summary>
+    /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 흰 고리)</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNew))] private int _newCount;
     public bool HasNew => NewCount > 0;
     /// <summary>팔로우한 아티스트의 발매작 수 (칸 왼쪽 위 ★)</summary>
@@ -373,7 +373,7 @@ public sealed partial class MonthCell(int month, Action<int> select) : Observabl
     [ObservableProperty] private string? _aiTip;
     /// <summary>이 기간을 일반 추천으로 분석해 둔 적이 있다 (칸 위쪽 회색 선)</summary>
     [ObservableProperty] private bool _analyzed;
-    /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 점)</summary>
+    /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 흰 고리)</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNew))] private int _newCount;
     public bool HasNew => NewCount > 0;
     /// <summary>팔로우한 아티스트의 발매작 수 (칸 왼쪽 위 ★)</summary>

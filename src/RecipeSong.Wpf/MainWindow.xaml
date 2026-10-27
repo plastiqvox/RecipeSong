@@ -502,7 +502,7 @@
                                                     <Rectangle Height="2" Width="18" RadiusX="1" RadiusY="1" Fill="{StaticResource Text2}" Opacity="0.55"
                                                                VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,5,0,0" IsHitTestVisible="False"
                                                                Visibility="{Binding Analyzed, Converter={StaticResource BoolVis}}"/>
-                                                    <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" IsHitTestVisible="False"
+                                                    <Ellipse Width="7" Height="7" Stroke="{StaticResource Text}" StrokeThickness="1.5" Fill="Transparent" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,3,0" IsHitTestVisible="False"
                                                              Visibility="{Binding HasNew, Converter={StaticResource BoolVis}}"/>
                                                     <TextBlock Text="★" FontSize="8" Foreground="#F5C04A" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,2,0,0" IsHitTestVisible="False"
                                                                Visibility="{Binding HasFollow, Converter={StaticResource BoolVis}}"/>
@@ -556,7 +556,7 @@
                                                         <Rectangle Height="2" Width="14" RadiusX="1" RadiusY="1" Fill="{StaticResource Text2}" Opacity="0.55"
                                                                    VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,3,0,0" IsHitTestVisible="False"
                                                                    Visibility="{Binding Analyzed, Converter={StaticResource BoolVis}}"/>
-                                                        <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" IsHitTestVisible="False"
+                                                        <Ellipse Width="7" Height="7" Stroke="{StaticResource Text}" StrokeThickness="1.5" Fill="Transparent" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,3,0" IsHitTestVisible="False"
                                                                  Visibility="{Binding HasNew, Converter={StaticResource BoolVis}}"/>
                                                         <TextBlock Text="★" FontSize="8" Foreground="#F5C04A" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,2,0,0" IsHitTestVisible="False"
                                                                    Visibility="{Binding HasFollow, Converter={StaticResource BoolVis}}"/>
@@ -597,7 +597,7 @@
                         </ItemsControl>
                     </StackPanel>
                     <TextBlock Text="{local:Tr '날짜를 누르면 그 주 발매작 · 진한 날일수록 취향 신보가 많음'}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                    <!-- 달력 범례: 2열. 칸 아래 점 = AI·웹진이 찾은 앨범의 발매일, 위 회색 선 = 분석해 둔 기간, 오른쪽 위 점 = 처음 보는 앨범, 왼쪽 위 ★ = 팔로우 신보 -->
+                    <!-- 달력 범례: 2열. 칸 아래 점 = AI·웹진이 찾은 앨범의 발매일, 위 회색 선 = 분석해 둔 기간, 오른쪽 위 흰 고리 = 처음 보는 앨범 (AI 점과 헷갈리지 않게 속이 빈 모양), 왼쪽 위 ★ = 팔로우 신보 -->
                     <Grid Margin="0,8,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                         <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
@@ -633,7 +633,7 @@
                         </DockPanel>
                         <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr '웹진·AI·정밀 분석이 찾아 두었지만 아직 화면에서 보지 않은 앨범이 있는 날이에요.'}">
                             <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
-                                <Ellipse Width="5" Height="5" Fill="{StaticResource Accent}" HorizontalAlignment="Left"/>
+                                <Ellipse Width="7" Height="7" Stroke="{StaticResource Text}" StrokeThickness="1.5" Fill="Transparent" HorizontalAlignment="Left"/>
                             </Grid>
                             <TextBlock Text="{local:Tr '처음 보는 앨범'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
