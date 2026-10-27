@@ -104,9 +104,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly BlockList _blocked = new();
     public BlockList Blocked => _blocked;
 
-    /// <summary>카드 우클릭 → 차단 사유. 취향이 아니면 그 앨범을 '별로'로 학습, 동명이인·다른 이유면 학습하지 않는다.</summary>
-    public void Block(ReleaseItem item, bool label, BlockReason reason)
+    /// <summary>카드 우클릭 → 차단 사유 창 (여러 개). '취향이 아니에요'가 있으면 그 앨범을 '별로'로 학습한다.</summary>
+    public void Block(ReleaseItem item, bool label)
     {
+        if (label && item.Rec.Label is not { Length: > 0 }) return;
+        var win = new BlockWindow(label ? item.Rec.Label! : item.Artist, $"{item.Artist} – {item.Album}", label)
+            { Owner = Application.Current.MainWindow };
+        if (win.ShowDialog() != true) return;
+        var reason = win.Reasons;
         if (label) _blocked.BlockLabel(item.Rec, reason);
         else _blocked.BlockArtist(item.Rec, reason);
         ApplyFilters();

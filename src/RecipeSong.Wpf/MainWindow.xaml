@@ -125,15 +125,8 @@
                 <!-- 우클릭: 차단 (아티스트·레이블 전체를 추천에서 뺀다) -->
                 <Border.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Header="{Binding Artist}" HeaderStringFormat="{local:Tr '이 아티스트 차단 · {0}'}">
-                            <MenuItem Header="{local:Tr '취향이 아니에요 (비슷한 소리도 덜 추천)'}" Tag="artist|Taste" Click="Block_Click"/>
-                            <MenuItem Header="{local:Tr '이름만 같은 다른 아티스트예요 (학습 안 함)'}" Tag="artist|SameName" Click="Block_Click"/>
-                            <MenuItem Header="{local:Tr '다른 이유 (학습 안 함)'}" Tag="artist|Other" Click="Block_Click"/>
-                        </MenuItem>
-                        <MenuItem Header="{Binding Rec.Label}" HeaderStringFormat="{local:Tr '이 레이블 차단 · {0}'}">
-                            <MenuItem Header="{local:Tr '취향이 아니에요 (비슷한 소리도 덜 추천)'}" Tag="label|Taste" Click="Block_Click"/>
-                            <MenuItem Header="{local:Tr '다른 이유 (학습 안 함)'}" Tag="label|Other" Click="Block_Click"/>
-                        </MenuItem>
+                        <MenuItem Header="{Binding Artist}" HeaderStringFormat="{local:Tr '이 아티스트 차단… · {0}'}" Tag="artist" Click="Block_Click"/>
+                        <MenuItem Header="{Binding Rec.Label}" HeaderStringFormat="{local:Tr '이 레이블 차단… · {0}'}" Tag="label" Click="Block_Click"/>
                     </ContextMenu>
                 </Border.ContextMenu>
                 <Grid>

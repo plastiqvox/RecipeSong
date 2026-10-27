@@ -2,8 +2,26 @@ using System.Text.Json;
 
 namespace RecipeSong.Core;
 
-/// <summary>차단 사유: 취향이 아님(학습) / 동명이인(그 Deezer 아티스트만, 학습 안 함) / 다른 이유(학습 안 함)</summary>
-public enum BlockReason { Taste, SameName, Other }
+/// <summary>
+/// 차단 사유 (여러 개 고를 수 있다). 소리 때문인 사유(Sound)가 하나라도 있으면 그 앨범을 '별로'로 학습한다.
+/// SameName이 있으면 이름 대신 그 Deezer 아티스트 id만 막는다 (동명이인 + 취향 아님 → 그 사람만 막고 소리는 학습).
+/// </summary>
+[Flags]
+public enum BlockReason
+{
+    // 소리 때문 (학습)
+    Taste = 1, Vocal = 16, Genre = 32, Production = 64,
+    // 그 밖 (학습 안 함)
+    SameName = 2, Known = 4, Other = 8, Mainstream = 128, TooMany = 256, Reissues = 512, Language = 1024, Personal = 2048,
+}
+
+public static class BlockReasons
+{
+    /// <summary>학습에 쓰는 사유</summary>
+    public const BlockReason Sound = BlockReason.Taste | BlockReason.Vocal | BlockReason.Genre | BlockReason.Production;
+
+    public static bool Learns(this BlockReason r) => (r & Sound) != 0;
+}
 
 /// <summary>
 /// 차단 목록: %LOCALAPPDATA%\RecipeSong\blocked.json. 차단한 아티스트·레이블의 신보는 어디서도 추천하지 않는다
@@ -16,9 +34,9 @@ public sealed class BlockList
     public sealed record Data(List<string> Artists, List<string> Labels, List<BlockedAlbum>? Albums = null,
         List<BlockedArtistId>? SameName = null);
     /// <summary>Learn: '별로'로 학습할지 (사유가 취향일 때만)</summary>
-    public sealed record BlockedAlbum(long Id, string Artist, string? Label, bool Learn = true);
+    public sealed record BlockedAlbum(long Id, string Artist, string? Label, bool Learn = true, BlockReason Reasons = 0);
     /// <summary>동명이인으로 막은 Deezer 아티스트. ArtistId를 모르는 예전 결과는 AlbumId로 그 앨범만 숨긴다.</summary>
-    public sealed record BlockedArtistId(long ArtistId, string Name, long AlbumId, string Album);
+    public sealed record BlockedArtistId(long ArtistId, string Name, long AlbumId, string Album, bool Learn = false, BlockReason Reasons = 0);
 
     private readonly string _file = Path.Combine(JsonCache<object>.Dir, "blocked.json");
     private Data _data;
@@ -34,7 +52,8 @@ public sealed class BlockList
     public IReadOnlyList<BlockedArtistId> SameName => _data.SameName ?? [];
 
     /// <summary>학습용 '별로' 신호: 취향 때문에 차단할 때 보고 있던 앨범</summary>
-    public IEnumerable<long> AlbumIds => (_data.Albums ?? []).Where(a => a.Learn).Select(a => a.Id);
+    public IEnumerable<long> AlbumIds =>
+        (_data.Albums ?? []).Where(a => a.Learn).Select(a => a.Id).Concat(SameName.Where(s => s.Learn).Select(s => s.AlbumId));
 
     public IReadOnlySet<string> ArtistKeys => _data.Artists.Select(ListeningAnalyzer.NormalizeArtist).ToHashSet();
     public IReadOnlySet<string> LabelKeys => _data.Labels.SelectMany(l => LabelAffinity.Keys(l)).ToHashSet();
@@ -48,16 +67,17 @@ public sealed class BlockList
 
     public void BlockArtist(ReleaseRecommendation r, BlockReason reason)
     {
-        if (reason == BlockReason.SameName)
+        bool learn = reason.Learns();
+        if (reason.HasFlag(BlockReason.SameName))
         {
             var list = _data.SameName ?? [];
-            if (list.All(s => s.AlbumId != r.DeezerAlbumId)) list.Add(new(r.ArtistId, r.Artist, r.DeezerAlbumId, r.Album));
+            if (list.All(s => s.AlbumId != r.DeezerAlbumId)) list.Add(new(r.ArtistId, r.Artist, r.DeezerAlbumId, r.Album, learn, reason));
             _data = _data with { SameName = list };
         }
         else
         {
             if (!_data.Artists.Contains(r.Artist)) _data.Artists.Add(r.Artist);
-            AddAlbum(r, reason == BlockReason.Taste);
+            AddAlbum(r, reason);
         }
         Save();
     }
@@ -66,7 +86,7 @@ public sealed class BlockList
     {
         if (r.Label is not { Length: > 0 } label) return;
         if (!_data.Labels.Contains(label)) _data.Labels.Add(label);
-        AddAlbum(r, reason == BlockReason.Taste);
+        AddAlbum(r, reason);
         Save();
     }
 
@@ -74,12 +94,12 @@ public sealed class BlockList
     public void UnblockLabel(string label) { if (_data.Labels.Remove(label)) { DropUnblocked(); Save(); } }
     public void UnblockSameName(BlockedArtistId s) { if (_data.SameName?.Remove(s) == true) Save(); }
 
-    private void AddAlbum(ReleaseRecommendation r, bool learn)
+    private void AddAlbum(ReleaseRecommendation r, BlockReason reason)
     {
         var albums = _data.Albums ?? [];
         var i = albums.FindIndex(a => a.Id == r.DeezerAlbumId);
-        if (i >= 0) albums[i] = albums[i] with { Learn = albums[i].Learn || learn };
-        else albums.Add(new(r.DeezerAlbumId, r.Artist, r.Label, learn));
+        if (i >= 0) albums[i] = albums[i] with { Learn = albums[i].Learn || reason.Learns(), Reasons = albums[i].Reasons | reason };
+        else albums.Add(new(r.DeezerAlbumId, r.Artist, r.Label, reason.Learns(), reason));
         _data = _data with { Albums = albums };
     }
 

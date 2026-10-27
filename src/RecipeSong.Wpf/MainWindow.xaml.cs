@@ -47,12 +47,10 @@ public partial class MainWindow : Window
     }
 
     // ---- 카드 우클릭: 차단 (ContextMenu는 카드의 DataContext를 물려받는다) ----
-    /// <summary>우클릭 메뉴의 차단 사유: Tag = "artist|Taste", "label|Other" …</summary>
+    /// <summary>우클릭 메뉴: Tag = "artist" / "label" → 사유 고르는 창</summary>
     private void Block_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: ReleaseItem item, Tag: string tag }) return;
-        var parts = tag.Split('|');
-        _vm.Block(item, parts[0] == "label", Enum.Parse<RecipeSong.Core.BlockReason>(parts[1]));
+        if (sender is FrameworkElement { DataContext: ReleaseItem item, Tag: string tag }) _vm.Block(item, tag == "label");
     }
 
     // ---- 크레이트 칩 드래그로 순서 바꾸기 ----
