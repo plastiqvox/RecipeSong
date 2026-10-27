@@ -380,7 +380,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     /// AI가 말한 앨범을 Deezer에서 찾는다. 표기가 조금 달라도 (괄호 꼬리말, 원어/영문, EP·싱글 표기) 같은 앨범으로 본다.
     /// 1) 일반 검색 상위 10개 중 아티스트·제목이 맞는 것
     /// 2) 없으면 그 아티스트의 디스코그래피에서 제목이 맞는 것, 그래도 없으면 그 기간에 나온 그 아티스트의 발매작
-    /// 발매일: Deezer 날짜가 기간 ±3일이거나, AI가 확인했다는 날짜가 기간 안이고 Deezer 날짜와 30일 이내 (선공개 싱글 날짜가 붙는 경우)
+    /// 발매일: Deezer 날짜가 기간 ±3일이거나, AI가 확인했다는 날짜가 기간 안이고 Deezer 날짜와 7일 이내 (선공개 싱글 날짜가 붙는 경우. 30일이면 AI가 날짜를 잘못 말한 지난 주 앨범이 섞였다)
     /// </summary>
     private async Task<(DzAlbum? Album, string Note)> MatchAiPickAsync(AiPick p, Period? period, CancellationToken ct)
     {
@@ -395,7 +395,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         bool InPeriod(DateOnly d) => period is not { } pr
             ? d >= DateOnly.FromDateTime(DateTime.Today.AddYears(-1))
             : Enumerable.Range(-3, 7).Any(k => pr.Contains(d.AddDays(k)))
-              || aiDate is { } x && pr.Contains(x) && Math.Abs(d.DayNumber - x.DayNumber) <= 30;
+              || aiDate is { } x && pr.Contains(x) && Math.Abs(d.DayNumber - x.DayNumber) <= 7;
 
         async Task<(DzAlbum?, string)> Check(long id, string how)
         {
