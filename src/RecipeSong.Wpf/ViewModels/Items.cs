@@ -147,11 +147,19 @@ public sealed partial class ReleaseItem : ObservableObject
         OnPropertyChanged(nameof(TracksButton));
     }
 
+    /// <summary>Deezer에서 열기. 발매 전 앨범은 API 링크가 deezer.com/soon이라 앨범 주소로 연다.</summary>
     [RelayCommand]
     private void Open()
     {
-        if (Rec.Link != null) Process.Start(new ProcessStartInfo(Rec.Link) { UseShellExecute = true });
+        var link = Rec.Link is { } l && !l.Contains("/soon", StringComparison.OrdinalIgnoreCase) ? l : $"https://www.deezer.com/album/{Rec.DeezerAlbumId}";
+        Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });
     }
+
+    /// <summary>Apple Music(iTunes 앱)에서 열기 — 주소 찾기는 MainViewModel이</summary>
+    public Func<ReleaseItem, Task>? OpenAppleMusicAction { get; init; }
+
+    [RelayCommand]
+    private Task OpenAppleMusic() => OpenAppleMusicAction?.Invoke(this) ?? Task.CompletedTask;
 
     /// <summary>YouTube에서 "아티스트 앨범" 검색 (공식 음원·뮤직비디오가 보통 맨 위)</summary>
     [RelayCommand]
@@ -165,6 +173,20 @@ public sealed partial class ReleaseItem : ObservableObject
         var artists = s[..dash];
         var comma = artists.IndexOf(',');
         return L.F("{0} 외", comma > 0 ? artists[..comma] : artists[..37]) + s[dash..];
+    }
+}
+
+/// <summary>Apple Music 주소 열기: iTunes가 itmss:// 를 받으면 앱에서, 아니면 브라우저에서</summary>
+public static class AppleMusic
+{
+    private static readonly bool HasApp = Microsoft.Win32.Registry.ClassesRoot.OpenSubKey("itmss") != null;
+
+    public static void Open(string url)
+    {
+        var target = HasApp && url.StartsWith("https://music.apple.com/", StringComparison.Ordinal) && !url.Contains("/search?")
+            ? "itmss://" + url["https://".Length..] : url;
+        try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
+        catch (System.ComponentModel.Win32Exception) { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
     }
 }
 

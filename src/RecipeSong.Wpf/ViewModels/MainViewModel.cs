@@ -243,6 +243,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         _deezer = new DeezerClient(http);
         var itunes = new ITunesSearchClient(new HttpClient(), settings.Country);
+        _itunes = itunes;
         _sound = SoundService.TryCreate(settings);
         _recommender = new ReleaseRecommender(_deezer, new RegionResolver(new HttpClient()), _sound);
         _libraryReleases = new LibraryReleases(_deezer);
@@ -775,6 +776,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             ToggleDislikeAction = ToggleDislike,
             IsDisliked = _disliked.Contains(r.DeezerAlbumId),
             IsNew = _newThisRun.Contains(r.DeezerAlbumId),
+            OpenAppleMusicAction = OpenAppleMusicAsync,
             ToggleLikeAction = ToggleLike,
             IsLiked = _likedAlbums.Contains(r.DeezerAlbumId),
             IsTrackLiked = _likedTracks.Contains,
@@ -1159,6 +1161,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- 추천 결과 저장: 한 번 계산한 기간은 다음에 바로 꺼낸다 ----
     private readonly JsonCache<List<ReleaseRecommendation>> _recResults = new("rec-results", TimeSpan.FromDays(90));
+
+    // ---- Apple Music: iTunes 검색으로 앨범 주소를 찾아 iTunes 앱에서 연다 (못 찾으면 Apple Music 검색) ----
+    private ITunesSearchClient _itunes = null!;
+    private readonly JsonCache<string> _appleLinks = new("apple-links", TimeSpan.FromDays(30));
+
+    private async Task OpenAppleMusicAsync(ReleaseItem item)
+    {
+        var key = item.Rec.DeezerAlbumId.ToString();
+        if (!_appleLinks.TryGet(key, out var url))
+        {
+            url = await _itunes.FindAlbumLinkAsync(item.Artist, item.Album, _life.Token);
+            // 발매 전이라 아직 없을 수 있으니 찾은 것만 저장한다
+            if (url != null) { _appleLinks.Set(key, url); _appleLinks.Save(); }
+        }
+        AppleMusic.Open(url ?? _itunes.SearchLink(item.Artist, item.Album));
+    }
 
     // ---- NEW: 처음 보는 앨범 (어느 기간에서든 화면에 한 번 나오면 본 것) ----
     private readonly JsonCache<List<long>> _seenStore = new("seen-albums", TimeSpan.FromDays(36500));

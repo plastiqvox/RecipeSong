@@ -307,6 +307,10 @@
                                     AutomationProperties.Name="{Binding Album, StringFormat=Deezer: {0}}">
                                 <Path Data="{StaticResource DeezerIcon}" Fill="#A238FF" Width="17" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
                             </Button>
+                            <Button Style="{StaticResource Bare}" Command="{Binding OpenAppleMusicCommand}" Padding="9,5" Margin="6,0,0,0" ToolTip="{local:Tr 'Apple Music에서 열기 (iTunes)'}"
+                                    AutomationProperties.Name="{Binding Album, StringFormat=Apple Music: {0}}">
+                                <Path Data="{StaticResource AppleMusicIcon}" Fill="#FA2D48" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"/>
+                            </Button>
                             <Button Style="{StaticResource Bare}" Command="{Binding OpenYouTubeCommand}" Padding="9,5" Margin="6,0,0,0" ToolTip="{local:Tr 'YouTube에서 앨범 찾기 (전곡)'}"
                                     AutomationProperties.Name="{Binding Album, StringFormat=YouTube: {0}}">
                                 <Path Data="{StaticResource YouTubeIcon}" Fill="#FF3D3D" Width="17" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
