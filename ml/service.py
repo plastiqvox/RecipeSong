@@ -45,6 +45,8 @@ ALBUM_CACHE = DATA / "album_emb.npz"  # CLAP. EffNet은 album_emb_discogs_effnet
 ALBUM_INFO = DATA / "album_info.json"  # 레이블·장르 (바뀌지 않으므로 영구 캐시)
 ALBUM_COVER = DATA / "album_cover.npz"
 TRACK_STYLES = DATA / "track_styles.npz"  # 신보 곡마다 Discogs 스타일 400개 확률 (EffNet 장르판, 장르 태그용)
+TRACK_EFFNET = DATA / "track_effnet.npz"  # 신보 곡마다 EffNet 장르판 임베딩 (레시피 보조)
+ALBUM_EFFNET = DATA / "album_effnet.npz"  # 앨범 EffNet 임베딩 (곡 평균)
 GENRE_MIN = 0.04  # 태그: 가장 높은 스타일의 40% 이상이면서 이 확률 이상 (최대 3개). 400개에 확률이 나뉘어 값이 낮다  # 신보 커버 CLIP 임베딩 (앨범 id)
 FAILED = DATA / "failed_tracks.json"  # 디코딩 실패한 곡 → '새 곡'으로 다시 세지 않음
 KNN = 20
@@ -75,10 +77,9 @@ class Service:
         self.track_mode = "all"  # 앨범에서 들을 곡: "all" 전곡 / "top" 인기곡 (score_albums 요청마다 앱 설정을 따른다)
         self._covers = None
         self._genre = None
-        self.track_styles: dict[str, np.ndarray] = {}
-        if TRACK_STYLES.exists():
-            d = np.load(TRACK_STYLES, allow_pickle=False)
-            self.track_styles = dict(zip(d["keys"].tolist(), d["emb"].astype(np.float32)))
+        self.track_styles = load_npz(TRACK_STYLES)
+        self.track_effnet = load_npz(TRACK_EFFNET)
+        self.album_effnet = load_npz(ALBUM_EFFNET)
         self.cover_cache: dict[str, np.ndarray] = {}
         if ALBUM_COVER.exists():
             d = np.load(ALBUM_COVER, allow_pickle=False)
@@ -126,6 +127,10 @@ class Service:
                              np.array(self.model[name]["intercept"], np.float32),
                              self.model[name]["classes"]) for name in ("style", "region")}
         # 소리 + 커버 지역 판정 (커버를 아는 신보만)
+        # 레시피: 소리 + 장르(EffNet) — EffNet 임베딩을 아는 앨범만
+        se = self.model.get("style_effnet")
+        self.style_effnet = (np.array(se["coef"], np.float32), np.array(se["intercept"], np.float32), se["classes"],
+                             np.array(se["effnet_mean"], np.float32), float(se["effnet_scale"])) if se else None
         rc = self.model.get("region_cover")
         self.region_cover = (np.array(rc["coef"], np.float32), np.array(rc["intercept"], np.float32), rc["classes"],
                              np.array(rc["cover_mean"], np.float32), float(rc["cover_scale"])) if rc else None
@@ -278,7 +283,7 @@ class Service:
             items = self.album_detail(album_id)
         out = []
         for tid, title, url in items:
-            if tid is not None and f"t{tid}" in self.album_cache and f"t{tid}" in self.track_styles:
+            if tid is not None and all(f"t{tid}" in c for c in (self.album_cache, self.track_styles, self.track_effnet)):
                 out.append((tid, title, None, None))
                 continue
             try:
@@ -310,9 +315,10 @@ class Service:
         # 장르: 곡마다 스타일 확률 (CPU)
         g16 = [(tid, c16) for tr in per for tid, _, _, c16 in tr if c16]
         if g16 and self.genre():
-            for (tid, _), st in zip(g16, self.genre().styles([c for _, c in g16])):
+            for (tid, _), (st, ef) in zip(g16, self.genre().styles_and_embeddings([c for _, c in g16])):
                 if st is not None:
                     self.track_styles[f"t{tid}"] = st
+                    self.track_effnet[f"t{tid}"] = ef
         by_album: dict[int, list] = {}
         new = iter(embs)
         for i, tr in enumerate(per):
@@ -340,6 +346,11 @@ class Service:
                 info["pairs"] = top
                 info["tracks_mode"] = self.track_mode
                 info["genres"] = self.album_genres([tid for tid, *_ in items])
+                efs = [self.track_effnet[f"t{tid}"] for tid, *_ in items if f"t{tid}" in self.track_effnet]
+                if efs:
+                    m = np.mean(efs, axis=0)
+                    self.album_effnet[aid] = (m / (np.linalg.norm(m) + 1e-8)).astype(np.float32)
+                info["effnet"] = bool(efs)
 
     def album_genres(self, track_ids: list) -> list[str]:
         """곡마다의 스타일 확률 평균 → 상위 3개 중 가장 높은 것의 40% 이상·GENRE_MIN 이상 ("Jazz-Funk" — Discogs "Jazz---Jazz-Funk" 의 뒤쪽)"""
@@ -353,9 +364,9 @@ class Service:
         return [g.classes[i].split("---")[-1] for i in top if p[i] >= floor]
 
     def save_track_styles(self) -> None:
-        if self.track_styles:
-            ks = list(self.track_styles)
-            np.savez(TRACK_STYLES, keys=np.array(ks), emb=np.stack([self.track_styles[k] for k in ks]).astype(np.float16))
+        save_npz(TRACK_STYLES, self.track_styles)
+        save_npz(TRACK_EFFNET, self.track_effnet)
+        save_npz(ALBUM_EFFNET, self.album_effnet)
 
     # ---- 신보 점수 --------------------------------------------------------
     def ensure_embedded(self, albums: list, rid, what: str = "미리듣기 소리 분석 중") -> None:
@@ -363,7 +374,7 @@ class Service:
         def stale(k: str) -> bool:
             info = self.album_info.get(k, {})
             return k not in self.album_cache or (not k.startswith("t") and (info.get("tracks_mode") != self.track_mode
-                                                                             or ("genres" not in info and self.genre() is not None)))
+                                                                             or ("effnet" not in info and self.genre() is not None)))
         todo = [a for a in albums if stale(str(a["id"]))]
         done = 0
         with ThreadPoolExecutor(16) as pool:
@@ -465,6 +476,10 @@ class Service:
         res = {}
         for name, (coef, icpt, classes) in self.heads.items():
             res[name] = {c: round(float(p), 4) for c, p in zip(classes, softmax(coef @ x + icpt))}
+        if self.style_effnet is not None and key is not None and (ef := self.album_effnet.get(key)) is not None:
+            coef, icpt, classes, emean, scale = self.style_effnet
+            xs = np.concatenate([x, scale * train.preprocess(ef[None, :], emean)[0]])
+            res["style"] = {c: round(float(p), 4) for c, p in zip(classes, softmax(coef @ xs + icpt))}
         if self.region_cover is not None and key is not None and (cv := self.cover_cache.get(key)) is not None:
             coef, icpt, classes, cmean, scale = self.region_cover
             xc = np.concatenate([x, scale * train.preprocess(cv[None, :], cmean)[0]])
@@ -544,6 +559,19 @@ def collaborators(album: dict) -> list[str]:
         for m in FEAT.findall(t.get("title") or ""):
             names += [x.strip() for x in re.split(r",|&| and | x ", m) if x.strip()]
     return list(dict.fromkeys(names))[:8]
+
+
+def load_npz(path: Path) -> dict[str, np.ndarray]:
+    if not path.exists():
+        return {}
+    d = np.load(path, allow_pickle=False)
+    return dict(zip(d["keys"].tolist(), d["emb"].astype(np.float32)))
+
+
+def save_npz(path: Path, cache: dict[str, np.ndarray]) -> None:
+    if cache:
+        ks = list(cache)
+        np.savez(path, keys=np.array(ks), emb=np.stack([cache[k] for k in ks]).astype(np.float16))
 
 
 def decode_preview(data: bytes, sr: int = embed.SR) -> list[np.ndarray]:

@@ -119,7 +119,11 @@ class EffNet:
 
     def styles(self, groups: list[list[np.ndarray]]) -> list[np.ndarray | None]:
         """곡마다 16kHz 클립 묶음 → Discogs 스타일 400개 확률 (패치 평균). 장르판 모델에서만."""
-        out: list[np.ndarray | None] = [None] * len(groups)
+        return [s for s, _ in self.styles_and_embeddings(groups)]
+
+    def styles_and_embeddings(self, groups: list[list[np.ndarray]]) -> list[tuple[np.ndarray | None, np.ndarray | None]]:
+        """한 번 돌려 스타일 확률(장르 태그)과 임베딩(레시피 보조, L2 정규화)을 같이"""
+        out: list[tuple[np.ndarray | None, np.ndarray | None]] = [(None, None)] * len(groups)
         ps, owner = [], []
         for i, clips in enumerate(groups):
             for c in clips:
@@ -129,11 +133,22 @@ class EffNet:
         if not ps or self.out_pred is None:
             return out
         x = np.concatenate(ps)
-        pred = np.concatenate([self._run(x[s:s + self.batch], self.out_pred) for s in range(0, len(x), self.batch)])
+        pred, emb = [], []
+        for s in range(0, len(x), self.batch):
+            p, e = self._run_both(x[s:s + self.batch])
+            pred.append(p)
+            emb.append(e)
+        pred, emb = np.concatenate(pred), np.concatenate(emb)
         owner_arr = np.array(owner)
         for i in set(owner):
-            out[i] = pred[owner_arr == i].mean(0).astype(np.float32)
+            e = emb[owner_arr == i].mean(0)
+            out[i] = (pred[owner_arr == i].mean(0).astype(np.float32), (e / (np.linalg.norm(e) + 1e-8)).astype(np.float32))
         return out
+
+    def _run_both(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        n = len(x)
+        p, e = self.sess.run([self.out_pred, self.out_emb], {self.inp: x})
+        return p[:n], e[:n]
 
 
 def main() -> None:
