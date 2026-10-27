@@ -849,8 +849,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
         {
             SavedNote = savedNote,
-            // 카드의 비슷한 내 곡: 수록곡을 곡마다 분석해 둔 앨범이면 그 결과(수록곡 목록과 같은 곡), 아니면 앨범 전체와 닮은 곡 3개
-            NearItems = [.. (_trackNear.TryGet(r.DeezerAlbumId.ToString(), out var tp) && tp.Count > 0 ? tp.Select(p => p.Near) : r.NearTracks.Take(3))
+            // 카드의 비슷한 내 곡: 곡마다 들은 결과(수록곡 목록과 같은 곡) — 수록곡 목록에서 다시 계산한 것 → 점수 때 낸 곡 짝 → (예전 결과) 앨범 전체 기준
+            NearItems = [.. (_trackNear.TryGet(r.DeezerAlbumId.ToString(), out var tp) && tp.Count > 0 ? tp.Select(p => p.Near)
+                    : r.Pairs is { Count: > 0 } pairs ? pairs.Select(p => p.Near) : r.NearTracks.Take(3))
                 .Select(n => new NearTrackItem(n, FindLocalFile(n), PlayNear))],
             ToggleDislikeAction = ToggleDislike,
             IsDisliked = _disliked.Contains(r.DeezerAlbumId),
