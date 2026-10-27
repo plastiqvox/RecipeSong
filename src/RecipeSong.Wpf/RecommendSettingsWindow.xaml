@@ -5,80 +5,85 @@
         Title="{local:Tr '추천 설정'}" Width="560" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
         FontFamily="{StaticResource Sans}">
-    <StackPanel Margin="28,24">
-        <TextBlock Text="{local:Tr '추천 설정'}" FontSize="22" FontWeight="Bold"/>
-        <TextBlock Style="{StaticResource MutedText}" Margin="0,6,0,0" TextWrapping="Wrap"
-                   Text="{local:Tr '추가 제안은 Deezer의 비슷한 아티스트 연결망으로 후보를 모으고, 내 PC의 소리 모델이 내 곡과 닮은 정도로 고릅니다. 내 플리 뮤지션의 신보는 이 설정과 상관없이 항상 나와요.'}"/>
-
-        <TextBlock Text="{local:Tr '추천 양'}" Style="{StaticResource Kicker}" Margin="0,24,0,8"/>
-        <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
-            <UniformGrid x:Name="AmountGrid" Rows="1"/>
+    <!-- 버튼 줄은 아래에 고정하고 본문만 스크롤 (내용이 화면보다 길면 버튼이 화면 밖으로 나가서) -->
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line2}" BorderThickness="0,1,0,0" Padding="28,14,28,18">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Style="{StaticResource Bare}" Padding="18,8" IsCancel="True">
+                    <TextBlock Text="{local:Tr '취소'}" Foreground="{StaticResource Text2}"/>
+                </Button>
+                <Button Style="{StaticResource Bare}" Padding="18,8" Margin="8,0,0,0" IsDefault="True" Click="Save_Click"
+                        Background="{StaticResource Accent}" BorderBrush="{StaticResource Accent}">
+                    <TextBlock Text="{local:Tr '저장하고 다시 찾기'}" Foreground="{StaticResource OnAccent}" FontWeight="Bold"/>
+                </Button>
+            </StackPanel>
         </Border>
-        <TextBlock x:Name="AmountHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="28,24">
+                <TextBlock Text="{local:Tr '추천 설정'}" FontSize="22" FontWeight="Bold"/>
+                <TextBlock Style="{StaticResource MutedText}" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Text="{local:Tr '추가 제안은 Deezer의 비슷한 아티스트 연결망으로 후보를 모으고, 내 PC의 소리 모델이 내 곡과 닮은 정도로 고릅니다. 내 플리 뮤지션의 신보는 이 설정과 상관없이 항상 나와요.'}"/>
 
-        <TextBlock Text="{local:Tr '모험 정도'}" Style="{StaticResource Kicker}" Margin="0,22,0,8"/>
-        <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
-            <UniformGrid x:Name="AdventureGrid" Rows="1"/>
-        </Border>
-        <TextBlock x:Name="AdventureHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                <TextBlock Text="{local:Tr '추천 양'}" Style="{StaticResource Kicker}" Margin="0,24,0,8"/>
+                <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
+                    <UniformGrid x:Name="AmountGrid" Rows="1"/>
+                </Border>
+                <TextBlock x:Name="AmountHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
 
-        <TextBlock Text="{local:Tr '앨범에서 들을 곡'}" Style="{StaticResource Kicker}" Margin="0,22,0,8"/>
-        <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
-            <UniformGrid x:Name="TracksGrid" Rows="1"/>
-        </Border>
-        <TextBlock x:Name="TracksHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                <TextBlock Text="{local:Tr '모험 정도'}" Style="{StaticResource Kicker}" Margin="0,22,0,8"/>
+                <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
+                    <UniformGrid x:Name="AdventureGrid" Rows="1"/>
+                </Border>
+                <TextBlock x:Name="AdventureHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
 
-        <TextBlock Text="{local:Tr '별로·차단과 아주 닮은 추천'}" Style="{StaticResource Kicker}" Margin="0,22,0,8"/>
-        <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
-            <UniformGrid x:Name="DropGrid" Rows="1"/>
-        </Border>
-        <TextBlock x:Name="DropHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                <TextBlock Text="{local:Tr '앨범에서 들을 곡'}" Style="{StaticResource Kicker}" Margin="0,22,0,8"/>
+                <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
+                    <UniformGrid x:Name="TracksGrid" Rows="1"/>
+                </Border>
+                <TextBlock x:Name="TracksHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
 
-        <CheckBox x:Name="ExcludeKnownBox" Margin="0,22,0,0" Foreground="{StaticResource Text}" FontSize="14"
-                  Content="{local:Tr '추가 제안에서 아는 아티스트 빼기 (처음 듣는 사람만)'}"/>
-        <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
-                   Text="{local:Tr '내 라이브러리에 곡이 있는 아티스트는 추가 제안에 나오지 않아요. 내 플리 뮤지션과 AI 제안은 그대로 나와요.'}"/>
+                <TextBlock Text="{local:Tr '별로·차단과 아주 닮은 추천'}" Style="{StaticResource Kicker}" Margin="0,22,0,8"/>
+                <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
+                    <UniformGrid x:Name="DropGrid" Rows="1"/>
+                </Border>
+                <TextBlock x:Name="DropHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
 
-        <CheckBox x:Name="ExcludeInstrumentalBox" Margin="0,16,0,0" Foreground="{StaticResource Text}" FontSize="14"
-                  Content="{local:Tr '원래 앨범이 있으면 인스트루멘털 버전 빼기'}"/>
-        <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
-                   Text="{local:Tr '같은 아티스트의 원래 앨범이 Deezer나 내 라이브러리에 있으면 (Instrumental) · (Inst.) 버전은 추천하지 않아요.'}"/>
+                <CheckBox x:Name="ExcludeKnownBox" Margin="0,22,0,0" Foreground="{StaticResource Text}" FontSize="14"
+                          Content="{local:Tr '추가 제안에서 아는 아티스트 빼기 (처음 듣는 사람만)'}"/>
+                <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
+                           Text="{local:Tr '내 라이브러리에 곡이 있는 아티스트는 추가 제안에 나오지 않아요. 내 플리 뮤지션과 AI 제안은 그대로 나와요.'}"/>
 
-        <!-- 외부 추천: 웹진 -->
-        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
-        <DockPanel Margin="0,20,0,8">
-            <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,5" Click="RefreshWebzines_Click">
-                <TextBlock x:Name="WebzineRefreshText" Text="{local:Tr '지금 새로 읽기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
-            </Button>
-            <TextBlock Text="{local:Tr '외부 추천 · 웹진 (RSS)'}" Style="{StaticResource Kicker}" VerticalAlignment="Center"/>
-        </DockPanel>
-        <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"
-                   Text="{local:Tr '웹진이 소개한 앨범을 6시간마다 가져와 Deezer에서 확인하고, 발매 주를 열면 \'웹진\' 배지로 보여 줘요. 국내 웹진은 RSS를 막아 두거나 제공하지 않아 아직 없어요.'}"/>
-        <WrapPanel x:Name="WebzinePanel"/>
+                <CheckBox x:Name="ExcludeInstrumentalBox" Margin="0,16,0,0" Foreground="{StaticResource Text}" FontSize="14"
+                          Content="{local:Tr '원래 앨범이 있으면 인스트루멘털 버전 빼기'}"/>
+                <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
+                           Text="{local:Tr '같은 아티스트의 원래 앨범이 Deezer나 내 라이브러리에 있으면 (Instrumental) · (Inst.) 버전은 추천하지 않아요.'}"/>
 
-        <!-- 팔로우 -->
-        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
-        <TextBlock Text="{local:Tr '팔로우한 아티스트'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
-        <TextBlock x:Name="FollowEmpty" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap"
-                   Text="{local:Tr '아직 없어요. 카드의 아티스트 이름 앞 ☆을 누르면 그 아티스트 신보를 항상 맨 앞에 보여 줘요.'}"/>
-        <WrapPanel x:Name="FollowPanel"/>
+                <!-- 외부 추천: 웹진 -->
+                <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+                <DockPanel Margin="0,20,0,8">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,5" Click="RefreshWebzines_Click">
+                        <TextBlock x:Name="WebzineRefreshText" Text="{local:Tr '지금 새로 읽기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <TextBlock Text="{local:Tr '외부 추천 · 웹진 (RSS)'}" Style="{StaticResource Kicker}" VerticalAlignment="Center"/>
+                </DockPanel>
+                <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"
+                           Text="{local:Tr '웹진이 소개한 앨범을 6시간마다 가져와 Deezer에서 확인하고, 발매 주를 열면 보라색 잡지 배지로 보여 줘요. 국내 웹진은 RSS를 막아 두거나 제공하지 않아 아직 없어요.'}"/>
+                <WrapPanel x:Name="WebzinePanel"/>
 
-        <!-- 차단 목록 -->
-        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
-        <TextBlock Text="{local:Tr '차단 목록'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
-        <TextBlock x:Name="BlockedEmpty" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap"
-                   Text="{local:Tr '아직 없어요. 카드를 우클릭하면 그 아티스트나 레이블 전체를 추천에서 뺄 수 있어요.'}"/>
-        <WrapPanel x:Name="BlockedPanel"/>
+                <!-- 팔로우 -->
+                <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+                <TextBlock Text="{local:Tr '팔로우한 아티스트'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
+                <TextBlock x:Name="FollowEmpty" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap"
+                           Text="{local:Tr '아직 없어요. 카드의 아티스트 이름 앞 ☆을 누르면 그 아티스트 신보를 항상 맨 앞에 보여 줘요.'}"/>
+                <WrapPanel x:Name="FollowPanel"/>
 
-
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,26,0,0">
-            <Button Style="{StaticResource Bare}" Padding="18,8" IsCancel="True">
-                <TextBlock Text="{local:Tr '취소'}" Foreground="{StaticResource Text2}"/>
-            </Button>
-            <Button Style="{StaticResource Bare}" Padding="18,8" Margin="8,0,0,0" IsDefault="True" Click="Save_Click"
-                    Background="{StaticResource Accent}" BorderBrush="{StaticResource Accent}">
-                <TextBlock Text="{local:Tr '저장하고 다시 찾기'}" Foreground="{StaticResource OnAccent}" FontWeight="Bold"/>
-            </Button>
-        </StackPanel>
-    </StackPanel>
+                <!-- 차단 목록 -->
+                <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+                <TextBlock Text="{local:Tr '차단 목록'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
+                <TextBlock x:Name="BlockedEmpty" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap"
+                           Text="{local:Tr '아직 없어요. 카드를 우클릭하면 그 아티스트나 레이블 전체를 추천에서 뺄 수 있어요.'}"/>
+                <WrapPanel x:Name="BlockedPanel"/>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
 </Window>

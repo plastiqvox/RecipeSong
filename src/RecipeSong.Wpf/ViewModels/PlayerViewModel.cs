@@ -29,8 +29,9 @@ public sealed partial class PlayerViewModel : ObservableObject
     private readonly RecipeSong.Core.JsonCache<double> _store = new("player", TimeSpan.FromDays(36500));
     private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private double _beforeMute = 0.7;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsMuted))] private double _volume = 0.7;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsMuted)), NotifyPropertyChangedFor(nameof(VolumeTip))] private double _volume = 0.7;
     public bool IsMuted => Volume <= 0.001;
+    public string VolumeTip => L.F("볼륨 {0}% · 휠로도 조절", (int)Math.Round(Volume * 100));
 
     partial void OnVolumeChanged(double value)
     {

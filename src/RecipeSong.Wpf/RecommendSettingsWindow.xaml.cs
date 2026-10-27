@@ -48,6 +48,8 @@ public partial class RecommendSettingsWindow : Window
     public RecommendSettingsWindow(RecPrefs prefs, RecipeSong.Core.BlockList blocked, ViewModels.MainViewModel vm)
     {
         InitializeComponent();
+        DarkTitleBar.Apply(this);
+        MaxHeight = SystemParameters.WorkArea.Height - 24;  // 화면보다 길면 본문만 스크롤 (버튼 줄은 아래 고정)
         _blocked = blocked;
         _vm = vm;
         ShowBlocked();

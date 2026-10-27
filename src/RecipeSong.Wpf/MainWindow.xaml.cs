@@ -12,15 +12,29 @@ public partial class MainWindow : Window
     public MainWindow(MainViewModel vm)
     {
         InitializeComponent();
+        DarkTitleBar.Apply(this);
         DataContext = _vm = vm;
         Loaded += async (_, _) => await _vm.InitializeAsync();
         _vm.ScrollToRequested += item => Dispatcher.BeginInvoke(() => ScrollTo(item), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
+    /// <summary>
+    /// 카드 폭: 본문에 들어가는 칸 수(최소 380)를 정하고 남는 폭을 나눠 준다. 너무 넓으면 520 에서 멈춘다.
+    /// 본문 좌우 여백 72, 카드 오른쪽 간격 16.
+    /// </summary>
+    private void Body_ScrollChanged(object sender, System.Windows.Controls.ScrollChangedEventArgs e)
+    {
+        if (e.ViewportWidthChange == 0) return;
+        var w = e.ViewportWidth - 72;
+        int cols = Math.Max(1, (int)(w / (380 + 16)));
+        var width = Math.Clamp(Math.Floor(w / cols) - 16, 300, 520);
+        if (Resources["CardWidth"] is not double old || Math.Abs(old - width) >= 1) Resources["CardWidth"] = width;
+    }
+
     /// <summary>그 카드가 화면 위쪽에 오도록 스크롤 (수록곡이 펼쳐진 채로)</summary>
     private void ScrollTo(ReleaseItem item)
     {
-        var card = Find(this, e => e is System.Windows.Controls.Border { Width: 400 } b && b.DataContext == item);
+        var card = Find(this, e => e is System.Windows.Controls.Border { Tag: "card" } b && b.DataContext == item);
         if (card == null) return;
         var sv = FindAncestor<System.Windows.Controls.ScrollViewer>(card);
         if (sv == null) { card.BringIntoView(); return; }
@@ -107,11 +121,19 @@ public partial class MainWindow : Window
     // 재생 위치 슬라이더: 끄는 동안에는 타이머가 값을 덮어쓰지 않게
     private void Seek_DragStarted(object sender, DragStartedEventArgs e) => _vm.Player.BeginSeek();
 
-    private void Seek_DragCompleted(object sender, DragCompletedEventArgs e) => _vm.Player.EndSeek(Seek.Value);
+    // 수록곡 창의 스피커 아이콘: 휠 한 칸에 5%
+    private void Volume_Wheel(object sender, MouseWheelEventArgs e)
+    {
+        _vm.Player.Volume = Math.Clamp(_vm.Player.Volume + Math.Sign(e.Delta) * 0.05, 0, 1);
+        e.Handled = true;
+    }
+
+    // 하단 바와 오른쪽 수록곡 창 두 곳에 있어서 보낸 슬라이더 값을 쓴다
+    private void Seek_DragCompleted(object sender, DragCompletedEventArgs e) => _vm.Player.EndSeek(((System.Windows.Controls.Slider)sender).Value);
 
     private void Seek_MouseUp(object sender, MouseButtonEventArgs e)
     {
         _vm.Player.BeginSeek();
-        _vm.Player.EndSeek(Seek.Value);
+        _vm.Player.EndSeek(((System.Windows.Controls.Slider)sender).Value);
     }
 }

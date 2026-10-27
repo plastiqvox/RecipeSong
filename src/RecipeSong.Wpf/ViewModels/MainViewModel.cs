@@ -356,12 +356,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string NavLabel => IsYearMode ? L.F("{0}년", NavMonth.Year) : L.F("{0}년 {1}월", NavMonth.Year, NavMonth.Month, NavMonth);
 
     public Period CurrentPeriod => Periods.Create(Mode, SelectedDate);
-    public string PeriodKicker => Mode switch
-    {
-        PeriodKind.Year => "YEAR",
-        PeriodKind.Month => "MONTH",
-        _ => $"WEEK {System.Globalization.ISOWeek.GetWeekOfYear(SelectedDate)}"
-    };
     public string PeriodTitle => Mode switch
     {
         PeriodKind.Year => L.F("{0}년", SelectedDate.Year),
@@ -429,7 +423,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         NavMonth = new DateTime(SelectedDate.Year, SelectedDate.Month, 1);
         foreach (var n in new[] { nameof(CanPrecise), nameof(PreciseLabel), nameof(IsYearMode), nameof(IsWeekMode), nameof(IsMonthMode), nameof(IsYearModeChecked), nameof(CanAiWeekly),
-                                  nameof(NavLabel), nameof(PeriodKicker), nameof(PeriodTitle), nameof(PeriodRange) })
+                                  nameof(NavLabel), nameof(PeriodTitle), nameof(PeriodRange) })
             OnPropertyChanged(n);
         BuildCalendar();
         _loadTask = LoadAsync();
@@ -814,9 +808,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (Periods.Create(PeriodKind.Week, month.End) is var last && weeks.All(x => x.Label != last.Label)) weeks.Add(last);
         // 예상 비용: 최근 검색 한 번 비용 × 주 수 (기록이 없으면 Sonnet 기준 $0.15)
         double per = _aiLedger.Recent(5) is { Count: > 0 } r ? r.Average() : 0.15;
-        if (MessageBox.Show(Application.Current.MainWindow,
+        if (!ConfirmWindow.Ask(Application.Current.MainWindow, L.T("AI 주별로 찾기"),
                 L.F("{0}을(를) 주 {1}번으로 나눠 AI로 찾을까요?\n한 번에 찾을 때보다 촘촘하지만 비용이 주 수만큼 들어요 (예상 약 ${2:0.00}).", month.Display, weeks.Count, per * weeks.Count),
-                L.T("AI 주별로 찾기"), MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+                L.F("약 ${0:0.00} 쓰고 찾기", per * weeks.Count))) return;
         var start = DateTime.Now;
         for (int i = 0; i < weeks.Count; i++)
         {

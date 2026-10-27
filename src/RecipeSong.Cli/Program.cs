@@ -53,7 +53,7 @@ if (cmd == "ai-recover")
     {
         var m = System.Text.RegularExpressions.Regex.Match(s, @"^(.+?) – (.+) \((\d{4}-\d{2}-\d{2})\)$");
         return m.Success ? new AiPick(m.Groups[1].Value, m.Groups[2].Value, m.Groups[3].Value, null, null,
-            "다시 불러온 AI 제안 (추천 이유는 남아 있지 않아요)", null, by) : null;
+            AiPick.RecoveredReason, null, by) : null;
     }).OfType<AiPick>().ToList();
     Console.WriteLine($"{by} 제출 {picks.Count}장 다시 확인");
     var recov = new ReleaseRecommender(new DeezerClient(new HttpClient()), new RegionResolver(new HttpClient()));

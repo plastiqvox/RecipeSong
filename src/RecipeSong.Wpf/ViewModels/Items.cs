@@ -67,8 +67,11 @@ public sealed partial class ReleaseItem : ObservableObject
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
     /// <summary>추천 이유. 웹진의 'OO에서 소개'는 보라 배지와 겹쳐서 뺀다 (AI 이유와 합쳐진 경우 그 부분만)</summary>
-    public string? AiReason => Rec.AiReason?.Split("  /  ").Where(r => !r.EndsWith("에서 소개", StringComparison.Ordinal)).ToList() is { Count: > 0 } rs
+    public string? AiReason => IsRecovered ? L.T(AiPick.RecoveredReason)
+        : Rec.AiReason?.Split("  /  ").Where(r => !r.EndsWith("에서 소개", StringComparison.Ordinal)).ToList() is { Count: > 0 } rs
         ? string.Join("  /  ", rs) : null;
+    /// <summary>로그에서 다시 불러온 AI 제안: 이유가 없다는 안내라 흐리게 보인다</summary>
+    public bool IsRecovered => Rec.AiReason == AiPick.RecoveredReason;
     public bool HasAiReason => AiReason != null;
     /// <summary>제안한 AI 커넥터 ("Claude", "GPT") — 커넥터마다 배지 하나</summary>
     public IReadOnlyList<AiBadge> AiBy => [.. (Rec.AiBy ?? (IsAi ? ["AI"] : [])).Select(b => new AiBadge(b))];
@@ -89,8 +92,9 @@ public sealed partial class ReleaseItem : ObservableObject
     /// <summary>비슷한 내 곡 — 수록곡을 곡마다 분석했으면 그 결과(수록곡 목록과 같은 곡), 아니면 앨범 전체와 닮은 곡</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNear))] private IReadOnlyList<NearTrackItem> _nearItems = [];
     public string Near => string.Join("  /  ", Rec.NearTracks.Take(2).Select(Shorten));
-    // BecauseOf는 아티스트 이름 또는 "웹진" → 표시할 때만 번역
-    public string Because => SavedNote ?? (IsMine || Rec.BecauseOf.Count == 0 ? "" : L.F("{0}에서 출발", string.Join(", ", Rec.BecauseOf.Select(L.T))));
+    // BecauseOf는 아티스트 이름 또는 "웹진"·"AI 제안" → 표시할 때만 번역. 웹진·AI 제안은 배지가 이미 말해 줘서 뺀다
+    public string Because => SavedNote ?? (IsMine ? ""
+        : Rec.BecauseOf.Where(b => b is not ("웹진" or "AI 제안")).ToList() is { Count: > 0 } bs ? L.F("{0}에서 출발", string.Join(", ", bs.Select(L.T))) : "");
 
     public IAsyncRelayCommand ToggleTracksCommand { get; }
     public IRelayCommand ToggleSaveCommand { get; }

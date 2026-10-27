@@ -128,7 +128,11 @@ public sealed record TrackPair(string Track, string Near, double Sim);
 /// By: 제안한 커넥터 이름 ("Claude", "GPT").
 /// </summary>
 public sealed record AiPick(string Artist, string Album, string? ReleaseDate, string? Type, string? Region, string Reason, string? Source,
-    string By = "");
+    string By = "")
+{
+    /// <summary>로그에서 다시 불러온 제안의 이유 자리 (원래 이유는 로그에 없다). 화면은 이 값을 보고 번역·흐리게 표시한다</summary>
+    public const string RecoveredReason = "다시 불러온 AI 제안 (추천 이유는 남아 있지 않아요)";
+}
 
 public sealed record RecommendationResult(
     Period Period,

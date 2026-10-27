@@ -18,6 +18,8 @@ public partial class ConnectorWindow : Window
     public ConnectorWindow(AiConnectorSettings settings, AiUsageLedger ledger)
     {
         InitializeComponent();
+        DarkTitleBar.Apply(this);
+        MaxHeight = SystemParameters.WorkArea.Height - 24;  // 화면보다 길면 본문만 스크롤 (버튼 줄은 아래 고정)
         _settings = settings;
         _ledger = ledger;
         ShowBudget("Claude", settings.ClaudeBudget, ClaudeDailyBox, ClaudeWeeklyBox, ClaudeCreditBox, ClaudeUsageText);
@@ -90,16 +92,17 @@ public partial class ConnectorWindow : Window
 
     private void UpdateKeyHints()
     {
-        UpdateKeyHint(KeyBox, KeyHint, ClearKey, Guide, _clearKey, _settings.HasStoredKey, _settings.GetKey() != null,
+        UpdateKeyHint(KeyBox, KeyStored, KeyHint, ClearKey, Guide, _clearKey, _settings.HasStoredKey, _settings.GetKey() != null,
             "sk-ant-", "Anthropic", "ANTHROPIC_API_KEY", _settings.KeySource);
-        UpdateKeyHint(GptKeyBox, GptKeyHint, GptClearKey, GptGuide, _clearGptKey, _settings.HasStoredGptKey, _settings.GetGptKey() != null,
+        UpdateKeyHint(GptKeyBox, GptKeyStored, GptKeyHint, GptClearKey, GptGuide, _clearGptKey, _settings.HasStoredGptKey, _settings.GetGptKey() != null,
             "sk-", "OpenAI", "OPENAI_API_KEY", _settings.GptKeySource);
     }
 
-    private static void UpdateKeyHint(PasswordBox box, TextBlock hint, Button clear, Border guide, bool clearing, bool stored, bool hasKey,
+    private static void UpdateKeyHint(PasswordBox box, TextBlock storedMark, TextBlock hint, Button clear, Border guide, bool clearing, bool stored, bool hasKey,
         string prefix, string vendor, string envName, string source)
     {
         guide.Visibility = !hasKey && box.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        storedMark.Visibility = stored && !clearing && box.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (box.Password.Length > 0)
         {
             hint.Text = box.Password.StartsWith(prefix, StringComparison.Ordinal)
@@ -108,7 +111,7 @@ public partial class ConnectorWindow : Window
             return;
         }
         hint.Text = clearing ? L.T("저장하면 키를 지워요")
-            : stored ? L.T("저장한 키가 있어요 (Windows 계정으로 암호화). 바꾸려면 새 키를 입력하세요.")
+            : stored ? L.T("Windows 계정으로 암호화해 저장했어요. 바꾸려면 새 키를 입력하세요.")
             : L.F("키를 입력하세요. 비워 두면 {0} 환경 변수를 써요. (지금: {1})", envName, L.T(source));
         clear.Visibility = stored && !clearing ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -157,7 +160,7 @@ public partial class ConnectorWindow : Window
         {
             var exp = days is { } d && b.KeySavedAt is { } at ? at.Date.AddDays(d) : (DateTime?)null;
             text.Text = exp is { } e ? L.F("{0:yyyy.M.d} 만료 예정 (키 저장일 {1:M.d} 기준)", e, b.KeySavedAt)
-                : days != null ? L.T("키를 저장하면 그날부터 계산해요") : L.T("만료 없음");
+                : days != null ? L.T("키를 저장하면 그날부터 계산해요") : "";  // '없음'을 고른 칸이 이미 말해 준다
         }
         foreach (var days in KeyDayOptions)
         {

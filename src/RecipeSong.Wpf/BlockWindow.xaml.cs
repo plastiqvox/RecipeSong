@@ -34,6 +34,7 @@ public partial class BlockWindow : Window
     public BlockWindow(string name, string album, bool label)
     {
         InitializeComponent();
+        DarkTitleBar.Apply(this);
         Heading.Text = label ? L.F("레이블 차단 · {0}", name) : L.F("아티스트 차단 · {0}", name);
         Sub.Text = L.F("{0}에서 차단해요. 추천 설정에서 풀 수 있어요.", album);
         Add(SoundPanel, Sound);

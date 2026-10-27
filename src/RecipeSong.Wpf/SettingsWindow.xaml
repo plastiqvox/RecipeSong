@@ -5,70 +5,98 @@
         Title="{local:Tr '설정'}" Width="560" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
         FontFamily="{StaticResource Sans}">
-    <StackPanel Margin="28,24">
-        <TextBlock Text="{local:Tr '설정'}" FontSize="22" FontWeight="Bold"/>
-
-        <!-- 언어 -->
-        <TextBlock Text="{local:Tr '언어 · Language'}" Style="{StaticResource Kicker}" Margin="0,24,0,8"/>
-        <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
-            <UniformGrid x:Name="LangGrid" Rows="1"/>
+    <!-- 버튼 줄은 아래에 고정하고 본문만 스크롤 (내용이 화면보다 길면 버튼이 화면 밖으로 나가서) -->
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line2}" BorderThickness="0,1,0,0" Padding="28,14,28,18">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Style="{StaticResource Bare}" Padding="18,8" IsCancel="True" IsDefault="True">
+                    <TextBlock Text="{local:Tr '닫기'}" Foreground="{StaticResource Text2}"/>
+                </Button>
+            </StackPanel>
         </Border>
-        <DockPanel Margin="0,8,0,0">
-            <Button x:Name="RestartButton" DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,5" Click="Restart_Click" Visibility="Collapsed">
-                <TextBlock Text="{local:Tr '지금 다시 시작'}" FontSize="12" Foreground="{StaticResource AccentText}"/>
-            </Button>
-            <TextBlock x:Name="LangHint" Style="{StaticResource MutedText}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"/>
-        </DockPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="28,24">
+                <TextBlock Text="{local:Tr '설정'}" FontSize="22" FontWeight="Bold"/>
 
-        <!-- iTunes 라이브러리 -->
-        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
-        <TextBlock Text="{local:Tr 'iTunes 라이브러리'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
-        <DockPanel>
-            <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Margin="6,0,0,0" Click="PickLibrary_Click">
-                <TextBlock Text="{local:Tr '바꾸기…'}" FontSize="12" Foreground="{StaticResource Text2}"/>
-            </Button>
-            <TextBlock x:Name="LibraryPath" FontSize="12" Foreground="{StaticResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-        </DockPanel>
-        <TextBlock x:Name="LibraryResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"/>
+                <!-- 언어 -->
+                <TextBlock Text="{local:Tr '언어 · Language'}" Style="{StaticResource Kicker}" Margin="0,24,0,8"/>
+                <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}">
+                    <UniformGrid x:Name="LangGrid" Rows="1"/>
+                </Border>
+                <DockPanel Margin="0,8,0,0">
+                    <Button x:Name="RestartButton" DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,5" Click="Restart_Click" Visibility="Collapsed">
+                        <TextBlock Text="{local:Tr '지금 다시 시작'}" FontSize="12" Foreground="{StaticResource AccentText}"/>
+                    </Button>
+                    <TextBlock x:Name="LangHint" Style="{StaticResource MutedText}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"
+                               Visibility="{Binding Text, RelativeSource={RelativeSource Self}, Converter={StaticResource EmptyCollapsed}}"/>
+                </DockPanel>
 
-        <!-- 취향 모델 -->
-        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
-        <TextBlock Text="{local:Tr '취향 모델'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
-        <CheckBox x:Name="AutoRetrainBox" Foreground="{StaticResource Text}" FontSize="14"
-                  Content="{local:Tr 'iTunes에 곡이 추가되면 자동으로 다시 학습'}"/>
-        <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
-                   Text="{local:Tr '새로 들어온 곡의 소리를 분석해 취향 모델을 다시 학습해요. 정확도가 떨어지면 이전 모델을 그대로 써요. 끄면 사이드바의 \'지금 업데이트\'로 직접 해요.'}"/>
+                <!-- iTunes 라이브러리 -->
+                <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+                <TextBlock Text="{local:Tr 'iTunes 라이브러리'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Margin="6,0,0,0" Click="PickLibrary_Click">
+                        <TextBlock Text="{local:Tr '바꾸기…'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <TextBlock x:Name="LibraryPath" FontSize="12" Foreground="{StaticResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+                <TextBlock x:Name="LibraryResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"
+                           Visibility="{Binding Text, RelativeSource={RelativeSource Self}, Converter={StaticResource EmptyCollapsed}}"/>
 
-        <!-- 저장 위치와 용량 -->
-        <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
-        <TextBlock Text="{local:Tr '저장 위치와 용량'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
-        <DockPanel>
-            <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Margin="6,0,0,0" Click="MoveCache_Click">
-                <TextBlock Text="{local:Tr '위치 바꾸기…'}" FontSize="12" Foreground="{StaticResource Text2}"/>
-            </Button>
-            <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Click="OpenCache_Click">
-                <TextBlock Text="{local:Tr '폴더 열기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
-            </Button>
-            <TextBlock x:Name="CachePath" FontSize="12" Foreground="{StaticResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-        </DockPanel>
-        <TextBlock x:Name="CacheSizes" Style="{StaticResource MutedText}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" LineHeight="19"/>
-        <TextBlock x:Name="MlSizes" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="19"/>
-        <TextBlock x:Name="MoveResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"/>
+                <!-- 취향 모델 -->
+                <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+                <TextBlock Text="{local:Tr '취향 모델'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
+                <CheckBox x:Name="AutoRetrainBox" Foreground="{StaticResource Text}" FontSize="14"
+                          Content="{local:Tr 'iTunes에 곡이 추가되면 자동으로 다시 학습'}"/>
+                <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
+                           Text="{local:Tr '새로 들어온 곡의 소리를 분석해 취향 모델을 다시 학습해요. 정확도가 떨어지면 이전 모델을 그대로 써요. 끄면 사이드바의 \'지금 업데이트\'로 직접 해요.'}"/>
 
-        <!-- 저장된 추천 비우기 -->
-        <DockPanel Margin="0,14,0,0">
-            <Button x:Name="ClearRecsButton" DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Click="ClearRecs_Click">
-                <TextBlock Text="{local:Tr '저장된 추천 비우기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
-            </Button>
-            <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
-                       Text="{local:Tr '모델이나 설정이 바뀐 뒤 예전 추천을 버리고 새로 계산해요. 좋아요·별로·차단·팔로우와 AI·웹진 제안은 그대로예요.'}"/>
-        </DockPanel>
-        <TextBlock x:Name="ClearResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"/>
+                <!-- 저장 위치와 용량 -->
+                <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+                <TextBlock Text="{local:Tr '저장 위치와 용량'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Margin="6,0,0,0" Click="MoveCache_Click">
+                        <TextBlock Text="{local:Tr '위치 바꾸기…'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Click="OpenCache_Click">
+                        <TextBlock Text="{local:Tr '폴더 열기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <TextBlock x:Name="CachePath" FontSize="12" Foreground="{StaticResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+                <TextBlock x:Name="CacheSizes" Style="{StaticResource MutedText}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" LineHeight="19"/>
+                <TextBlock x:Name="MlSizes" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="19"/>
+                <TextBlock x:Name="MoveResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"
+                           Visibility="{Binding Text, RelativeSource={RelativeSource Self}, Converter={StaticResource EmptyCollapsed}}"/>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,26,0,0">
-            <Button Style="{StaticResource Bare}" Padding="18,8" IsCancel="True" IsDefault="True">
-                <TextBlock Text="{local:Tr '닫기'}" Foreground="{StaticResource Text2}"/>
-            </Button>
-        </StackPanel>
-    </StackPanel>
+                <!-- 저장된 추천 비우기 -->
+                <DockPanel Margin="0,14,0,0">
+                    <Button x:Name="ClearRecsButton" DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Click="ClearRecs_Click">
+                        <TextBlock Text="{local:Tr '저장된 추천 비우기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Text="{local:Tr '모델이나 설정이 바뀐 뒤 예전 추천을 버리고 새로 계산해요. 좋아요·별로·차단·팔로우와 AI·웹진 제안은 그대로예요.'}"/>
+                </DockPanel>
+                <TextBlock x:Name="ClearResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"
+                           Visibility="{Binding Text, RelativeSource={RelativeSource Self}, Converter={StaticResource EmptyCollapsed}}"/>
+
+                <!-- 다른 설정 창: 톱니부터 여는 사람이 추천·AI 설정을 찾을 수 있게 -->
+                <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
+                <TextBlock Text="{local:Tr '다른 설정'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Margin="6,0,0,0" Click="OpenRecommend_Click">
+                        <TextBlock Text="{local:Tr '추천 설정 열기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Text="{local:Tr '추천 양·모험 정도·웹진·팔로우·차단 목록'}"/>
+                </DockPanel>
+                <DockPanel Margin="0,8,0,0">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Margin="6,0,0,0" Click="OpenConnector_Click">
+                        <TextBlock Text="{local:Tr 'AI 커넥터 설정 열기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Text="{local:Tr 'Claude·GPT API 키·모델·사용 한도'}"/>
+                </DockPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
 </Window>

@@ -3,10 +3,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:RecipeSong.Wpf.ViewModels"
         xmlns:local="clr-namespace:RecipeSong.Wpf"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
         Title="RecipeSong" Width="1440" Height="960" MinWidth="1040" MinHeight="680"
         Background="{StaticResource Bg}" FontFamily="{StaticResource Sans}"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
+        <!-- 카드 폭: 본문 폭에 맞춰 코드에서 바꾼다 (고정 폭이면 좁은 창에서 한 칸만 나오고 오른쪽이 비었다) -->
+        <sys:Double x:Key="CardWidth">400</sys:Double>
         <!-- 수록곡 한 줄 -->
         <DataTemplate x:Key="TrackRow" DataType="{x:Type vm:TrackItem}">
             <Grid x:Name="line" Background="Transparent">
@@ -160,6 +163,101 @@
                             <Path Data="{StaticResource YouTubeIcon}" Fill="#FF3D3D" Width="17" Height="12" Stretch="Uniform"/>
                         </Button>
                     </StackPanel>
+                    <!-- 재생: 이 창이 열려 있으면 하단 재생 바 대신 여기서 다룬다 (지금 재생 중인 곡 기준이라 이 앨범이 아닐 수도 있다) -->
+                    <Border Margin="0,14,0,0" Padding="12,10" CornerRadius="10" Background="{StaticResource Surface2}"
+                            DataContext="{Binding DataContext.Player, RelativeSource={RelativeSource AncestorType=Window}}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Left" Style="{StaticResource RoundPlay}" Width="40" Height="40" VerticalAlignment="Center"
+                                    Background="{StaticResource Text}" Foreground="{StaticResource Bg}"
+                                    Command="{Binding ToggleCommand}" AutomationProperties.Name="{local:Tr '재생/일시정지'}">
+                                <Grid>
+                                    <Path Data="{StaticResource PlayIcon}" Fill="{StaticResource Bg}" Width="14" Height="14" Stretch="Uniform"
+                                          Visibility="{Binding IsPlaying, Converter={StaticResource NotBoolVis}}"/>
+                                    <Path Data="{StaticResource PauseIcon}" Fill="{StaticResource Bg}" Width="12" Height="12" Stretch="Uniform"
+                                          Visibility="{Binding IsPlaying, Converter={StaticResource BoolVis}}"/>
+                                </Grid>
+                            </Button>
+                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0">
+                                        <!-- 재생 막대와 볼륨 슬라이더가 두 줄로 겹쳐 보여서 볼륨은 아이콘만 두고, 누르면 작은 창에 슬라이더를 띄운다 (휠로도 조절) -->
+                                        <Grid>
+                                            <ToggleButton x:Name="volBtn" Cursor="Hand" Focusable="False" MouseWheel="Volume_Wheel" ToolTip="{Binding VolumeTip}"
+                                                          AutomationProperties.Name="{local:Tr '볼륨'}" IsChecked="{Binding IsOpen, ElementName=volPop, Mode=TwoWay}">
+                                                <ToggleButton.Style>
+                                                    <Style TargetType="ToggleButton">
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="ToggleButton">
+                                                                    <Border x:Name="b" Background="Transparent" CornerRadius="6" Padding="5,3">
+                                                                        <ContentPresenter/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="b" Property="Background" Value="{StaticResource Line2}"/>
+                                                                        </Trigger>
+                                                                        <Trigger Property="IsChecked" Value="True">
+                                                                            <Setter TargetName="b" Property="Background" Value="{StaticResource Line2}"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                        <!-- 창이 열려 있을 때 아이콘을 다시 누르면 닫히고 곧바로 다시 열리지 않게 -->
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsOpen, ElementName=volPop}" Value="True">
+                                                                <Setter Property="IsHitTestVisible" Value="False"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ToggleButton.Style>
+                                                <Grid Width="18" Height="18">
+                                                    <Path Data="M3,9 H7 L12,4 V20 L7,15 H3 Z" Fill="{StaticResource Text2}" Stretch="Uniform" Width="12" Height="16" HorizontalAlignment="Left"/>
+                                                    <Path Data="M15,8 Q18,12 15,16 M17.5,5.5 Q22,12 17.5,18.5" Stroke="{StaticResource Text2}" StrokeThickness="1.6" Stretch="None"
+                                                          Margin="-3,-3,0,0" Visibility="{Binding IsMuted, Converter={StaticResource NotBoolVis}}"/>
+                                                    <Path Data="M15,9 L21,15 M21,9 L15,15" Stroke="{StaticResource AccentText}" StrokeThickness="1.6" Stretch="None"
+                                                          Margin="-3,-3,0,0" Visibility="{Binding IsMuted, Converter={StaticResource BoolVis}}"/>
+                                                </Grid>
+                                            </ToggleButton>
+                                            <Popup x:Name="volPop" PlacementTarget="{Binding ElementName=volBtn}" Placement="Left" HorizontalOffset="-6" VerticalOffset="-9"
+                                                   StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                                                <Border Padding="8,6,14,6" CornerRadius="10" Background="{StaticResource Surface3}" BorderBrush="{StaticResource Line3}" BorderThickness="1">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Button Style="{StaticResource Bare}" BorderThickness="0" Padding="5,3" Command="{Binding ToggleMuteCommand}"
+                                                                AutomationProperties.Name="{local:Tr '음소거'}" ToolTip="{local:Tr '음소거 / 다시 켜기'}">
+                                                            <Grid Width="18" Height="18">
+                                                    <Path Data="M3,9 H7 L12,4 V20 L7,15 H3 Z" Fill="{StaticResource Text2}" Stretch="Uniform" Width="12" Height="16" HorizontalAlignment="Left"/>
+                                                    <Path Data="M15,8 Q18,12 15,16 M17.5,5.5 Q22,12 17.5,18.5" Stroke="{StaticResource Text2}" StrokeThickness="1.6" Stretch="None"
+                                                          Margin="-3,-3,0,0" Visibility="{Binding IsMuted, Converter={StaticResource NotBoolVis}}"/>
+                                                    <Path Data="M15,9 L21,15 M21,9 L15,15" Stroke="{StaticResource AccentText}" StrokeThickness="1.6" Stretch="None"
+                                                          Margin="-3,-3,0,0" Visibility="{Binding IsMuted, Converter={StaticResource BoolVis}}"/>
+                                                </Grid>
+                                                        </Button>
+                                                        <Slider Width="140" Minimum="0" Maximum="1" Value="{Binding Volume}" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                IsMoveToPointEnabled="True" SmallChange="0.05" LargeChange="0.1" AutomationProperties.Name="{local:Tr '볼륨 크기'}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Popup>
+                                        </Grid>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="Medium" TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" ToolTip="{Binding Subtitle}"/>
+                                </DockPanel>
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding PositionText}" Style="{StaticResource MutedText}" FontSize="11" FontFamily="{StaticResource Mono}" VerticalAlignment="Center"/>
+                                    <Slider Grid.Column="1" Margin="8,0" Minimum="0" Maximum="{Binding Duration}" Value="{Binding Position, Mode=OneWay}"
+                                            IsMoveToPointEnabled="True" VerticalAlignment="Center" AutomationProperties.Name="{local:Tr '재생 위치'}"
+                                            Thumb.DragStarted="Seek_DragStarted" Thumb.DragCompleted="Seek_DragCompleted" PreviewMouseLeftButtonUp="Seek_MouseUp"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding DurationText}" Style="{StaticResource MutedText}" FontSize="11" FontFamily="{StaticResource Mono}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
                     <Border Height="1" Background="{StaticResource Line}" Margin="0,16,0,8"/>
                     <TextBlock Text="{Binding TracksStatus}" Style="{StaticResource MutedText}" FontSize="12" Margin="4,4"
                                Visibility="{Binding TracksStatus, Converter={StaticResource EmptyCollapsed}}"/>
@@ -171,7 +269,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ReleaseCard" DataType="{x:Type vm:ReleaseItem}">
-            <Border Width="400" Margin="0,0,16,16" Padding="14" CornerRadius="14" Background="{StaticResource Surface}"
+            <Border Tag="card" Width="{DynamicResource CardWidth}" Margin="0,0,16,16" Padding="14" CornerRadius="14" Background="{StaticResource Surface}"
                     BorderBrush="{StaticResource Line}" BorderThickness="1">
                 <!-- 우클릭: 뮤지션 팔로우 · 뮤지션/레이블 차단 -->
                 <Border.ContextMenu>
@@ -188,10 +286,6 @@
                         <ColumnDefinition Width="14"/>
                         <ColumnDefinition/>
                     </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
                     <Border Width="120" Height="120" CornerRadius="8" Background="{StaticResource Surface3}" VerticalAlignment="Top">
                         <Border.Clip>
                             <RectangleGeometry Rect="0,0,120,120" RadiusX="8" RadiusY="8"/>
@@ -210,7 +304,51 @@
                             </Button>
                         </Grid>
                     </Border>
-                    <StackPanel Grid.Column="2">
+                    <!-- 버튼 줄은 아래에 붙인다: 한 줄의 카드는 높이가 같아서 버튼 줄 높이가 카드마다 맞는다 -->
+                    <DockPanel Grid.Column="2">
+                        <StackPanel DockPanel.Dock="Bottom">
+                            <!-- 어디서 출발한 추천인지 (버튼 줄 위에 따로 한 줄, 길면 두 줄까지. 아래에 두면 버튼 줄 높이가 카드마다 달라졌다) -->
+                            <TextBlock Text="{Binding Because}" Style="{StaticResource MutedText}" FontSize="11" Margin="2,6,0,0" TextWrapping="Wrap"
+                                       TextTrimming="CharacterEllipsis" MaxHeight="32" ToolTip="{Binding Because}"
+                                       Visibility="{Binding Because, Converter={StaticResource EmptyCollapsed}}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button Style="{StaticResource Bare}" Command="{Binding ToggleSaveCommand}"
+                                        Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding SaveTip}"
+                                        AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='저장: {0}'}">
+                                    <Path x:Name="mark" Data="{StaticResource BookmarkIcon}" Width="11" Height="13" Stretch="Uniform"
+                                          Stroke="{StaticResource Text2}" StrokeThickness="1.6" Fill="Transparent"/>
+                                </Button>
+                                <!-- 좋아요(앨범 하트): 학습에 반영 -->
+                                <Button Style="{StaticResource Bare}" Command="{Binding ToggleLikeCommand}"
+                                        Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding LikeTip}"
+                                        AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='좋아요: {0}'}">
+                                    <Path x:Name="like" Data="{StaticResource ThumbUpIcon}" Width="13" Height="13" Stretch="Uniform"
+                                          Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
+                                </Button>
+                                <!-- 별로: 숨기고 학습에 반영 -->
+                                <Button Style="{StaticResource Bare}" Command="{Binding ToggleDislikeCommand}"
+                                        Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding DislikeTip}"
+                                        AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='별로: {0}'}">
+                                    <Path x:Name="dislike" Data="{StaticResource ThumbDownIcon}" Width="13" Height="13" Stretch="Uniform"
+                                          Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
+                                </Button>
+                                <Button x:Name="tracksBtn" Style="{StaticResource Bare}" Command="{Binding ToggleTracksCommand}" Padding="9,5" Margin="0,0,6,0"
+                                        ToolTip="{Binding TracksButton}" AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='수록곡: {0}'}">
+                                    <!-- 목록 아이콘: 펼쳐져 있으면 주황 -->
+                                    <Path x:Name="tracksIcon" Data="{StaticResource TracklistIcon}" Stroke="{StaticResource Text2}" StrokeThickness="1.8"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="16" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
+                                </Button>
+                                <Button Style="{StaticResource Bare}" Command="{Binding OpenAppleMusicCommand}" Padding="9,5" ToolTip="{local:Tr 'Apple Music에서 열기 (iTunes)'}"
+                                        AutomationProperties.Name="{Binding Album, StringFormat=Apple Music: {0}}">
+                                    <Path Data="{StaticResource AppleMusicIcon}" Fill="#FA2D48" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"/>
+                                </Button>
+                                <Button Style="{StaticResource Bare}" Command="{Binding OpenYouTubeCommand}" Padding="9,5" Margin="6,0,0,0" ToolTip="{local:Tr 'YouTube에서 앨범 찾기 (전곡)'}"
+                                        AutomationProperties.Name="{Binding Album, StringFormat=YouTube: {0}}">
+                                    <Path Data="{StaticResource YouTubeIcon}" Fill="#FF3D3D" Width="17" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    <StackPanel>
                         <DockPanel LastChildFill="False">
                             <Border DockPanel.Dock="Right" Margin="6,2,0,0" Padding="6,1" CornerRadius="4" BorderBrush="{StaticResource Line3}" BorderThickness="1" VerticalAlignment="Top">
                                 <TextBlock Text="{Binding TypeLabel}" FontFamily="{StaticResource Mono}" FontSize="10" Foreground="{StaticResource Text2}"/>
@@ -299,9 +437,20 @@
                             <Button.Template>
                                 <ControlTemplate TargetType="Button"><ContentPresenter/></ControlTemplate>
                             </Button.Template>
-                            <TextBlock FontSize="12" Text="{Binding AiReason}" Foreground="{StaticResource AccentText}" TextWrapping="Wrap"
+                            <TextBlock FontSize="12" Text="{Binding AiReason}" TextWrapping="Wrap"
                                        MaxHeight="58" TextTrimming="CharacterEllipsis" TextDecorations="{x:Null}" LineHeight="18" LineStackingStrategy="BlockLineHeight"
-                                       ToolTip="{Binding AiReason}"/>
+                                       ToolTip="{Binding AiReason}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Foreground" Value="{StaticResource AccentText}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRecovered}" Value="True">
+                                                <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </Button>
                         <!-- 수록곡에 좋아하는 아티스트가 참여 -->
                         <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis"
@@ -366,47 +515,8 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button Style="{StaticResource Bare}" Command="{Binding ToggleSaveCommand}"
-                                    Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding SaveTip}"
-                                    AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='저장: {0}'}">
-                                <Path x:Name="mark" Data="{StaticResource BookmarkIcon}" Width="11" Height="13" Stretch="Uniform"
-                                      Stroke="{StaticResource Text2}" StrokeThickness="1.6" Fill="Transparent"/>
-                            </Button>
-                            <!-- 좋아요(앨범 하트): 학습에 반영 -->
-                            <Button Style="{StaticResource Bare}" Command="{Binding ToggleLikeCommand}"
-                                    Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding LikeTip}"
-                                    AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='좋아요: {0}'}">
-                                <Path x:Name="like" Data="{StaticResource ThumbUpIcon}" Width="13" Height="13" Stretch="Uniform"
-                                      Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
-                            </Button>
-                            <!-- 별로: 숨기고 학습에 반영 -->
-                            <Button Style="{StaticResource Bare}" Command="{Binding ToggleDislikeCommand}"
-                                    Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding DislikeTip}"
-                                    AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='별로: {0}'}">
-                                <Path x:Name="dislike" Data="{StaticResource ThumbDownIcon}" Width="13" Height="13" Stretch="Uniform"
-                                      Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
-                            </Button>
-                            <Button x:Name="tracksBtn" Style="{StaticResource Bare}" Command="{Binding ToggleTracksCommand}" Padding="9,5" Margin="0,0,6,0"
-                                    ToolTip="{Binding TracksButton}" AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='수록곡: {0}'}">
-                                <!-- 목록 아이콘: 펼쳐져 있으면 주황 -->
-                                <Path x:Name="tracksIcon" Data="{StaticResource TracklistIcon}" Stroke="{StaticResource Text2}" StrokeThickness="1.8"
-                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="16" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
-                            </Button>
-                            <Button Style="{StaticResource Bare}" Command="{Binding OpenAppleMusicCommand}" Padding="9,5" ToolTip="{local:Tr 'Apple Music에서 열기 (iTunes)'}"
-                                    AutomationProperties.Name="{Binding Album, StringFormat=Apple Music: {0}}">
-                                <Path Data="{StaticResource AppleMusicIcon}" Fill="#FA2D48" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"/>
-                            </Button>
-                            <Button Style="{StaticResource Bare}" Command="{Binding OpenYouTubeCommand}" Padding="9,5" Margin="6,0,0,0" ToolTip="{local:Tr 'YouTube에서 앨범 찾기 (전곡)'}"
-                                    AutomationProperties.Name="{Binding Album, StringFormat=YouTube: {0}}">
-                                <Path Data="{StaticResource YouTubeIcon}" Fill="#FF3D3D" Width="17" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
-                            </Button>
-                        </StackPanel>
-                        <!-- 어디서 출발한 추천인지 (버튼 줄에 두면 잘려서 따로 한 줄, 길면 두 줄까지) -->
-                        <TextBlock Text="{Binding Because}" Style="{StaticResource MutedText}" FontSize="11" Margin="2,6,0,0" TextWrapping="Wrap"
-                                   TextTrimming="CharacterEllipsis" MaxHeight="32" ToolTip="{Binding Because}"
-                                   Visibility="{Binding Because, Converter={StaticResource EmptyCollapsed}}"/>
                     </StackPanel>
+                    </DockPanel>
 
                     <!-- 수록곡은 오른쪽 상세 패널에 (카드 안에서 펼치면 그 줄만 길어졌다) -->
                 </Grid>
@@ -486,7 +596,7 @@
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="10,4" Command="{Binding OpenConnectorCommand}"
                                 AutomationProperties.Name="{local:Tr 'AI 커넥터 설정'}" VerticalAlignment="Center">
-                            <TextBlock Text="{local:Tr '설정'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                            <TextBlock Text="{local:Tr '커넥터 설정'}" FontSize="12" Foreground="{StaticResource Text2}"/>
                         </Button>
                         <StackPanel>
                             <TextBlock Text="{local:Tr 'AI 커넥터'}" Style="{StaticResource Kicker}"/>
@@ -497,13 +607,13 @@
                 </Border>
 
                 <!-- 내 취향 모델 (아래 고정) -->
-                <Border DockPanel.Dock="Bottom" Padding="16" CornerRadius="12" Background="{StaticResource Surface2}">
+                <Border DockPanel.Dock="Bottom" Padding="16,12" CornerRadius="12" Background="{StaticResource Surface2}">
                     <StackPanel>
                         <DockPanel>
                             <TextBlock Text="{Binding ModelDevice}" DockPanel.Dock="Right" FontSize="11" Foreground="{StaticResource Ok}"/>
                             <TextBlock Text="{local:Tr '내 취향 모델'}" Style="{StaticResource Kicker}"/>
                         </DockPanel>
-                        <TextBlock Text="{Binding ModelTitle}" FontWeight="Bold" FontSize="15" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding ModelTitle}" FontWeight="Bold" FontSize="15" Margin="0,6,0,0" TextWrapping="Wrap"/>
                         <TextBlock Text="{Binding ModelSub}" Style="{StaticResource MutedText}" Margin="0,2,0,0" TextWrapping="Wrap"/>
                         <StackPanel Margin="0,12,0,0" Visibility="{Binding HasUpdate, Converter={StaticResource BoolVis}}">
                             <TextBlock Text="{Binding UpdateText}" FontSize="12" Foreground="{StaticResource AccentText}"/>
@@ -516,8 +626,10 @@
                             <TextBlock Text="{Binding UpdateProgressText}" FontSize="12" Foreground="{StaticResource Text2}" TextWrapping="Wrap"/>
                             <ProgressBar Style="{StaticResource Progress}" Value="{Binding UpdateProgress}" Margin="0,6,0,0"/>
                         </StackPanel>
-                        <TextBlock Text="{Binding UpdateProgressText}" Style="{StaticResource MutedText}" Margin="0,10,0,0" TextWrapping="Wrap"
-                                   Visibility="{Binding IsUpdating, Converter={StaticResource NotBoolVis}}"/>
+                        <Border Visibility="{Binding IsUpdating, Converter={StaticResource NotBoolVis}}">
+                            <TextBlock Text="{Binding UpdateProgressText}" Style="{StaticResource MutedText}" Margin="0,10,0,0" TextWrapping="Wrap"
+                                       Visibility="{Binding UpdateProgressText, Converter={StaticResource EmptyCollapsed}}"/>
+                        </Border>
                     </StackPanel>
                 </Border>
 
@@ -702,10 +814,9 @@
         </Border>
 
         <!-- ===== 본문 ===== -->
-        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" ScrollChanged="Body_ScrollChanged">
             <StackPanel Margin="40,32,32,40">
-                <TextBlock Text="{Binding PeriodKicker}" FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{StaticResource Accent}"/>
-                <TextBlock Text="{Binding PeriodTitle}" FontSize="34" FontWeight="Bold" Margin="0,6,0,0"/>
+                <TextBlock Text="{Binding PeriodTitle}" FontSize="34" FontWeight="Bold"/>
                 <TextBlock Text="{Binding PeriodRange}" Foreground="{StaticResource Muted}" Margin="0,6,0,0"/>
 
                 <!-- 필터 -->
@@ -774,7 +885,7 @@
                 <!-- 탭 -->
                 <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Margin="0,14,0,0">
                     <StackPanel Orientation="Horizontal">
-                        <RadioButton Style="{StaticResource Tab}" GroupName="tab" IsChecked="{Binding IsRecsTab}" ToolTip="{Binding RecCount, Converter={StaticResource TrFmt}, ConverterParameter='발매작 {0}장 (앨범·EP·싱글 · 형식·지역 필터 기준)'}">
+                        <RadioButton Style="{StaticResource Tab}" GroupName="tab" IsChecked="{Binding IsRecsTab}" AutomationProperties.Name="{local:Tr '추천 신보'}" ToolTip="{Binding RecCount, Converter={StaticResource TrFmt}, ConverterParameter='발매작 {0}장 (앨범·EP·싱글 · 형식·지역 필터 기준)'}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{local:Tr '추천 신보'}" Foreground="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=ContentPresenter}}" FontSize="15"/>
                                 <Border Margin="8,0,0,0" Padding="6,2" CornerRadius="8" Background="{StaticResource AccentDeep}" VerticalAlignment="Center">
@@ -782,7 +893,7 @@
                                 </Border>
                             </StackPanel>
                         </RadioButton>
-                        <RadioButton Style="{StaticResource Tab}" GroupName="tab" IsChecked="{Binding IsLibraryTab}">
+                        <RadioButton Style="{StaticResource Tab}" GroupName="tab" IsChecked="{Binding IsLibraryTab}" AutomationProperties.Name="{local:Tr '내 라이브러리'}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{local:Tr '내 라이브러리'}" Foreground="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=ContentPresenter}}" FontSize="15"/>
                                 <Border Margin="8,0,0,0" Padding="6,2" CornerRadius="8" Background="{StaticResource Surface3}" VerticalAlignment="Center">
@@ -813,8 +924,6 @@
                 <StackPanel Margin="0,16,0,0" Visibility="{Binding IsRecsTab, Converter={StaticResource BoolVis}}">
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
-                            <TextBlock Text="{Binding RecSavedNote}" Margin="0,0,12,0" VerticalAlignment="Center" FontSize="12" MaxWidth="180" TextTrimming="CharacterEllipsis" ToolTip="{Binding RecSavedNote}"
-                                       Foreground="{StaticResource Muted}"/>
                             <Button Style="{StaticResource Bare}" Padding="14,7" Command="{Binding ReanalyzeCommand}"
                                     AutomationProperties.Name="{local:Tr '다시 분석'}" ToolTip="{local:Tr '저장된 추천 대신 지금 다시 계산해요 (AI 비용 없음)'}">
                                 <TextBlock Text="{local:Tr '다시 분석'}" Foreground="{StaticResource Text2}"/>
@@ -952,7 +1061,11 @@
                 <StackPanel Margin="0,24,0,0" Visibility="{Binding IsDislikedTab, Converter={StaticResource BoolVis}}">
                     <TextBlock Text="{local:Tr '별로 표시한 앨범이에요. 비슷한 소리의 신보는 덜 추천해요. 👎를 다시 누르면 되돌려요.'}" Style="{StaticResource MutedText}"
                                FontSize="13" Margin="0,0,0,16" TextWrapping="Wrap"/>
-                    <ItemsControl ItemsSource="{Binding DislikedItems}" ItemTemplate="{StaticResource ReleaseCard}">
+                    <Border Padding="24,48" CornerRadius="14" BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                            Visibility="{Binding HasItems, ElementName=DislikedList, Converter={StaticResource NotBoolVis}}">
+                        <TextBlock Text="{local:Tr '별로로 표시한 앨범이 없어요.'}" Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/>
+                    </Border>
+                    <ItemsControl x:Name="DislikedList" ItemsSource="{Binding DislikedItems}" ItemTemplate="{StaticResource ReleaseCard}">
                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                     </ItemsControl>
                 </StackPanel>
@@ -960,7 +1073,12 @@
                 <!-- 내 라이브러리 -->
                 <StackPanel Margin="0,24,0,0" Visibility="{Binding IsLibraryTab, Converter={StaticResource BoolVis}}">
                     <TextBlock Text="{local:Tr '이 기간에 발매된, 내가 가진 앨범'}" Style="{StaticResource MutedText}" FontSize="13" Margin="0,0,0,18"/>
-                    <ItemsControl ItemsSource="{Binding LibraryGroups}">
+                    <Border Padding="24,48" CornerRadius="14" BorderBrush="{StaticResource Line2}" BorderThickness="1"
+                            Visibility="{Binding HasItems, ElementName=LibraryList, Converter={StaticResource NotBoolVis}}">
+                        <TextBlock Text="{local:Tr '이 기간에 나온 앨범 중 내 iTunes 라이브러리에 있는 것이 없어요. 월·연으로 넓혀 보세요.'}" Foreground="{StaticResource Muted}"
+                                   HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                    </Border>
+                    <ItemsControl x:Name="LibraryList" ItemsSource="{Binding LibraryGroups}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:LibraryArtistGroup}">
                                 <StackPanel Margin="0,0,0,28">
@@ -1007,10 +1125,10 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- ===== 재생 바 ===== -->
+        <!-- ===== 재생 바 (오른쪽 수록곡 창이 열려 있으면 그 안의 재생 칸을 쓰고 숨긴다) ===== -->
         <Border Grid.Row="1" Grid.ColumnSpan="3" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
-                Padding="24,12" DataContext="{Binding Player}">
-            <Grid>
+                Padding="24,12" Visibility="{Binding HasDetail, Converter={StaticResource NotBoolVis}}">
+            <Grid DataContext="{Binding Player}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="48"/>
                     <ColumnDefinition Width="2*"/>
@@ -1075,7 +1193,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="{Binding PositionText}" Style="{StaticResource MutedText}" FontFamily="{StaticResource Mono}"/>
-                    <Slider x:Name="Seek" Grid.Column="1" Margin="10,0" Minimum="0" Maximum="{Binding Duration}" Value="{Binding Position, Mode=OneWay}"
+                    <Slider Grid.Column="1" Margin="10,0" Minimum="0" Maximum="{Binding Duration}" Value="{Binding Position, Mode=OneWay}"
                             IsMoveToPointEnabled="True" VerticalAlignment="Center"
                             Thumb.DragStarted="Seek_DragStarted" Thumb.DragCompleted="Seek_DragCompleted" PreviewMouseLeftButtonUp="Seek_MouseUp"/>
                     <TextBlock Grid.Column="2" Text="{Binding DurationText}" Style="{StaticResource MutedText}" FontFamily="{StaticResource Mono}"/>

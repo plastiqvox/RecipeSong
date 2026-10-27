@@ -15,6 +15,8 @@ public partial class SettingsWindow : Window
     public SettingsWindow(AppSettings app, string? mlDir, ViewModels.MainViewModel vm)
     {
         InitializeComponent();
+        DarkTitleBar.Apply(this);
+        MaxHeight = SystemParameters.WorkArea.Height - 24;  // 화면보다 길면 본문만 스크롤 (버튼 줄은 아래 고정)
         _app = app;
         _mlDir = mlDir;
         _vm = vm;
@@ -99,13 +101,26 @@ public partial class SettingsWindow : Window
 
     private async void ClearRecs_Click(object sender, RoutedEventArgs e)
     {
-        if (MessageBox.Show(this, L.T("저장된 추천을 모두 지우고 지금 기간부터 새로 계산할까요?\n다른 기간은 열 때 새로 계산해요 (기간마다 30초 안팎)."),
-                L.T("저장된 추천 비우기"), MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+        if (!ConfirmWindow.Ask(this, L.T("저장된 추천 비우기"),
+                L.T("저장된 추천을 모두 지우고 지금 기간부터 새로 계산할까요?\n다른 기간은 열 때 새로 계산해요 (기간마다 30초 안팎)."), L.T("비우기"))) return;
         ClearRecsButton.IsEnabled = false;
         ClearResult.Text = L.T("비우고 지금 기간을 새로 계산하는 중…");
         await _vm.ClearSavedRecsAsync();
         ClearResult.Text = L.T("비웠어요. 지금 기간은 새로 계산했고, 다른 기간은 열 때 새로 계산해요.");
         ShowStorage();
+    }
+
+    // 다른 설정 창: 이 창을 닫고 연다 (설정 창 위에 설정 창이 겹치지 않게)
+    private void OpenRecommend_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+        Dispatcher.BeginInvoke(() => _vm.OpenRecommendSettingsCommand.Execute(null));
+    }
+
+    private void OpenConnector_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+        Dispatcher.BeginInvoke(() => _vm.OpenConnectorCommand.Execute(null));
     }
 
     private void OpenCache_Click(object sender, RoutedEventArgs e) =>
