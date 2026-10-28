@@ -75,7 +75,7 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
         bool nudged = false;
         for (int turn = 0; turn < 4; turn++)
         {
-            progress?.Report(turn == 0 ? L.T("Claude가 웹에서 신보 찾는 중… (1~2분)")
+            progress?.Report(turn == 0 ? L.T("Claude가 웹에서 발매작 찾는 중… (1~2분)")
                 : nudged ? L.T("Claude에게 결과 제출을 다시 요청하는 중…") : L.T("Claude가 검색 이어서 하는 중…"));
             var resp = await client.Beta.Messages.Create(new MessageCreateParams
             {

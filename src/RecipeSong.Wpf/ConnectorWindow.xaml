@@ -32,7 +32,7 @@
             <StackPanel Margin="28,24">
                 <TextBlock Text="{local:Tr 'AI 커넥터'}" FontSize="22" FontWeight="Bold"/>
                 <TextBlock Style="{StaticResource MutedText}" Margin="0,6,0,0" TextWrapping="Wrap"
-                           Text="{local:Tr 'AI가 웹을 검색해 내 레시피 취향에 맞을 만한 신보를 더 찾아 줍니다. 켜 둔 커넥터가 동시에 찾고, 카드에 Claude · GPT 배지가 붙어요. 찾은 앨범은 Deezer에서 실제로 있는지 확인한 뒤, 지금처럼 소리를 듣고 판정합니다.'}"/>
+                           Text="{local:Tr 'AI가 웹을 검색해 내 레시피 취향에 맞을 만한 발매작을 더 찾아 줍니다. 켜 둔 커넥터가 동시에 찾고, 카드에 Claude · GPT 배지가 붙어요. 찾은 앨범은 Deezer에서 실제로 있는지 확인한 뒤, 지금처럼 소리를 듣고 판정합니다.'}"/>
 
                 <!-- Claude · GPT 를 한 화면에 이어 두면 창이 화면보다 길어서 탭으로 하나씩 -->
                 <Border Padding="4" CornerRadius="10" Background="{StaticResource Surface2}" Margin="0,20,0,0">

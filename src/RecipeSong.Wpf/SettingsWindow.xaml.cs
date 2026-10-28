@@ -94,7 +94,7 @@ public partial class SettingsWindow : Window
             long library = data.EnumerateDirectories("emb_*").Sum(CacheLocation.Size);
             long model = data.EnumerateFiles("crate_model.json").Sum(f => f.Length);
             MlSizes.Text = L.F("소리 분석 데이터 ({0})", data.FullName) + Environment.NewLine +
-                L.F("· 신보 미리듣기 분석 {0}", CacheLocation.Format(albums)) + Environment.NewLine +
+                L.F("· 발매작 미리듣기 분석 {0}", CacheLocation.Format(albums)) + Environment.NewLine +
                 L.F("· 내 곡 학습 데이터 {0} · 취향 모델 {1}", CacheLocation.Format(library), CacheLocation.Format(model));
         }
     }

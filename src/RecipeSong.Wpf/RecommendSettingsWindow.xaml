@@ -22,7 +22,7 @@
             <StackPanel Margin="28,24">
                 <TextBlock Text="{local:Tr '추천 설정'}" FontSize="22" FontWeight="Bold"/>
                 <TextBlock Style="{StaticResource MutedText}" Margin="0,6,0,0" TextWrapping="Wrap"
-                           Text="{local:Tr '추가 제안은 Deezer의 비슷한 아티스트 연결망으로 후보를 모으고, 내 PC의 소리 모델이 내 곡과 닮은 정도로 고릅니다. 내 플리 뮤지션의 신보는 이 설정과 상관없이 항상 나와요.'}"/>
+                           Text="{local:Tr '추가 제안은 Deezer의 비슷한 아티스트 연결망으로 후보를 모으고, 내 PC의 소리 모델이 내 곡과 닮은 정도로 고릅니다. 내 플리 뮤지션의 발매작은 이 설정과 상관없이 항상 나와요.'}"/>
 
                 <!-- 두 칸: 한 줄로 이어 두면 창이 화면만큼 길쭉해서 폭을 넓히고 나눴다 -->
                 <Grid>
@@ -91,7 +91,7 @@
                     <TextBlock x:Name="FollowCount" Style="{StaticResource MutedText}" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center"/>
                 </DockPanel>
                 <TextBlock x:Name="FollowEmpty" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap"
-                           Text="{local:Tr '아직 없어요. 카드의 아티스트 이름 앞 ☆을 누르면 그 아티스트 신보를 항상 맨 앞에 보여 줘요.'}"/>
+                           Text="{local:Tr '아직 없어요. 카드의 아티스트 이름 앞 ☆을 누르면 그 아티스트 발매작을 항상 맨 앞에 보여 줘요.'}"/>
                 <!-- 계속 늘어나는 목록이라 칩 3줄 높이에서 멈추고 그 안에서 스크롤 (창이 끝없이 길어지지 않게) -->
                 <ScrollViewer MaxHeight="138" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <WrapPanel x:Name="FollowPanel"/>

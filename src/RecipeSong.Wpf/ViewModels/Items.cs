@@ -81,9 +81,9 @@ public sealed partial class ReleaseItem : ObservableObject
     public string Badge => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우")
         : IsMine ? L.T(Rec.FromPlaylist ?? "") : IsAi ? "" : Known ? L.T("아는 아티스트") : "";
     public bool BadgeIsPlaylist => IsMine && Rec.FromPlaylist != FollowList.Tag;
-    public string BadgeTip => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우한 아티스트의 신보")
-        : IsMine ? L.F("{0} 플레이리스트에 있는 뮤지션의 신보", L.T(Rec.FromPlaylist ?? ""))
-        : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보") : L.T("내 라이브러리에 있는 아티스트");
+    public string BadgeTip => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우한 아티스트의 발매작")
+        : IsMine ? L.F("{0} 플레이리스트에 있는 뮤지션의 발매작", L.T(Rec.FromPlaylist ?? ""))
+        : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 발매작") : L.T("내 라이브러리에 있는 아티스트");
     public System.Windows.Thickness BadgeMargin => HasFit ? new(8, 0, 0, 0) : new(0);
     public bool HasNear => NearItems.Count > 0;
     /// <summary>장르 태그 (EffNet 이 고른 Discogs 스타일, 최대 3개)</summary>
@@ -114,7 +114,7 @@ public sealed partial class ReleaseItem : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(FollowTip)), NotifyPropertyChangedFor(nameof(FollowMenu))] private bool _isFollowed;
     public string FollowMenu => IsFollowed ? L.T("뮤지션 팔로우 해제") : L.T("뮤지션 팔로우");
     public bool HasLabel => !string.IsNullOrEmpty(Rec.Label);
-    public string FollowTip => IsFollowed ? L.T("팔로우 중 · 누르면 해제") : L.T("이 아티스트 팔로우 (신보를 항상 맨 앞에)");
+    public string FollowTip => IsFollowed ? L.T("팔로우 중 · 누르면 해제") : L.T("이 아티스트 팔로우 (발매작을 항상 맨 앞에)");
     public Func<ReleaseItem, Task>? ToggleFollowAction { get; init; }
 
     [RelayCommand]

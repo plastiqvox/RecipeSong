@@ -597,7 +597,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var followByDay = followed.ToLookup(x => x.Date);
         static string? FollowTip(IEnumerable<(string Name, string Title, DateOnly Date)> xs) =>
             xs.Select(x => $"{x.Name} – {x.Title}").ToList() is { Count: > 0 } l
-                ? L.T("팔로우한 아티스트 신보") + "\n" + string.Join("\n", l.Take(4)) + (l.Count > 4 ? " …" : "") : null;
+                ? L.T("팔로우한 아티스트 발매작") + "\n" + string.Join("\n", l.Take(4)) + (l.Count > 4 ? " …" : "") : null;
         foreach (var d in Days)
         {
             (d.AiDots, d.AiTip) = Marks(byDay[DateOnly.FromDateTime(d.Date)]);
@@ -1575,12 +1575,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>플레이리스트 뮤지션 디스코그래피를 뒤에서 모으고, 끝나면 지금 보는 기간을 다시 불러온다.</summary>
     private async Task RefreshMineAsync(IReadOnlyList<PlaylistArtist> mine)
     {
-        var progress = new Progress<string>(m => SyncText = L.F("내 플리 뮤지션 신보 모으는 중… {0}",
+        var progress = new Progress<string>(m => SyncText = L.F("내 플리 뮤지션 발매작 모으는 중… {0}",
             m.Replace("플레이리스트 뮤지션 ", "").Replace(L.T("플레이리스트 뮤지션 "), "")));
         try
         {
             _mineSyncText = true;
-            SyncText = L.F("내 플리 뮤지션 {0:N0}명의 신보 모으는 중…", mine.Count);
+            SyncText = L.F("내 플리 뮤지션 {0:N0}명의 발매작 모으는 중…", mine.Count);
             await Task.Run(() => _recommender.RefreshMineAsync(mine, progress, _life.Token));
             SyncText = "";
             _mineSyncText = false;
@@ -1589,7 +1589,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (!IsBusy) await LoadAsync(force: true);  // 새로 모은 플리 뮤지션 신보 반영
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { SyncText = L.F("플리 뮤지션 신보를 모으지 못했어요: {0}", ex.Message); }
+        catch (Exception ex) { SyncText = L.F("플리 뮤지션 발매작을 모으지 못했어요: {0}", ex.Message); }
         finally { _mineRefresh = null; }
     }
 

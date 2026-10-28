@@ -54,7 +54,7 @@ public sealed class GptScout(AiConnectorSettings settings, AiUsageLedger? ledger
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
         var key = settings.GetGptKey() ?? throw new InvalidOperationException(L.T("OpenAI API 키가 없어요"));
-        progress?.Report(L.T("GPT가 웹에서 신보 찾는 중… (1~2분)"));
+        progress?.Report(L.T("GPT가 웹에서 발매작 찾는 중… (1~2분)"));
         var prompt = AiPrompt.Build(period, taste, exclude, focusRegion, "Answer with what you found in the required JSON format.");
         AiDebugLog.Write(Name, "보낸 지시: " + prompt.ReplaceLineEndings(" ⏎ "));
         var body = new JsonObject
