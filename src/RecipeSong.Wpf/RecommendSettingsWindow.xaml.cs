@@ -27,7 +27,7 @@ public partial class RecommendSettingsWindow : Window
 
     private static readonly (string Label, string Hint)[] DropModes =
     [
-        ("물어보기", "다시 분석한 뒤 별로·차단한 앨범과 아주 닮은 추천이 있으면 목록 위에서 뺄지 물어요."),
+        ("물어보기", "다시 분석한 뒤 관심 없음·차단한 앨범과 아주 닮은 추천이 있으면 목록 위에서 뺄지 물어요."),
         ("자동으로 빼기", "묻지 않고 빼고, 뺀 앨범을 알려 줘요."),
         ("그대로", "빼지 않고 점수만 깎아 아래로 내려요."),
     ];
@@ -106,7 +106,9 @@ public partial class RecommendSettingsWindow : Window
     private void ShowFollows()
     {
         FollowPanel.Children.Clear();
-        foreach (var f in _vm.Follows.All.ToList())
+        var all = _vm.Follows.All.ToList();
+        ShowCount(FollowCount, FollowFilterBox, all.Count);
+        foreach (var f in all.Where(f => Matches(FollowFilter, f.Name)))
         {
             var b = new Button { Style = (Style)FindResource("Bare"), Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(0, 0, 6, 6),
                 ToolTip = L.T("눌러서 팔로우 해제") };
@@ -114,7 +116,26 @@ public partial class RecommendSettingsWindow : Window
             b.Click += (_, _) => { _vm.Follows.Unfollow(f.Id); _followsChanged = true; ShowFollows(); };
             FollowPanel.Children.Add(b);
         }
-        FollowEmpty.Visibility = FollowPanel.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        FollowEmpty.Visibility = all.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // ---- 늘어나는 목록 (팔로우·차단): 개수 표시, 6개를 넘으면 이름 찾기 ----
+    private const int FilterFrom = 7;
+
+    private static void ShowCount(TextBlock count, FrameworkElement filter, int n)
+    {
+        count.Text = n > 0 ? n.ToString() : "";
+        filter.Visibility = n >= FilterFrom ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static bool Matches(TextBox filter, string name) =>
+        filter.Text.Trim() is not { Length: > 0 } q || name.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+    private void Filter_Changed(object sender, TextChangedEventArgs e)
+    {
+        FollowFilterHint.Visibility = FollowFilter.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        BlockedFilterHint.Visibility = BlockedFilter.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (sender == FollowFilter) ShowFollows(); else ShowBlocked();
     }
 
     protected override void OnClosed(EventArgs e)
@@ -126,8 +147,11 @@ public partial class RecommendSettingsWindow : Window
     private void ShowBlocked()
     {
         BlockedPanel.Children.Clear();
+        int total = _blocked.Artists.Count + _blocked.Labels.Count + _blocked.SameName.Count;
+        ShowCount(BlockedCount, BlockedFilterBox, total);
         void Add(string kind, string name, Action unblock)
         {
+            if (!Matches(BlockedFilter, name)) return;
             var b = new Button { Style = (Style)FindResource("Bare"), Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(0, 0, 6, 6),
                 ToolTip = L.T("눌러서 차단 해제") };
             b.Content = new TextBlock { Text = $"{kind} · {name}  ✕", FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("Text2") };
@@ -137,7 +161,7 @@ public partial class RecommendSettingsWindow : Window
         foreach (var a in _blocked.Artists.ToList()) Add(L.T("아티스트"), a, () => _blocked.UnblockArtist(a));
         foreach (var l in _blocked.Labels.ToList()) Add(L.T("레이블"), l, () => _blocked.UnblockLabel(l));
         foreach (var s in _blocked.SameName.ToList()) Add(L.T("동명이인"), $"{s.Name} ({s.Album})", () => _blocked.UnblockSameName(s));
-        BlockedEmpty.Visibility = BlockedPanel.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        BlockedEmpty.Visibility = total == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static int Selected(UniformGrid grid) =>

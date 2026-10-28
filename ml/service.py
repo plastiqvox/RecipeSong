@@ -377,6 +377,10 @@ class Service:
                                                                              or ("effnet" not in info and self.genre() is not None)))
         todo = [a for a in albums if stale(str(a["id"]))]
         done = 0
+        # 처음 보는 앨범만 듣는다는 걸 알린다 (전체 장수만 보이면 전부 다시 듣는 것처럼 보였다)
+        if todo and len(todo) < len(albums):
+            send({"id": rid, "event": "progress", "message": f"새로 들을 앨범 {len(todo)}장 (나머지 {len(albums) - len(todo)}장은 이미 들음)",
+                  "done": 0, "total": len(todo)})
         with ThreadPoolExecutor(16) as pool:
             # 이미 소리를 아는 앨범도 레이블·장르가 없으면 채운다
             missing_info = [str(a["id"]) for a in albums if str(a["id"]) in self.album_cache and str(a["id"]) not in self.album_info

@@ -116,6 +116,17 @@ public partial class ConnectorWindow : Window
         clear.Visibility = stored && !clearing ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    // Claude · GPT 탭 (처음 Checked 는 창을 만드는 중이라 아래 패널이 아직 없다)
+    private void ShowClaude_Checked(object sender, RoutedEventArgs e) => ShowPane(claude: true);
+    private void ShowGpt_Checked(object sender, RoutedEventArgs e) => ShowPane(claude: false);
+
+    private void ShowPane(bool claude)
+    {
+        if (ClaudePane == null || GptPane == null) return;
+        ClaudePane.Visibility = claude ? Visibility.Visible : Visibility.Collapsed;
+        GptPane.Visibility = claude ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     private void ClearKey_Click(object sender, RoutedEventArgs e)
     {
         _clearKey = true;

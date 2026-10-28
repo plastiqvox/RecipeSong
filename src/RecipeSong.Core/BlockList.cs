@@ -94,6 +94,10 @@ public sealed class BlockList
     public void UnblockLabel(string label) { if (_data.Labels.Remove(label)) { DropUnblocked(); Save(); } }
     public void UnblockSameName(BlockedArtistId s) { if (_data.SameName?.Remove(s) == true) Save(); }
 
+    /// <summary>되돌리기용: 차단하기 전 상태를 글로 떠 두고 그대로 되돌린다 (목록이 가변이라 깊은 복사)</summary>
+    public string Snapshot() => JsonSerializer.Serialize(_data);
+    public void Restore(string snapshot) { _data = JsonSerializer.Deserialize<Data>(snapshot) ?? new([], []); Save(); }
+
     private void AddAlbum(ReleaseRecommendation r, BlockReason reason)
     {
         var albums = _data.Albums ?? [];

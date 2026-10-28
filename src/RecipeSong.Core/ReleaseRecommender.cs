@@ -475,7 +475,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         var detailed = toScore.ToHashSet();
         if (sound != null)
         {
-            progress?.Report(L.F("미리듣기 소리 분석 준비 중… ({0}장)", toScore.Count));
+            progress?.Report(L.F("미리듣기 소리 확인 중… ({0}장 · 이미 들은 앨범은 바로 넘어가요)", toScore.Count));
             var coverOf = hits.DistinctBy(h => h.a.Id).ToDictionary(h => h.a.Id, h => h.a.Cover);
             try { sounds = await sound.ScoreAlbumsAsync(toScore, progress, ct, coverOf, options.HitsOnly); }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -611,9 +611,26 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     }
 
     /// <summary>앨범 전체 수록곡과 미리듣기 URL (재생 직전에 받는다). URL은 몇 시간 뒤 만료된다.</summary>
-    public async Task<IReadOnlyList<AlbumTrack>> AlbumTracksAsync(long deezerAlbumId, CancellationToken ct = default) =>
-        [.. (await deezer.AlbumTracksAsync(deezerAlbumId, 200, ct)).Select((t, i) =>
-            new AlbumTrack(i + 1, t.Title, t.Artist?.Name, TimeSpan.FromSeconds(t.Duration), string.IsNullOrEmpty(t.Preview) ? null : t.Preview, t.Rank, t.Id))];
+    /// <summary>
+    /// 수록곡. 앨범 목록에 미리듣기가 빈 곡은 곡 정보를 한 번 더 받아 본다 (곡 정보에는 있거나, 막힌 곡이면 같은 곡의 다른 판에 있는 경우가 있다).
+    /// 그래도 없으면 발매 전이거나 막힌 곡이다.
+    /// </summary>
+    public async Task<IReadOnlyList<AlbumTrack>> AlbumTracksAsync(long deezerAlbumId, CancellationToken ct = default)
+    {
+        var tracks = await deezer.AlbumTracksAsync(deezerAlbumId, 200, ct);
+        var previews = await Task.WhenAll(tracks.Select(async t =>
+        {
+            if (!string.IsNullOrEmpty(t.Preview) || t.Id == 0) return t.Preview;
+            try
+            {
+                var full = await deezer.TrackAsync(t.Id, ct);
+                return !string.IsNullOrEmpty(full?.Preview) ? full.Preview : full?.Alternative?.Preview;
+            }
+            catch (HttpRequestException) { return null; }
+        }));
+        return [.. tracks.Select((t, i) => new AlbumTrack(i + 1, t.Title, t.Artist?.Name, TimeSpan.FromSeconds(t.Duration),
+            string.IsNullOrEmpty(previews[i]) ? null : previews[i], t.Rank, t.Id))];
+    }
 
     private Task<List<DzArtist>> RelatedAsync(long id, int limit, CancellationToken ct) =>
         _related.GetOrAddAsync($"{id}:{limit}", async () => [.. await deezer.RelatedArtistsAsync(id, limit, ct)]);

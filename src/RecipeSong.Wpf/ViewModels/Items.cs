@@ -30,7 +30,9 @@ public sealed partial class ReleaseItem : ObservableObject
 
     public string Album => Rec.Album;
     public string Artist => Rec.Artist;
-    public string? CoverUrl => Rec.CoverUrl;
+    public string? CoverUrl => FoundCover ?? Rec.CoverUrl;
+    /// <summary>추천 결과에 커버가 없을 때 따로 찾아 온 커버 (발매 전 앨범 등)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CoverUrl))] private string? _foundCover;
     public string TypeLabel => Rec.RecordType.ToUpperInvariant();
     public string Meta => string.Join(" · ", new[] { Rec.ReleaseDate.ToString("yyyy.M.d"), Rec.Label, RegionLabel }.Where(s => !string.IsNullOrEmpty(s)));
     /// <summary>표시용 지역 이름 (Labels.Region은 키로도 쓰이므로 여기서만 번역)</summary>
@@ -129,7 +131,7 @@ public sealed partial class ReleaseItem : ObservableObject
     /// <summary>별로: 추천에서 숨기고 학습에 반영 (저장함 탭 아래에서 되돌릴 수 있다)</summary>
     public Action<ReleaseItem>? ToggleDislikeAction { get; init; }
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DislikeTip))] private bool _isDisliked;
-    public string DislikeTip => IsDisliked ? L.T("별로 취소 (다시 추천에 나와요)") : L.T("별로예요 · 추천에서 숨기고 비슷한 소리·이 아티스트는 덜 추천");
+    public string DislikeTip => IsDisliked ? L.T("관심 없음 취소 (다시 추천에 나와요)") : L.T("관심 없음 · 추천에서 숨기고 비슷한 소리·이 아티스트는 덜 추천");
 
     [RelayCommand]
     private void ToggleDislike() => ToggleDislikeAction?.Invoke(this);
@@ -227,8 +229,9 @@ public sealed partial class NearTrackItem(string label, string? path, Action<Nea
 {
     public string Label { get; } = label;
     public string? Path { get; } = path;
-    public bool CanPlay => Path != null;
-    public string Tip => Path != null ? L.F("내 파일로 듣기 · {0}", Label) : L.F("{0} (내 라이브러리에서 파일을 못 찾았어요)", Label);
+    /// <summary>내 파일이 없어도 Deezer 미리듣기로 듣는다 (iTunes 경로에 파일이 없는 곡이 꽤 있다)</summary>
+    public bool CanPlay => true;
+    public string Tip => Path != null ? L.F("내 파일로 듣기 · {0}", Label) : L.F("Deezer 미리듣기로 듣기 (내 PC에 파일이 없어요) · {0}", Label);
     [ObservableProperty] private bool _isPlaying;
     public void SetPlaying(bool playing) => IsPlaying = playing;
 
@@ -302,7 +305,9 @@ public sealed partial class TrackItem : ObservableObject
     }
 }
 
-public sealed partial class CrateSection(string name, IReadOnlyList<ReleaseItem> items, int total, int mine, bool canMore, Action<string> showOnly)
+/// <param name="hidden">한 레시피만 볼 때 아직 안 그린 카드 수 (연 보기에서 수백 장을 한 번에 그리지 않게)</param>
+public sealed partial class CrateSection(string name, IReadOnlyList<ReleaseItem> items, int total, int mine, bool canMore, Action<string> showOnly,
+    int hidden = 0, Action? showMore = null)
     : ObservableObject
 {
     /// <summary>레시피 이름 (키: More → showOnly)</summary>
@@ -310,12 +315,22 @@ public sealed partial class CrateSection(string name, IReadOnlyList<ReleaseItem>
     /// <summary>표시용 이름 ("미분류" 같은 내장 이름만 번역되고 사용자 레시피 이름은 그대로)</summary>
     public string DisplayName => L.T(Name);
     public IReadOnlyList<ReleaseItem> Items { get; } = items;
-    public string Meta => mine > 0 && mine < total ? L.F("{0}장 · 내 플리 {1} · 추가 제안 {2}", total, mine, total - mine)
-        : mine == total ? L.F("{0}장 · 모두 내 플리", total) : L.F("{0}장 · 추가 제안", total);
+    /// <summary>전체 보기에서 일부만 그렸으면 "30장 중 6장"으로 (전에는 "30장"만 있어 다 보이는 줄 알았다)</summary>
+    public string Meta => (CanMore ? L.F("{0}장 중 {1}장", total, Items.Count) : L.F("{0}장", total)) + " · "
+        + (mine > 0 && mine < total ? L.F("내 플리 {0} · 추가 제안 {1}", mine, total - mine) : mine == total ? L.T("모두 내 플리") : L.T("추가 제안"));
     public bool CanMore { get; } = canMore;
+    public string MoreText => L.F("전체 {0}장 보기", total);
+    /// <summary>레시피 카드 아래: 남은 장수를 그 자리에서 알린다</summary>
+    public string MoreBelowText => L.F("{0} {1}장 더 보기", DisplayName, total - Items.Count);
 
     [RelayCommand]
     private void More() => showOnly(Name);
+
+    public bool CanShowMore => hidden > 0;
+    public string ShowMoreText => L.F("{0}장 더 보기 (남은 {1}장)", Math.Min(hidden, MainViewModel.PageStep), hidden);
+
+    [RelayCommand]
+    private void ShowMore() => showMore?.Invoke();
 }
 
 /// <summary>크레이트 · 형식 · 지역 필터 칩.</summary>
