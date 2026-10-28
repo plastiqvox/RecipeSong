@@ -20,6 +20,9 @@ public partial class SettingsWindow : Window
         _app = app;
         _mlDir = mlDir;
         _vm = vm;
+        // 버전은 src/Directory.Build.props
+        var ver = typeof(SettingsWindow).Assembly.GetName().Version;
+        VersionText.Text = ver != null ? $"RecipeSong {ver.Major}.{ver.Minor}" : "";
         AutoRetrainBox.IsChecked = vm.AutoUpdate;
         AutoRetrainBox.Checked += (_, _) => vm.AutoUpdate = true;
         AutoRetrainBox.Unchecked += (_, _) => vm.AutoUpdate = false;

@@ -16,7 +16,10 @@
         </Border>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="28,24">
-                <TextBlock Text="{local:Tr '설정'}" FontSize="22" FontWeight="Bold"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{local:Tr '설정'}" FontSize="22" FontWeight="Bold"/>
+                    <TextBlock x:Name="VersionText" Style="{StaticResource MutedText}" FontSize="12" Margin="12,0,0,3" VerticalAlignment="Bottom"/>
+                </StackPanel>
 
                 <!-- 두 칸: 한 줄로 이어 두면 창이 화면만큼 길쭉해서 폭을 넓히고 나눴다 -->
                 <Grid>
