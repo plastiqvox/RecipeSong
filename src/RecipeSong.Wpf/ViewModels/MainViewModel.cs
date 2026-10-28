@@ -31,7 +31,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly LibraryReleases _libraryReleases;
     private readonly ArtworkService _artwork;
     private readonly SoundService? _sound;
-    private readonly CrateConfig _crates;
+    private CrateConfig _crates;
     private readonly Dictionary<string, CandidatePool> _pools = [];
     private readonly Dictionary<string, string> _poolFavVersion = [];
     private readonly SemaphoreSlim _poolLock = new(1, 1);
@@ -356,7 +356,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _recommender = new ReleaseRecommender(_deezer, new RegionResolver(new HttpClient()), _sound);
         _libraryReleases = new LibraryReleases(_deezer);
         _artwork = new ArtworkService(_deezer, itunes);
-        _crates = CrateConfig.Load(_sound?.MlDirectory ?? settings.MlDirectory ?? SoundService.FindMlDirectory() ?? ".");
+        _crates = CrateConfig.Load(MlDirectory);
+        ApplyCrateRules();
 
         TypeChips = [.. new[] { ("all", L.T(Labels.All)), ("album", L.T("앨범")), ("ep", "EP"), ("single", L.T("싱글")) }
             .Select(t => new FilterChip(t.Item1, t.Item2, SelectType))];
@@ -689,7 +690,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var crates = string.Join("\n", _mine!.GroupBy(m => m.Playlist).Select(g =>
         {
             var e = _crates.Playlists[g.Key];
-            var crate = e.Style ?? (e.Region == "한국" ? ReleaseRecommender.KoreanCrate : $"{e.Region} (genre split by Deezer)");
+            var crate = e.Style ?? (e.Region == "한국" && _recommender.KoreanAsOneRecipe ? ReleaseRecommender.KoreanCrate
+                : e.Region == "해외" && _recommender.SplitOverseasByGenre ? $"{e.Region} (genre split by Deezer)" : $"{e.Region} (picked by sound)");
             return $"- playlist {g.Key} → crate {crate}, region {e.Region}: " +
                    string.Join(", ", g.OrderByDescending(m => m.Tracks).Take(10).Select(m => m.Artist));
         }));
@@ -726,20 +728,24 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// 이름에 한글이 없는데 한국이면 해외로 보고 해외 크레이트(장르 기준)로 다시 나눈다.
     /// </summary>
     /// <summary>지역을 모른 채 저장된 예전 결과도 해외로 (지금은 엔진이 모르면 해외로 정한다). 모든 카드에 적용</summary>
-    private static ReleaseRecommendation UnknownToOverseas(ReleaseRecommendation r)
+    private ReleaseRecommendation UnknownToOverseas(ReleaseRecommendation r)
     {
         if (r.Region != Region.Unknown || r.FromPlaylist != null) return r;
-        var c = ReleaseRecommender.OverseasCrate(r.GenreName, null, r.Crate);
+        var c = OverseasRecipe(r);
         return r with { Region = Region.International, Crate = c, CrateFit = c == "Jazz" ? r.CrateFit : null };
     }
 
     /// <summary>AI 결과에만: 예전 지역 버그(한글 없는 이름이 한국으로 저장) 바로잡기. 일반 추천에는 쓰지 않는다 (영문 이름의 한국 아티스트가 있다)</summary>
-    private static ReleaseRecommendation FixOldRegion(ReleaseRecommendation r)
+    private ReleaseRecommendation FixOldRegion(ReleaseRecommendation r)
     {
         if (r.Region != Region.Korea || RegionResolver.FromScript(r.Artist) == Region.Korea || r.FromPlaylist != null) return r;
-        var crate = ReleaseRecommender.OverseasCrate(r.GenreName, null, r.Crate);
+        var crate = OverseasRecipe(r);
         return r with { Region = Region.International, Crate = crate, CrateFit = crate == "Jazz" ? r.CrateFit : null };
     }
+
+    /// <summary>해외로 바로잡은 카드의 레시피: 장르로 나누는 규칙이면 장르, 아니면 소리로 고른 레시피 그대로</summary>
+    private string? OverseasRecipe(ReleaseRecommendation r) =>
+        _recommender.SplitOverseasByGenre ? ReleaseRecommender.OverseasCrate(r.GenreName, null, r.Crate) : r.Crate;
 
     private readonly AiUsageLedger _aiLedger = new();
 
@@ -1510,7 +1516,46 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _ = StartSoundAsync();
         _ = BuildLabelAffinityAsync(tracks);
         BuildTasteExtras(tracks);
+        // 다른 사람 라이브러리: 레시피 설정(만든 사람의 플레이리스트 이름)에 맞는 플레이리스트가 하나도 없으면 먼저 레시피를 고르게 한다
+        var playlists = await _library.GetPlaylistsAsync(_life.Token);
+        if (_crates.Matching(playlists.Select(p => p.Name)) == 0) await OpenRecipeSetupAsync(firstRun: true);
         await LoadAsync();
+    }
+
+    // ---- 레시피 설정 (플레이리스트 → 레시피 이름 · 지역) ----
+    private string MlDirectory => _sound?.MlDirectory ?? _settings.MlDirectory ?? SoundService.FindMlDirectory() ?? ".";
+
+    /// <summary>해외·한국을 Deezer 장르 / '한국음악' 하나로 나누는 규칙은 레시피 설정을 따른다 (그 지역 플레이리스트에 레시피 이름이 없을 때만)</summary>
+    private void ApplyCrateRules()
+    {
+        _recommender.SplitOverseasByGenre = _crates.SplitsOverseasByGenre;
+        _recommender.KoreanAsOneRecipe = _crates.KoreanAsOneRecipe;
+    }
+
+    /// <summary>레시피 이름: 학습한 모델의 레시피 + (규칙을 쓰면) 해외 장르 레시피 · 한국음악</summary>
+    private IReadOnlyList<string> RecipeOrder(IEnumerable<string> styles) =>
+        [.. styles, .. _recommender.SplitOverseasByGenre ? ReleaseRecommender.OverseasCrates : [],
+            .. _recommender.KoreanAsOneRecipe ? [ReleaseRecommender.KoreanCrate] : Array.Empty<string>()];
+
+    [RelayCommand]
+    private Task OpenRecipeSetup() => OpenRecipeSetupAsync(firstRun: false);
+
+    private async Task OpenRecipeSetupAsync(bool firstRun)
+    {
+        var playlists = await _library.GetPlaylistsAsync(_life.Token);
+        var win = new RecipeSetupWindow(playlists, _crates, firstRun) { Owner = Application.Current.MainWindow };
+        if (win.ShowDialog() != true || win.Result is not { } config) return;
+        config.Save(MlDirectory);
+        _crates = config;
+        ApplyCrateRules();
+        _pools.Clear();  // 시드부터 다시
+        _mine = null;
+        if (_sound == null) { if (!firstRun) await LoadAsync(force: true); return; }
+        if (ConfirmWindow.Ask(Application.Current.MainWindow, L.T("레시피 학습"),
+                L.T("바꾼 레시피로 소리를 다시 학습할까요?\n처음이면 라이브러리 곡을 모두 분석해서 GPU로 1시간 안팎 걸려요. 그동안에도 앱은 쓸 수 있어요."),
+                L.T("지금 학습")))
+            _ = RunUpdateAsync();
+        if (!firstRun) await LoadAsync(force: true);
     }
 
     private async Task StartSoundAsync()
@@ -2277,7 +2322,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_sound == null) return;
         var s = await _sound.StatusAsync(_life.Token);
-        _crateOrder = [.. s.Styles, .. ReleaseRecommender.OverseasCrates, ReleaseRecommender.KoreanCrate];
+        IsTrained = s.Trained;
+        if (!s.Trained)
+        {
+            // 처음 설치: 레시피 설정의 이름으로 칩 순서만 잡고 '학습 시작'을 보인다 (그때까지는 아티스트 연결만으로 추천)
+            _crateOrder = RecipeOrder(_crates.Playlists.Values.Select(e => e.Style).OfType<string>().Distinct());
+            ModelDevice = s.Gpu != null ? "GPU" : s.Device.ToUpperInvariant();
+            ModelTitle = L.T("아직 학습 전");
+            ModelSub = L.F("레시피 플레이리스트의 소리를 분석해 학습해요. 처음 한 번, 라이브러리 {0:N0}곡이면 GPU로 1시간 안팎", s.Library);
+            UpdateText = s.Embedded > 0 ? L.F("분석해 둔 {0:N0}곡에서 이어서 해요", s.Embedded) : "";
+            HasUpdate = true;
+            ApplyFilters();
+            return;
+        }
+        _crateOrder = RecipeOrder(s.Styles);
         RebuildSaved();
         ModelDevice = s.Gpu != null ? "GPU" : s.Device.ToUpperInvariant();
         ModelTitle = L.F("{0:N0}곡 · 레시피 {1}개", s.Tracks, s.Styles.Count);
@@ -2287,6 +2345,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyFilters();
         if (HasUpdate && AutoUpdate && !IsUpdating) await RunUpdateAsync();
     }
+
+    /// <summary>학습한 모델이 있다 (false 면 '지금 업데이트' 버튼이 '학습 시작')</summary>
+    [ObservableProperty] private bool _isTrained = true;
 
     [RelayCommand]
     private async Task RunUpdateAsync()
@@ -2302,14 +2363,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         });
         try
         {
+            bool first = !IsTrained;
             var r = await _sound.UpdateAsync(progress, _life.Token);
-            UpdateProgressText = r.Accepted
+            UpdateProgressText = first ? L.F("학습 완료 · {0:N0}곡 분석 · 레시피 정확도 {1:P0}", r.Added, r.NewStyleAccuracy)
+                : r.Accepted
                 ? L.F("새 곡 {0}곡 반영 · 정확도 {1:P0} → {2:P0}", r.Added, r.OldStyleAccuracy, r.NewStyleAccuracy)
                 : L.F("새 모델이 더 나빠서({0:P0}) 이전 모델 유지", r.NewStyleAccuracy);
             _library.Invalidate();
             _owned = new OwnedLibrary(await _library.GetTracksAsync(_life.Token));
             _pools.Clear();  // 플레이리스트가 바뀌었을 수 있으니 시드부터 다시
             _mine = null;
+            if (first) _ = LoadAsync();  // 이제 소리로 판정한다
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

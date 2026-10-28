@@ -33,8 +33,8 @@ public sealed class SoundService : IAsyncDisposable
     {
         var ml = settings.MlDirectory ?? FindMlDirectory();
         var uv = settings.UvPath ?? FindUv();
+        // 학습한 모델이 없어도 띄운다 (처음 설치): 서비스가 학습 전 상태로 뜨고 '학습 시작'으로 처음 학습한다
         if (ml == null || uv == null || settings.ITunesLibraryPath == null) return null;
-        if (!File.Exists(Path.Combine(ml, "data", "crate_model.json"))) return null;
         return new SoundService(ml, uv, settings.ITunesLibraryPath);
     }
 
@@ -90,6 +90,10 @@ public sealed class SoundService : IAsyncDisposable
     public async Task<SoundStatus> StatusAsync(CancellationToken ct = default)
     {
         var r = await CallAsync("status", null, null, ct);
+        if (r.TryGetProperty("trained", out var tr) && !tr.GetBoolean())
+            return new SoundStatus(r.GetProperty("device").GetString()!, r.GetProperty("gpu").GetString(), default, 0,
+                r.GetProperty("embedded").GetInt32(), r.GetProperty("new_tracks").GetInt32(), [], 0, [], 0,
+                Trained: false, Library: r.GetProperty("library").GetInt32());
         return new SoundStatus(
             r.GetProperty("device").GetString()!,
             r.GetProperty("gpu").GetString(),

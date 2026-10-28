@@ -103,6 +103,11 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
 
     public SoundService? Sound => sound;
 
+    /// <summary>해외 추가 제안을 Deezer 장르로 나눌지 (레시피 설정에서 해외 플레이리스트에 레시피 이름이 없을 때). 아니면 소리로 고른 레시피</summary>
+    public bool SplitOverseasByGenre { get; set; } = true;
+    /// <summary>한국 발매작을 '한국음악' 하나로 묶을지 (한국 플레이리스트에 레시피 이름이 없을 때)</summary>
+    public bool KoreanAsOneRecipe { get; set; } = true;
+
     /// <summary>한국 플레이리스트(K-indie) 뮤지션의 크레이트 이름</summary>
     public const string KoreanCrate = "한국음악";
 
@@ -538,7 +543,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             var (c, a) = hits[i];
             var snd = heard[i];
             // 플리 뮤지션: 일본 크레이트 플레이리스트면 그 크레이트, 한국 플레이리스트면 한국음악
-            string? crate = c.Mine?.Style ?? (c.Mine?.Region == "한국" || c.Mine is null or { Region: "" } && regionOf[c.Id] == Region.Korea ? KoreanCrate : null);
+            string? crate = c.Mine?.Style ?? (KoreanAsOneRecipe && (c.Mine?.Region == "한국" || c.Mine is null or { Region: "" } && regionOf[c.Id] == Region.Korea) ? KoreanCrate : null);
             double? fit = null, taste = null;
             double score;
             if (snd != null)
@@ -566,7 +571,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             // 작은 아티스트 우대 (추가 제안만, 팬 수를 알 때)
             if (c.Mine == null && c.Fans > 0)
                 score += options.SmallArtistWeight * (c.Fans < 5_000 ? 0.4 : c.Fans < 50_000 ? 0.2 : c.Fans > 1_000_000 ? -0.2 : 0);
-            if (regionOf[c.Id] == Region.International && c.Mine?.Style == null)
+            if (SplitOverseasByGenre && regionOf[c.Id] == Region.International && c.Mine?.Style == null)
             {
                 // 해외는 Deezer 장르로 나눈다. 어울림 점은 일본 크레이트 기준이라 표시하지 않는다.
                 var overseas = OverseasCrate(info.Genre, a.GenreId, crate);

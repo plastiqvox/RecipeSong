@@ -58,6 +58,14 @@
                           Content="{local:Tr 'iTunes에 곡이 추가되면 자동으로 다시 학습'}"/>
                 <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
                            Text="{local:Tr '새로 들어온 곡의 소리를 분석해 취향 모델을 다시 학습해요. 정확도가 떨어지면 이전 모델을 그대로 써요. 끄면 사이드바의 \'지금 업데이트\'로 직접 해요.'}"/>
+                <!-- 레시피: 어떤 플레이리스트를 어떤 레시피·지역으로 배울지 -->
+                <DockPanel Margin="0,14,0,0">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Margin="6,0,0,0" Click="OpenRecipe_Click">
+                        <TextBlock Text="{local:Tr '레시피 설정 열기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Text="{local:Tr '어떤 플레이리스트를 어떤 레시피·지역으로 배울지'}"/>
+                </DockPanel>
 
                 <!-- 다른 설정 창: 톱니부터 여는 사람이 추천·AI 설정을 찾을 수 있게 -->
                 <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>

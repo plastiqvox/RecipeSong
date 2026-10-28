@@ -31,6 +31,12 @@ EFFNET_FOLDER = "emb_discogs_effnet"  # 레시피 보조: EffNet 장르판 임�
 EFFNET_SCALE = 1.0
 
 
+def crates_path() -> Path:
+    """레시피 설정: 앱의 레시피 설정 창이 data/crates.json 에 쓴다. 없으면 저장소의 crates.json (만든 사람의 플레이리스트)"""
+    user = DATA / "crates.json"
+    return user if user.exists() else ROOT / "crates.json"
+
+
 def load_embeddings(folder: str = DEFAULT_EMB) -> tuple[list[str], np.ndarray]:
     keys, embs = [], []
     for f in sorted((DATA / folder).glob("shard_*.npz")):
@@ -49,9 +55,17 @@ def preprocess(x: np.ndarray, mean: np.ndarray) -> np.ndarray:
 def fit_eval(x, y, groups, classes, title, C, log=print, weights=None):
     """교차검증 결과를 출력하고, 전체 데이터로 학습한 모델과 정확도를 돌려준다.
     weights: 곡 가중치 (많이 듣고 좋아한 곡을 더 중요하게 배운다). 정확도는 가중치 없이 잰다."""
-    cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=0)
-    pred = np.empty_like(y)
     w = np.ones(len(y)) if weights is None else np.asarray(weights)
+    if len(classes) < 2:  # 하나뿐이면 고를 것이 없다 → 늘 그 하나
+        log(f"\n[{title}] {classes[0] if classes else '없음'} 하나뿐이라 학습하지 않음")
+        return Constant(x.shape[1]), 1.0
+    # 다른 사람 라이브러리는 레시피마다 아티스트가 적을 수 있다 → 아티스트 수에 맞춰 나눈다 (2보다 적으면 교차검증 없이)
+    splits = min(5, min(len(set(groups[y == i])) for i in range(len(classes))))
+    if splits < 2:
+        log(f"\n[{title}] 레시피마다 아티스트가 2명 이상 있어야 정확도를 잴 수 있어요 (정확도 생략)")
+        return LogisticRegression(C=C, class_weight="balanced", max_iter=3000).fit(x, y, sample_weight=w), 0.0
+    cv = StratifiedGroupKFold(n_splits=splits, shuffle=True, random_state=0)
+    pred = np.empty_like(y)
     for tr, te in cv.split(x, y, groups):
         pred[te] = LogisticRegression(C=C, class_weight="balanced", max_iter=3000).fit(x[tr], y[tr], sample_weight=w[tr]).predict(x[te])
     acc = float((pred == y).mean())
@@ -61,6 +75,16 @@ def fit_eval(x, y, groups, classes, title, C, log=print, weights=None):
         log(f"   {c:8s} {m.sum():5d}곡  맞힘 {(pred[m] == i).mean():.0%}")
     clf = LogisticRegression(C=C, class_weight="balanced", max_iter=3000).fit(x, y, sample_weight=w)
     return clf, acc
+
+
+class Constant:
+    """분류할 것이 하나뿐일 때: 늘 그 하나 (LogisticRegression 과 같은 모양)"""
+    def __init__(self, dim: int):
+        self.coef_ = np.zeros((1, dim))
+        self.intercept_ = np.zeros(1)
+
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        return np.zeros(len(x), dtype=int)
 
 
 def main() -> None:
@@ -83,7 +107,7 @@ def save(model: dict) -> None:
 
 def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> dict:
     """학습하고 모델 dict를 돌려준다 (저장은 save)."""
-    config = json.loads((ROOT / "crates.json").read_text(encoding="utf-8"))
+    config = json.loads(crates_path().read_text(encoding="utf-8"))
     mapping, ignore = config["playlists"], set(config.get("ignore", []))
 
     tracks, _ = library.load(xml)
@@ -103,6 +127,9 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
         weights.append(t.weight)
         album_keys.append(covers.album_key(t.artist, t.album))
 
+    if len(rows) < 30:
+        raise ValueError(f"레시피 플레이리스트에서 분석한 곡이 {len(rows)}곡뿐이에요. 레시피 설정에서 플레이리스트를 더 골라 주세요 "
+                         "(한 곡이 여러 레시피 플레이리스트에 같이 있으면 학습에서 빠져요)")
     mean = emb[rows].mean(axis=0)
     x = preprocess(emb[rows], mean)
     groups = np.array(groups)
@@ -121,8 +148,12 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
     region_clf, region_acc = fit_eval(x, yr, groups, region_classes, "지역", C, log, weights)
 
     def head(clf, classes, acc):
-        return {"classes": classes, "coef": clf.coef_.round(6).tolist(),
-                "intercept": clf.intercept_.round(6).tolist(), "cv_accuracy": round(acc, 4)}
+        coef, icpt = clf.coef_, clf.intercept_
+        if len(classes) == 2 and coef.shape[0] == 1:
+            # 둘 중 하나: sklearn 은 두 번째 클래스 쪽 한 줄만 준다 → softmax 로 쓰게 [0, w] 두 줄로
+            coef, icpt = np.vstack([np.zeros_like(coef), coef]), np.concatenate([[0.0], icpt])
+        return {"classes": classes, "coef": coef.round(6).tolist(),
+                "intercept": icpt.round(6).tolist(), "cv_accuracy": round(acc, 4)}
 
     # 지역: 소리 + 앨범 커버 (커버 글자·디자인이 지역을 잘 알려 준다). 커버가 있는 곡만으로 따로 학습한다.
     region_cover = None

@@ -153,9 +153,11 @@ public sealed record AlbumSound(
     public bool Heard => Style != null;
 }
 
+/// <summary>Trained=false 면 학습 전 (처음 설치): TrainedAt·정확도는 의미 없고 Library 는 라이브러리 곡 수</summary>
 public sealed record SoundStatus(
     string Device, string? Gpu, DateTime TrainedAt, int Tracks, int Embedded, int NewTracks,
-    IReadOnlyList<string> Styles, double StyleAccuracy, IReadOnlyList<string> Regions, double RegionAccuracy);
+    IReadOnlyList<string> Styles, double StyleAccuracy, IReadOnlyList<string> Regions, double RegionAccuracy,
+    bool Trained = true, int Library = 0);
 
 public sealed record SoundUpdateResult(int Added, bool Accepted, double OldStyleAccuracy, double NewStyleAccuracy);
 

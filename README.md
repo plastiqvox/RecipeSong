@@ -74,18 +74,17 @@ ml/
   crates.json  iTunes 플레이리스트 → 레시피/지역 매핑
 ```
 
-## 처음 한 번: 소리 학습
+## 처음 한 번: 레시피 고르기와 소리 학습
 
-```powershell
-cd ml
-uv sync
-uv run python embed.py "C:/Users/<me>/Music/iTunes/iTunes Music Library.xml"   # 약 1시간 (RTX 3080 Ti 기준)
-uv run python train.py "C:/Users/<me>/Music/iTunes/iTunes Music Library.xml"   # 몇십 초
-```
+1. [uv](https://docs.astral.sh/uv/)를 설치하고 `cd ml; uv sync` (소리 분석에 쓸 Python 환경).
+2. 앱을 처음 켜면 **레시피 설정** 창이 뜬다. 분위기별로 만들어 둔 iTunes 플레이리스트(15곡 이상)를 고르고 레시피 이름과 지역을 정한다. 나중에는 설정 → "레시피 설정 열기".
+3. 사이드바 "내 취향 모델"의 **학습 시작**을 누른다. 라이브러리 곡을 모두 듣고 학습한다 (1만 5천 곡이 RTX 3080 Ti로 약 1시간, 중간에 꺼도 이어서). 그동안에도 앱은 아티스트 연결만으로 추천한다.
 
+- 레시피 설정은 `ml/data/crates.json`에 저장된다. 저장소의 `ml/crates.json`은 만든 사람의 플레이리스트 예시다.
+- 레시피 이름을 비운 플레이리스트는 지역만 배운다. 해외는 Deezer 장르(인디·얼터 / 일렉트로닉 / 소울·힙합)로, 한국은 '한국음악' 하나로 나뉜다.
 - 모델: `laion/larger_clap_general`. (`laion/larger_clap_music` 체크포인트는 어떤 입력에도 같은 출력을 내는 고장 상태라 쓰지 않는다.)
 - 이후에는 앱이 iTunes 라이브러리 변경을 감지해 **새 곡만 분석하고 재학습**한다. 새 모델이 이전보다 2%p 넘게 나빠지면 이전 모델을 유지한다.
-- 플레이리스트를 새로 만들거나 이름을 바꾸면 `ml/crates.json`을 고친다.
+- 명령줄로 하려면: `uv run python embed.py "<iTunes Music Library.xml>"` 다음 `uv run python train.py "<같은 xml>"`.
 
 ## 추천 방식
 

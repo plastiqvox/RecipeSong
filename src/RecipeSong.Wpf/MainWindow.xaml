@@ -692,7 +692,13 @@
                             <TextBlock Text="{Binding UpdateText}" FontSize="12" Foreground="{StaticResource AccentText}"/>
                             <Button Style="{StaticResource Bare}" Command="{Binding RunUpdateCommand}" Height="40" Margin="0,8,0,0"
                                     BorderBrush="{StaticResource Accent}">
-                                <TextBlock Text="{local:Tr '지금 업데이트'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"/>
+                                <Grid>
+                                    <TextBlock Text="{local:Tr '지금 업데이트'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
+                                               Visibility="{Binding IsTrained, Converter={StaticResource BoolVis}}"/>
+                                    <!-- 처음 설치: 학습한 모델이 없다 -->
+                                    <TextBlock Text="{local:Tr '학습 시작'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
+                                               Visibility="{Binding IsTrained, Converter={StaticResource NotBoolVis}}"/>
+                                </Grid>
                             </Button>
                         </StackPanel>
                         <StackPanel Margin="0,12,0,0" Visibility="{Binding IsUpdating, Converter={StaticResource BoolVis}}">

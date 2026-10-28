@@ -1,0 +1,49 @@
+<Window x:Class="RecipeSong.Wpf.RecipeSetupWindow" Icon="/Assets/logo.png"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:RecipeSong.Wpf"
+        Title="{local:Tr '레시피 설정'}" Width="820" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
+        FontFamily="{StaticResource Sans}">
+    <!-- 플레이리스트 → 레시피 이름 · 지역. 다른 사람 라이브러리에서 처음 실행하면 자동으로 뜬다 (만든 사람의 플레이리스트 이름이 없으니까) -->
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line2}" BorderThickness="0,1,0,0" Padding="28,14,28,18">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource Bare}" Padding="18,8" IsCancel="True">
+                        <TextBlock x:Name="CancelText" Text="{local:Tr '취소'}" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <Button Style="{StaticResource Bare}" Padding="18,8" Margin="8,0,0,0" IsDefault="True" Click="Save_Click"
+                            Background="{StaticResource Accent}" BorderBrush="{StaticResource Accent}">
+                        <TextBlock Text="{local:Tr '저장'}" Foreground="{StaticResource OnAccent}" FontWeight="Bold"/>
+                    </Button>
+                </StackPanel>
+                <TextBlock x:Name="Problem" FontSize="12" Foreground="{StaticResource AccentText}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,16,0"/>
+            </DockPanel>
+        </Border>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="28,24">
+                <TextBlock Text="{local:Tr '레시피 설정'}" FontSize="22" FontWeight="Bold"/>
+                <TextBlock x:Name="Intro" Style="{StaticResource MutedText}" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Text="{local:Tr '내 플레이리스트를 레시피로 써요. 레시피는 소리로 배울 묶음(예: 일본 인디, Jazz)이고, 지역은 그 플레이리스트 음악이 나온 곳이에요. 발매작은 레시피별로 나뉘고, 플레이리스트에 있는 뮤지션의 발매작은 항상 나와요.'}"/>
+                <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"
+                           Text="{local:Tr '레시피 이름을 비우면 지역만 배워요 (해외는 Deezer 장르로, 한국은 \'한국음악\' 하나로 나눠요). 고른 플레이리스트 두 곳 이상에 들어 있는 곡은 학습에서 빠져요. 15곡 이상인 플레이리스트만 보여요.'}"/>
+
+                <!-- 머리줄 -->
+                <Grid Margin="0,20,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition/>
+                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="260"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{local:Tr '플레이리스트'}" Style="{StaticResource Kicker}"/>
+                    <TextBlock Grid.Column="1" Text="{local:Tr '레시피 이름'}" Style="{StaticResource Kicker}" Margin="12,0,0,0"/>
+                    <TextBlock Grid.Column="2" Text="{local:Tr '지역'}" Style="{StaticResource Kicker}" Margin="12,0,0,0"/>
+                </Grid>
+                <StackPanel x:Name="Rows"/>
+                <TextBlock x:Name="Empty" Style="{StaticResource MutedText}" Margin="0,8,0,0" TextWrapping="Wrap" Visibility="Collapsed"
+                           Text="{local:Tr '15곡 이상인 플레이리스트가 없어요. iTunes에서 분위기별로 플레이리스트를 만든 뒤 다시 열어 주세요.'}"/>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

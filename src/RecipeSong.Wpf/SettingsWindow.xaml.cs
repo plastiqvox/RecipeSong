@@ -120,6 +120,12 @@ public partial class SettingsWindow : Window
         Dispatcher.BeginInvoke(() => _vm.OpenRecommendSettingsCommand.Execute(null));
     }
 
+    private void OpenRecipe_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+        Dispatcher.BeginInvoke(() => _vm.OpenRecipeSetupCommand.Execute(null));
+    }
+
     private void OpenConnector_Click(object sender, RoutedEventArgs e)
     {
         Close();
