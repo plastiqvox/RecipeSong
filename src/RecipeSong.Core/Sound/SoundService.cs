@@ -106,10 +106,10 @@ public sealed class SoundService : IAsyncDisposable
     /// <summary>Deezer 앨범 ID들의 미리듣기를 분석한다. 이미 분석한 앨범은 서비스 쪽 캐시에서 바로 나온다.</summary>
     public async Task<IReadOnlyDictionary<long, AlbumSound>> ScoreAlbumsAsync(
         IEnumerable<long> albumIds, IProgress<string>? progress = null, CancellationToken ct = default,
-        IReadOnlyDictionary<long, string?>? covers = null)
+        IReadOnlyDictionary<long, string?>? covers = null, bool hitsOnly = false)
     {
-        // 커버 주소: 소리 + 커버로 지역을 판정한다 (없으면 소리만)
-        var args = new { albums = albumIds.Select(id => new { id, cover = covers?.GetValueOrDefault(id) }).ToList() };
+        // 커버 주소: 소리 + 커버로 지역을 판정한다 (없으면 소리만). tracks: 앨범에서 들을 곡 (전곡 / 인기곡)
+        var args = new { albums = albumIds.Select(id => new { id, cover = covers?.GetValueOrDefault(id) }).ToList(), tracks = hitsOnly ? "top" : "all" };
         var r = await CallAsync("score_albums", args, progress, ct);
         var map = new Dictionary<long, AlbumSound>();
         foreach (var a in r.GetProperty("albums").EnumerateArray())
@@ -125,7 +125,10 @@ public sealed class SoundService : IAsyncDisposable
                 Str(a, "fav_near"),
                 a.TryGetProperty("dis", out var dis) ? dis.GetDouble() : null,
                 a.TryGetProperty("with", out var with) && with.ValueKind == JsonValueKind.Array
-                    ? [.. with.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null);
+                    ? [.. with.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null,
+                Pairs(a),
+                a.TryGetProperty("genres", out var gs) && gs.ValueKind == JsonValueKind.Array
+                    ? [.. gs.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null);
         }
         return map;
     }
@@ -147,6 +150,16 @@ public sealed class SoundService : IAsyncDisposable
         return r.GetProperty("count").GetInt32();
     }
 
+    /// <summary>수록곡마다 미리듣기를 들어 가장 닮은 내 곡 (곡 id → "아티스트 – 곡명", 유사도)</summary>
+    public async Task<Dictionary<long, (string Near, double Sim)>> TrackNearAsync(
+        IEnumerable<(long Id, string? Preview)> tracks, CancellationToken ct = default)
+    {
+        var args = new { tracks = tracks.Select(t => new { id = t.Id, preview = t.Preview }).ToList() };
+        var r = await CallAsync("track_near", args, null, ct);
+        return r.GetProperty("tracks").EnumerateArray().ToDictionary(
+            t => t.GetProperty("id").GetInt64(), t => (t.GetProperty("near").GetString()!, t.GetProperty("sim").GetDouble()));
+    }
+
     /// <summary>iTunes에 새로 들어온 곡만 분석하고 재학습한다. 성능이 떨어지면 이전 모델을 유지한다.</summary>
     public async Task<SoundUpdateResult> UpdateAsync(IProgress<string>? progress = null, CancellationToken ct = default)
     {
@@ -156,11 +169,42 @@ public sealed class SoundService : IAsyncDisposable
             r.GetProperty("old_style_accuracy").GetDouble(), r.GetProperty("new_style_accuracy").GetDouble());
     }
 
+    private static IReadOnlyList<TrackPair>? Pairs(JsonElement a) =>
+        a.TryGetProperty("pairs", out var p) && p.ValueKind == JsonValueKind.Array
+            ? [.. p.EnumerateArray().Select(x => new TrackPair(Str(x, "track") ?? "", Str(x, "near") ?? "", x.GetProperty("sim").GetDouble()))]
+            : null;
+
+    /// <summary>곡 짝 기능 전에 분석한 앨범의 짝 (없으면 미리듣기를 곡별로 다시 듣는다, 한 번만)</summary>
+    public async Task<Dictionary<long, IReadOnlyList<TrackPair>>> AlbumPairsAsync(IEnumerable<long> albumIds, CancellationToken ct = default)
+    {
+        var r = await CallAsync("album_pairs", new { ids = albumIds.ToList() }, null, ct);
+        return r.GetProperty("albums").EnumerateArray().ToDictionary(a => a.GetProperty("id").GetInt64(), a => Pairs(a) ?? []);
+    }
+
     private static string? Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     private static Dictionary<string, double> ToDict(JsonElement e) =>
         e.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetDouble());
+
+    /// <summary>target 앨범과 소리가 min 이상 닮은 앨범 (높은 순)</summary>
+    public async Task<List<(long Id, double Sim)>> SimilarAlbumsAsync(long target, IEnumerable<long> ids, double min = 0.85, CancellationToken ct = default)
+    {
+        var r = await CallAsync("similar_albums", new { target, ids = ids.ToList(), min }, null, ct);
+        return [.. r.GetProperty("albums").EnumerateArray().Select(a => (a.GetProperty("id").GetInt64(), a.GetProperty("sim").GetDouble()))];
+    }
+
+    /// <summary>ids 중 refs(직접 별로·차단한 앨범)의 어느 앨범과 min 이상 닮은 것 (Like = 닮은 별로 앨범 id)</summary>
+    public async Task<List<(long Id, double Sim, long Like)>> DislikeMatchesAsync(IEnumerable<long> ids, IEnumerable<long> refs,
+        double min = 0.92, CancellationToken ct = default)
+    {
+        var r = await CallAsync("dislike_matches", new { ids = ids.ToList(), refs = refs.ToList(), min }, null, ct);
+        return [.. r.GetProperty("albums").EnumerateArray()
+            .Select(a => (a.GetProperty("id").GetInt64(), a.GetProperty("sim").GetDouble(), a.GetProperty("like").GetInt64()))];
+    }
+
+    /// <summary>다른 요청을 처리하는 중 (요청은 한 번에 하나씩 — 새 요청은 줄을 선다)</summary>
+    public bool IsBusy => _serial.CurrentCount == 0;
 
     private async Task<JsonElement> CallAsync(string cmd, object? args, IProgress<string>? progress, CancellationToken ct)
     {

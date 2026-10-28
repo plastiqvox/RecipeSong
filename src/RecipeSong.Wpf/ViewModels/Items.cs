@@ -30,7 +30,9 @@ public sealed partial class ReleaseItem : ObservableObject
 
     public string Album => Rec.Album;
     public string Artist => Rec.Artist;
-    public string? CoverUrl => Rec.CoverUrl;
+    public string? CoverUrl => FoundCover ?? Rec.CoverUrl;
+    /// <summary>추천 결과에 커버가 없을 때 따로 찾아 온 커버 (발매 전 앨범 등)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CoverUrl))] private string? _foundCover;
     public string TypeLabel => Rec.RecordType.ToUpperInvariant();
     public string Meta => string.Join(" · ", new[] { Rec.ReleaseDate.ToString("yyyy.M.d"), Rec.Label, RegionLabel }.Where(s => !string.IsNullOrEmpty(s)));
     /// <summary>표시용 지역 이름 (Labels.Region은 키로도 쓰이므로 여기서만 번역)</summary>
@@ -66,22 +68,35 @@ public sealed partial class ReleaseItem : ObservableObject
         if (Rec.SourceUrl is { } url && Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme is "http" or "https")
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
-    /// <summary>추천 이유. 웹진 이유 "{이름}에서 소개"는 저장된 원문이라 표시할 때만 번역</summary>
-    public string? AiReason => Rec.AiReason is { } r && r.EndsWith("에서 소개", StringComparison.Ordinal)
-        ? L.F("{0}에서 소개", r[..^"에서 소개".Length]) : Rec.AiReason;
+    /// <summary>추천 이유. 웹진의 'OO에서 소개'는 보라 배지와 겹쳐서 뺀다 (AI 이유와 합쳐진 경우 그 부분만)</summary>
+    public string? AiReason => IsRecovered ? L.T(AiPick.RecoveredReason)
+        : Rec.AiReason?.Split("  /  ").Where(r => !r.EndsWith("에서 소개", StringComparison.Ordinal)).ToList() is { Count: > 0 } rs
+        ? string.Join("  /  ", rs) : null;
+    /// <summary>로그에서 다시 불러온 AI 제안: 이유가 없다는 안내라 흐리게 보인다</summary>
+    public bool IsRecovered => Rec.AiReason == AiPick.RecoveredReason;
+    public bool HasAiReason => AiReason != null;
     /// <summary>제안한 AI 커넥터 ("Claude", "GPT") — 커넥터마다 배지 하나</summary>
     public IReadOnlyList<AiBadge> AiBy => [.. (Rec.AiBy ?? (IsAi ? ["AI"] : [])).Select(b => new AiBadge(b))];
-    public string Badge => IsMine ? L.F("내 플리 · {0}", L.T(Rec.FromPlaylist ?? "")) : IsAi ? "" : Known ? L.T("아는 아티스트") : "";
-    public string BadgeTip => IsMine ? L.F("{0} 플레이리스트에 있는 뮤지션의 신보", L.T(Rec.FromPlaylist ?? ""))
-        : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 신보") : L.T("내 라이브러리에 있는 아티스트");
+    // 내 플리 배지는 플레이리스트 이름만 (앞의 플레이리스트 아이콘이 '내 플리'를 뜻한다)
+    public string Badge => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우")
+        : IsMine ? L.T(Rec.FromPlaylist ?? "") : IsAi ? "" : Known ? L.T("아는 아티스트") : "";
+    public bool BadgeIsPlaylist => IsMine && Rec.FromPlaylist != FollowList.Tag;
+    public string BadgeTip => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우한 아티스트의 발매작")
+        : IsMine ? L.F("{0} 플레이리스트에 있는 뮤지션의 발매작", L.T(Rec.FromPlaylist ?? ""))
+        : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 발매작") : L.T("내 라이브러리에 있는 아티스트");
     public System.Windows.Thickness BadgeMargin => HasFit ? new(8, 0, 0, 0) : new(0);
-    public bool HasNear => Rec.NearTracks.Count > 0;
+    public bool HasNear => NearItems.Count > 0;
+    /// <summary>장르 태그 (EffNet 이 고른 Discogs 스타일, 최대 3개)</summary>
+    public IReadOnlyList<string> Genres => Rec.Genres ?? [];
+    public bool HasGenres => Genres.Count > 0;
 
     /// <summary>비슷한 내 곡 (내 파일로 바로 재생). VM이 라이브러리에서 파일 경로를 찾아 채운다.</summary>
-    public IReadOnlyList<NearTrackItem> NearItems { get; init; } = [];
+    /// <summary>비슷한 내 곡 — 수록곡을 곡마다 분석했으면 그 결과(수록곡 목록과 같은 곡), 아니면 앨범 전체와 닮은 곡</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNear))] private IReadOnlyList<NearTrackItem> _nearItems = [];
     public string Near => string.Join("  /  ", Rec.NearTracks.Take(2).Select(Shorten));
-    // BecauseOf는 아티스트 이름 또는 "웹진" → 표시할 때만 번역
-    public string Because => SavedNote ?? (IsMine || Rec.BecauseOf.Count == 0 ? "" : L.F("{0}에서 출발", string.Join(", ", Rec.BecauseOf.Select(L.T))));
+    // BecauseOf는 아티스트 이름 또는 "웹진"·"AI 제안" → 표시할 때만 번역. 웹진·AI 제안은 배지가 이미 말해 줘서 뺀다
+    public string Because => SavedNote ?? (IsMine ? ""
+        : Rec.BecauseOf.Where(b => b is not ("웹진" or "AI 제안")).ToList() is { Count: > 0 } bs ? L.F("{0}에서 출발", string.Join(", ", bs.Select(L.T))) : "");
 
     public IAsyncRelayCommand ToggleTracksCommand { get; }
     public IRelayCommand ToggleSaveCommand { get; }
@@ -95,6 +110,15 @@ public sealed partial class ReleaseItem : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(LikeTip))] private bool _isLiked;
     /// <summary>처음 보는 앨범 (이번 실행 동안 NEW 배지)</summary>
     [ObservableProperty] private bool _isNew;
+    /// <summary>이 아티스트를 팔로우 중 (☆)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(FollowTip)), NotifyPropertyChangedFor(nameof(FollowMenu))] private bool _isFollowed;
+    public string FollowMenu => IsFollowed ? L.T("뮤지션 팔로우 해제") : L.T("뮤지션 팔로우");
+    public bool HasLabel => !string.IsNullOrEmpty(Rec.Label);
+    public string FollowTip => IsFollowed ? L.T("팔로우 중 · 누르면 해제") : L.T("이 아티스트 팔로우 (발매작을 항상 맨 앞에)");
+    public Func<ReleaseItem, Task>? ToggleFollowAction { get; init; }
+
+    [RelayCommand]
+    private Task ToggleFollow() => ToggleFollowAction?.Invoke(this) ?? Task.CompletedTask;
     public string LikeTip => IsLiked ? L.T("좋아요 취소") : L.T("좋아요 · 이 앨범과 비슷한 소리를 더 추천");
 
     [RelayCommand]
@@ -107,7 +131,7 @@ public sealed partial class ReleaseItem : ObservableObject
     /// <summary>별로: 추천에서 숨기고 학습에 반영 (저장함 탭 아래에서 되돌릴 수 있다)</summary>
     public Action<ReleaseItem>? ToggleDislikeAction { get; init; }
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DislikeTip))] private bool _isDisliked;
-    public string DislikeTip => IsDisliked ? L.T("별로 취소 (다시 추천에 나와요)") : L.T("별로예요 · 추천에서 숨기고 비슷한 소리·이 아티스트는 덜 추천");
+    public string DislikeTip => IsDisliked ? L.T("관심 없음 취소 (다시 추천에 나와요)") : L.T("관심 없음 · 추천에서 숨기고 비슷한 소리·이 아티스트는 덜 추천");
 
     [RelayCommand]
     private void ToggleDislike() => ToggleDislikeAction?.Invoke(this);
@@ -121,7 +145,7 @@ public sealed partial class ReleaseItem : ObservableObject
     public TrackItem? Current { get; set; }
     [ObservableProperty] private bool _showTracks;
     [ObservableProperty] private string? _tracksStatus;
-    public string TracksButton => ShowTracks ? L.T("수록곡 접기") : Tracks.Count > 0 ? L.F("수록곡 {0}", Tracks.Count) : L.T("수록곡");
+    public string TracksButton => ShowTracks ? L.T("수록곡 닫기") : Tracks.Count > 0 ? L.F("수록곡 {0}", Tracks.Count) : L.T("수록곡");
     partial void OnShowTracksChanged(bool value) => OnPropertyChanged(nameof(TracksButton));
 
     /// <summary>새로 받은 수록곡으로 채운다. 같은 앨범이면 곡 객체는 두고 만료된 미리듣기 URL만 바꾼다.</summary>
@@ -195,8 +219,9 @@ public sealed record AiBadge(string Text)
     /// <summary>Claude 오렌지 / GPT 초록, 비싼 모델일수록 진하게</summary>
     public System.Windows.Media.Brush Color => AiColors.For(Text);
     public System.Windows.Media.Brush Tint => AiColors.Background(Text);
-    /// <summary>배지에 보이는 글자: "웹진 · 이름"의 "웹진"만 번역 (Text는 색·순서·필터 키라 그대로)</summary>
-    public string Display => Text.StartsWith("웹진", StringComparison.Ordinal) ? L.T("웹진") + Text["웹진".Length..] : Text;
+    /// <summary>웹진 배지는 보라색 + 잡지 아이콘에 웹진 이름만 (Text 는 색·순서·필터 키라 "웹진 · 이름" 그대로)</summary>
+    public bool IsWebzine => Text.StartsWith("웹진", StringComparison.Ordinal);
+    public string Display => IsWebzine ? Text.Replace("웹진 · ", "").Replace("웹진", "") : Text;
 }
 
 /// <summary>카드의 "비슷한 내 곡" 하나: 내 라이브러리 파일을 바로 재생한다.</summary>
@@ -204,8 +229,9 @@ public sealed partial class NearTrackItem(string label, string? path, Action<Nea
 {
     public string Label { get; } = label;
     public string? Path { get; } = path;
-    public bool CanPlay => Path != null;
-    public string Tip => Path != null ? L.F("내 파일로 듣기 · {0}", Label) : L.F("{0} (내 라이브러리에서 파일을 못 찾았어요)", Label);
+    /// <summary>내 파일이 없어도 Deezer 미리듣기로 듣는다 (iTunes 경로에 파일이 없는 곡이 꽤 있다)</summary>
+    public bool CanPlay => true;
+    public string Tip => Path != null ? L.F("내 파일로 듣기 · {0}", Label) : L.F("Deezer 미리듣기로 듣기 (내 PC에 파일이 없어요) · {0}", Label);
     [ObservableProperty] private bool _isPlaying;
     public void SetPlaying(bool playing) => IsPlaying = playing;
 
@@ -261,6 +287,12 @@ public sealed partial class TrackItem : ObservableObject
     [RelayCommand]
     private void OpenYouTube() => YouTube.Search($"{Artist} {Title}");
 
+    /// <summary>이 곡과 가장 닮은 내 곡 ("아티스트 – 곡명", 수록곡을 펼치면 소리 서비스가 채운다)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(NearText))] private string? _near;
+    /// <summary>수록곡 중 내 곡과 가장 닮은 곡</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(NearText))] private bool _isClosest;
+    public string NearText => Near == null ? "" : "└ " + L.F("비슷한 내 곡: {0}", Near) + (IsClosest ? " · " + L.T("가장 닮음") : "");
+
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasPreview))] private string? _preview;
     public bool HasPreview => Preview != null;
     [ObservableProperty] private bool _isPlaying;
@@ -273,7 +305,9 @@ public sealed partial class TrackItem : ObservableObject
     }
 }
 
-public sealed partial class CrateSection(string name, IReadOnlyList<ReleaseItem> items, int total, int mine, bool canMore, Action<string> showOnly)
+/// <param name="hidden">한 레시피만 볼 때 아직 안 그린 카드 수 (연 보기에서 수백 장을 한 번에 그리지 않게)</param>
+public sealed partial class CrateSection(string name, IReadOnlyList<ReleaseItem> items, int total, int mine, bool canMore, Action<string> showOnly,
+    int hidden = 0, Action? showMore = null)
     : ObservableObject
 {
     /// <summary>레시피 이름 (키: More → showOnly)</summary>
@@ -281,12 +315,22 @@ public sealed partial class CrateSection(string name, IReadOnlyList<ReleaseItem>
     /// <summary>표시용 이름 ("미분류" 같은 내장 이름만 번역되고 사용자 레시피 이름은 그대로)</summary>
     public string DisplayName => L.T(Name);
     public IReadOnlyList<ReleaseItem> Items { get; } = items;
-    public string Meta => mine > 0 && mine < total ? L.F("{0}장 · 내 플리 {1} · 추가 제안 {2}", total, mine, total - mine)
-        : mine == total ? L.F("{0}장 · 모두 내 플리", total) : L.F("{0}장 · 추가 제안", total);
+    /// <summary>전체 보기에서 일부만 그렸으면 "30장 중 6장"으로 (전에는 "30장"만 있어 다 보이는 줄 알았다)</summary>
+    public string Meta => (CanMore ? L.F("{0}장 중 {1}장", total, Items.Count) : L.F("{0}장", total)) + " · "
+        + (mine > 0 && mine < total ? L.F("내 플리 {0} · 추가 제안 {1}", mine, total - mine) : mine == total ? L.T("모두 내 플리") : L.T("추가 제안"));
     public bool CanMore { get; } = canMore;
+    public string MoreText => L.F("전체 {0}장 보기", total);
+    /// <summary>레시피 카드 아래: 남은 장수를 그 자리에서 알린다</summary>
+    public string MoreBelowText => L.F("{0} {1}장 더 보기", DisplayName, total - Items.Count);
 
     [RelayCommand]
     private void More() => showOnly(Name);
+
+    public bool CanShowMore => hidden > 0;
+    public string ShowMoreText => L.F("{0}장 더 보기 (남은 {1}장)", Math.Min(hidden, MainViewModel.PageStep), hidden);
+
+    [RelayCommand]
+    private void ShowMore() => showMore?.Invoke();
 }
 
 /// <summary>크레이트 · 형식 · 지역 필터 칩.</summary>
@@ -325,9 +369,12 @@ public sealed partial class DayCell(DateTime date, bool inMonth, Action<DateTime
     [ObservableProperty] private string? _aiTip;
     /// <summary>이 기간을 일반 추천으로 분석해 둔 적이 있다 (칸 위쪽 회색 선)</summary>
     [ObservableProperty] private bool _analyzed;
-    /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 점)</summary>
+    /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 흰 고리)</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNew))] private int _newCount;
     public bool HasNew => NewCount > 0;
+    /// <summary>팔로우한 아티스트의 발매작 수 (칸 왼쪽 위 ★)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasFollow))] private int _followCount;
+    public bool HasFollow => FollowCount > 0;
     /// <summary>툴팁: 분석 이력 + AI가 찾은 앨범</summary>
     [ObservableProperty] private string? _tip;
 
@@ -345,9 +392,12 @@ public sealed partial class MonthCell(int month, Action<int> select) : Observabl
     [ObservableProperty] private string? _aiTip;
     /// <summary>이 기간을 일반 추천으로 분석해 둔 적이 있다 (칸 위쪽 회색 선)</summary>
     [ObservableProperty] private bool _analyzed;
-    /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 점)</summary>
+    /// <summary>아직 화면에서 본 적 없는 앨범 수 (칸 오른쪽 위 흰 고리)</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNew))] private int _newCount;
     public bool HasNew => NewCount > 0;
+    /// <summary>팔로우한 아티스트의 발매작 수 (칸 왼쪽 위 ★)</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasFollow))] private int _followCount;
+    public bool HasFollow => FollowCount > 0;
     /// <summary>툴팁: 분석 이력 + AI가 찾은 앨범</summary>
     [ObservableProperty] private string? _tip;
 

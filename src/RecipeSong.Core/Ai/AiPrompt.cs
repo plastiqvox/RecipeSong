@@ -19,27 +19,45 @@ public interface IAiScout
         IProgress<string>? progress = null, CancellationToken ct = default);
 }
 
-/// <summary>커넥터들이 같이 쓰는 프롬프트와 결과 스키마</summary>
+/// <summary>
+/// 커넥터들이 같이 쓰는 프롬프트와 결과 스키마.
+/// 지시는 영어로 쓴다 — 모델이 규칙을 가장 정확히 따르는 언어이고, 비용 차이는 거의 없다(입력 대부분은 검색 결과).
+/// 대신 검색 언어를 씬마다 정해 준다: 지시 언어를 따라 한 언어로만 검색하면 일본·한국 인디를 놓친다.
+/// 추천 이유는 화면 언어로 받는다.
+/// </summary>
 internal static class AiPrompt
 {
-    public const string System = "당신은 인디 음악 디거를 돕는 큐레이터입니다. 실제로 존재하고 발매일을 확인한 발매작만 제안합니다.";
+    public const string System = "You are a curator helping an indie music digger. Only suggest releases that actually exist and whose release date you have confirmed in search results.";
 
+    private static string RegionName(string? r) => r switch
+    {
+        "일본" => "Japan", "한국" => "Korea", "해외" => "International (outside Japan/Korea)", "동남아" => "Southeast Asia",
+        null => "Japan, Korea, International and Southeast Asia", _ => r,
+    };
+
+    private static string ReasonLanguage => L.Lang == "en" ? "English" : "Korean";
+
+    /// <param name="taste">앱이 만든 취향 요약: 레시피별 대표 뮤지션 + 좋아요·별로·차단·팔로우·좋아하는 레이블 (영어 머리글)</param>
     public static string Build(Period period, string taste, IReadOnlyCollection<string> exclude, string? focusRegion, string howToSubmit) => $"""
-        기간: {period.Start:yyyy-MM-dd} ~ {period.End:yyyy-MM-dd}
-        지역: {focusRegion ?? "일본, 한국, 해외, 동남아 모두"}
+        Period: {period.Start:yyyy-MM-dd} to {period.End:yyyy-MM-dd}
+        Regions: {RegionName(focusRegion)}
 
-        내 크레이트와 대표 뮤지션:
         {taste}
 
-        이미 알고 있는 발매작 (제외):
-        {(exclude.Count == 0 ? "(없음)" : string.Join("\n", exclude.Take(120)))}
+        Already known releases (do not suggest these):
+        {(exclude.Count == 0 ? "(none)" : string.Join("\n", exclude.Take(120)))}
 
-        이 기간에 실제로 발매된 앨범·EP 중 내 크레이트 취향에 맞을 만한 것을 웹에서 찾아 주세요.
-        위 뮤지션 본인보다는 같은 씬·레이블·결의 다른 뮤지션, 특히 작은 레이블과 인디 발매작을 우선해 주세요.
-        발매일은 검색 결과로 확인한 것만 넣고, 확인하지 못한 것은 넣지 마세요.
-        신보 소식·리뷰 사이트, 레이블 신보 페이지, Bandcamp 신보 목록처럼 한 페이지에 여러 장이 모인 곳을 먼저 찾으면 효율적이에요.
-        앨범이 모자라면 EP와 싱글도 넣어서 8장 이상 채워 주세요. 2~3장만 내지 마세요.
-        {howToSubmit} (8~15장){(L.Lang == "en" ? "\nWrite each reason (the \"reason\" field) in English." : "")}
+        Task: search the web for albums and EPs actually released in this period that fit my crates.
+        - Prefer other artists from the same scenes, labels and sound as the listed artists over those artists themselves — especially small labels and indie releases.
+        - Lean toward what I liked and the artists I follow; avoid anything that sounds like the "not for me" list; never suggest blocked artists or labels.
+        - Search in each scene's own language: Japanese releases in Japanese (e.g. 新譜, リリース, レーベル 新作, タワーレコード), Korean releases in Korean (e.g. 신보, 발매, 앨범), other releases in English.
+        - Start with pages that list many releases at once: new-release roundups, reviews, label release pages, Bandcamp new arrivals.
+        - Only include release dates you confirmed in search results; leave out anything you could not confirm.
+        - Keep artist and album titles in their original script.
+        - If there are not enough albums, add EPs and singles to reach at least 8. Do not stop at 2–3.
+        - region must be one of: 일본 (Japan), 한국 (Korea), 해외 (International), 동남아 (Southeast Asia).
+        - Write each "reason" in {ReasonLanguage}: one sentence saying which crate or artists it is close to.
+        {howToSubmit} (8–15 releases)
         """;
 
     /// <summary>결과 JSON 스키마 (strict: 모든 object에 additionalProperties: false, 모든 필드 required)</summary>
@@ -61,14 +79,12 @@ internal static class AiPrompt
                     properties = new Dictionary<string, object>
                     {
                         ["artist"] = new { type = "string" },
-                        ["album"] = new { type = "string", description = "앨범·EP 제목 (원어 표기)" },
+                        ["album"] = new { type = "string", description = "Album or EP title in its original script" },
                         ["release_date"] = new { type = "string", description = "YYYY-MM-DD" },
                         ["type"] = new { type = "string", @enum = new[] { "album", "ep", "single" } },
                         ["region"] = new { type = "string", @enum = new[] { "일본", "한국", "해외", "동남아" } },
-                        ["reason"] = new { type = "string", description = L.Lang == "en"
-                            ? "One-sentence reason for the pick, in English (which crate/artists it is close to)"
-                            : "추천 이유 한 문장 (한국어, 어떤 크레이트·뮤지션과 결이 비슷한지)" },
-                        ["source_url"] = new { type = "string", description = "발매일을 확인한 페이지" },
+                        ["reason"] = new { type = "string", description = $"One sentence in {ReasonLanguage}: which crate or artists it is close to" },
+                        ["source_url"] = new { type = "string", description = "Page where you confirmed the release date" },
                     },
                 },
             },

@@ -55,7 +55,8 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
     {
         var key = settings.GetKey() ?? throw new InvalidOperationException(L.T("Claude API 키가 없어요"));
         var client = new AnthropicClient { ApiKey = key };
-        var prompt = AiPrompt.Build(period, taste, exclude, focusRegion, $"찾은 결과는 {SubmitTool} 도구로 한 번에 제출하세요.");
+        var prompt = AiPrompt.Build(period, taste, exclude, focusRegion, $"Submit everything you found once, with the {SubmitTool} tool.");
+        AiDebugLog.Write(Name, "보낸 지시: " + prompt.ReplaceLineEndings(" ⏎ "));
 
         var tools = new List<BetaToolUnion>
         {
@@ -63,7 +64,7 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
             new(new BetaTool
             {
                 Name = SubmitTool,
-                Description = "찾은 신보 목록을 제출한다. 모든 검색이 끝난 뒤 한 번만 호출한다.",
+                Description = "Submit the list of new releases you found. Call once, after all searching is done.",
                 Strict = true,
                 // strict 도구는 모든 object에 additionalProperties: false가 필요해서 스키마를 통째로 JSON으로 만든다
                 InputSchema = InputSchema.FromRawUnchecked(ToRaw(AiPrompt.Schema)),
@@ -74,7 +75,7 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
         bool nudged = false;
         for (int turn = 0; turn < 4; turn++)
         {
-            progress?.Report(turn == 0 ? L.T("Claude가 웹에서 신보 찾는 중… (1~2분)")
+            progress?.Report(turn == 0 ? L.T("Claude가 웹에서 발매작 찾는 중… (1~2분)")
                 : nudged ? L.T("Claude에게 결과 제출을 다시 요청하는 중…") : L.T("Claude가 검색 이어서 하는 중…"));
             var resp = await client.Beta.Messages.Create(new MessageCreateParams
             {
@@ -111,7 +112,7 @@ public sealed class ClaudeScout(AiConnectorSettings settings, AiUsageLedger? led
             nudged = true;
             messages.Add(new BetaUserMessageParam
             {
-                Content = $"더 검색하지 말고, 지금까지 찾은 발매작을 {SubmitTool} 도구로 제출해 주세요. 발매일을 확인한 것만 넣어 주세요.",
+                Content = $"Stop searching and submit the releases you found so far with the {SubmitTool} tool. Include only those with a confirmed release date.",
             });
         }
         throw new InvalidOperationException(L.T("Claude가 결과를 제출하지 않았어요. 잠시 뒤 다시 시도해 주세요."));

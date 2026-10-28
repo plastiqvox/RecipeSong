@@ -27,7 +27,8 @@ public partial class App : Application
         var settings = AppSettings.Load();
         L.Init(Environment.GetEnvironmentVariable("RECIPESONG_LANG") ?? settings.Language);  // 시험용: RECIPESONG_LANG=en
         // 캐시 폴더는 캐시를 처음 만들기 전에 정한다
-        if (settings.CacheDirectory is { Length: > 0 } cacheDir) CacheLocation.Directory = cacheDir;
+        // 시험용 데이터 폴더(RECIPESONG_DATA)에서는 설정에 적힌 캐시 위치를 무시한다 (사용자 캐시로 새지 않게)
+        if (settings.CacheDirectory is { Length: > 0 } cacheDir && AppSettings.TestDataDir == null) CacheLocation.Directory = cacheDir;
         if (settings.ITunesLibraryPath is not { } xml || !File.Exists(xml))
         {
             var dlg = new OpenFileDialog

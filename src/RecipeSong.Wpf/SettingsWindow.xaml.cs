@@ -10,12 +10,19 @@ public partial class SettingsWindow : Window
 {
     private readonly AppSettings _app;
     private readonly string? _mlDir;
+    private readonly ViewModels.MainViewModel _vm;
 
     public SettingsWindow(AppSettings app, string? mlDir, ViewModels.MainViewModel vm)
     {
         InitializeComponent();
+        DarkTitleBar.Apply(this);
+        MaxHeight = SystemParameters.WorkArea.Height - 24;  // 화면보다 길면 본문만 스크롤 (버튼 줄은 아래 고정)
         _app = app;
         _mlDir = mlDir;
+        _vm = vm;
+        // 버전은 src/Directory.Build.props
+        var ver = typeof(SettingsWindow).Assembly.GetName().Version;
+        VersionText.Text = ver != null ? $"RecipeSong {ver.Major}.{ver.Minor}" : "";
         AutoRetrainBox.IsChecked = vm.AutoUpdate;
         AutoRetrainBox.Checked += (_, _) => vm.AutoUpdate = true;
         AutoRetrainBox.Unchecked += (_, _) => vm.AutoUpdate = false;
@@ -90,9 +97,33 @@ public partial class SettingsWindow : Window
             long library = data.EnumerateDirectories("emb_*").Sum(CacheLocation.Size);
             long model = data.EnumerateFiles("crate_model.json").Sum(f => f.Length);
             MlSizes.Text = L.F("소리 분석 데이터 ({0})", data.FullName) + Environment.NewLine +
-                L.F("· 신보 미리듣기 분석 {0}", CacheLocation.Format(albums)) + Environment.NewLine +
+                L.F("· 발매작 미리듣기 분석 {0}", CacheLocation.Format(albums)) + Environment.NewLine +
                 L.F("· 내 곡 학습 데이터 {0} · 취향 모델 {1}", CacheLocation.Format(library), CacheLocation.Format(model));
         }
+    }
+
+    private async void ClearRecs_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ConfirmWindow.Ask(this, L.T("저장된 추천 비우기"),
+                L.T("저장된 추천을 모두 지우고 지금 기간부터 새로 계산할까요?\n다른 기간은 열 때 새로 계산해요 (기간마다 30초 안팎)."), L.T("비우기"))) return;
+        ClearRecsButton.IsEnabled = false;
+        ClearResult.Text = L.T("비우고 지금 기간을 새로 계산하는 중…");
+        await _vm.ClearSavedRecsAsync();
+        ClearResult.Text = L.T("비웠어요. 지금 기간은 새로 계산했고, 다른 기간은 열 때 새로 계산해요.");
+        ShowStorage();
+    }
+
+    // 다른 설정 창: 이 창을 닫고 연다 (설정 창 위에 설정 창이 겹치지 않게)
+    private void OpenRecommend_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+        Dispatcher.BeginInvoke(() => _vm.OpenRecommendSettingsCommand.Execute(null));
+    }
+
+    private void OpenConnector_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+        Dispatcher.BeginInvoke(() => _vm.OpenConnectorCommand.Execute(null));
     }
 
     private void OpenCache_Click(object sender, RoutedEventArgs e) =>

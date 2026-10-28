@@ -50,7 +50,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             DislikedArtists = DislikedArtists, LabelAffinity = _labelAffinity,
             BlockedArtists = _blocked.ArtistKeys, BlockedLabels = _blocked.LabelKeys, BlockedArtistIds = _blocked.ArtistIds,
-            ExcludeInstrumental = _recPrefs.ExcludeInstrumental,
+            ExcludeInstrumental = _recPrefs.ExcludeInstrumental, HitsOnly = _recPrefs.Tracks == 1,
             LikedArtists = _likedArtists, TypeBonus = _typeBonus,
         };
 
@@ -67,6 +67,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _likedArtists = [.. tracks.GroupBy(t => t.GroupArtist).OrderByDescending(g => g.Sum(t => t.Weight)).Take(300)
             .Select(g => ListeningAnalyzer.NormalizeArtist(g.Key))];
         if (_mine != null) _likedArtists.UnionWith(_mine.Select(m => ListeningAnalyzer.NormalizeArtist(m.Artist)));
+        _likedArtists.UnionWith(_follows.All.Select(f => ListeningAnalyzer.NormalizeArtist(f.Name)));
         var share = tracks.Where(t => t.Album.Length > 0).GroupBy(t => (t.GroupArtist, t.Album))
             .Select(g => (Type: g.Count() >= 7 ? "album" : g.Count() >= 4 ? "ep" : "single", W: g.Sum(t => t.Weight)))
             .GroupBy(x => x.Type).ToDictionary(g => g.Key, g => g.Sum(x => x.W));
@@ -100,6 +101,69 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private IEnumerable<long> ImplicitSkips() =>
         _listens.FreshValuesWithKeys().Where(x => x.Value.Skipped >= 2 && x.Value.Completed == 0).Select(x => long.Parse(x.Key));
 
+    // ---- 팔로우: 신보는 플리 뮤지션처럼 항상 앞에, 비슷한 아티스트 찾기의 출발점 (Deezer 아티스트 id로) ----
+    private readonly FollowList _follows = new();
+    public FollowList Follows => _follows;
+
+    private static string RegionName(Region r) => r switch
+    {
+        Region.Japan => "일본", Region.Korea => "한국", Region.International => "해외", Region.SoutheastAsia => "동남아", _ => "",
+    };
+
+    private bool IsFollowedRec(ReleaseRecommendation r) => r.ArtistId != 0
+        ? _follows.Contains(r.ArtistId)
+        : _follows.All.Any(f => ListeningAnalyzer.NormalizeArtist(f.Name) == ListeningAnalyzer.NormalizeArtist(r.Artist));
+
+    private async Task ToggleFollowAsync(ReleaseItem item)
+    {
+        var id = item.Rec.ArtistId;
+        // 예전에 저장한 추천에는 아티스트 id가 없다 → 앨범에서 찾는다
+        if (id == 0)
+        {
+            try { id = (await _deezer.AlbumAsync(item.Rec.DeezerAlbumId, _life.Token))?.Artist?.Id ?? 0; }
+            catch (HttpRequestException) { }
+        }
+        if (id == 0) { SyncText = L.F("{0}을(를) Deezer에서 찾지 못해 팔로우하지 못했어요", item.Artist); return; }
+        bool follow = !_follows.Contains(id);
+        if (follow)
+        {
+            _follows.Follow(id, item.Artist, RegionName(item.Rec.Region));
+            _likedArtists.Add(ListeningAnalyzer.NormalizeArtist(item.Artist));
+        }
+        else _follows.Unfollow(id);
+        await RefreshFollowsAsync();
+    }
+
+    /// <summary>팔로우가 바뀐 뒤 (카드 ☆ 또는 추천 설정에서 해제): 후보 풀을 새로 모으고, 지금 기간에 팔로우 신보를 더하거나 뺀다</summary>
+    public async Task RefreshFollowsAsync()
+    {
+        await _poolLock.WaitAsync(_life.Token);
+        try { _pools.Clear(); } finally { _poolLock.Release(); }
+        // 해제한 아티스트: 팔로우 때문에만 들어온 카드는 뺀다
+        _all = [.. _all.Where(i => i.Rec.FromPlaylist != FollowList.Tag || IsFollowedRec(i.Rec))];
+        foreach (var i in _all) i.IsFollowed = IsFollowedRec(i.Rec);
+        await MergeFollowedAsync(CurrentPeriod, _loadCts?.Token ?? _life.Token);
+        ApplyFilters();
+        MarkSeen();
+        UpdateAiMarks();
+    }
+
+    /// <summary>팔로우한 아티스트의 기간 내 발매작을 결과에 더한다 (저장된 추천에도). 이미 있는 앨범은 팔로우 표시만 붙인다.</summary>
+    private async Task MergeFollowedAsync(Period period, CancellationToken ct)
+    {
+        if (_follows.All.Count == 0) return;
+        try
+        {
+            _owned ??= new OwnedLibrary(await _library.GetTracksAsync(ct));
+            var recs = await Task.Run(() => _recommender.FollowedAsync(_follows.AsPlaylistArtists(), _owned, period, RecOptions.ForPeriod(period.Kind), ct: ct), ct);
+            if (ct.IsCancellationRequested || CurrentPeriod.Label != period.Label) return;
+            var byId = recs.ToDictionary(r => r.DeezerAlbumId);
+            _all = [.. _all.Select(i => byId.Remove(i.Rec.DeezerAlbumId) ? MakeItem(i.Rec with { FromPlaylist = i.Rec.FromPlaylist ?? FollowList.Tag }) : i),
+                    .. byId.Values.Select(r => MakeItem(r))];
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException) { }
+    }
+
     // ---- 차단: 카드 우클릭으로 아티스트·레이블 전체를 뺀다 (추천 설정에서 해제) ----
     private readonly BlockList _blocked = new();
     public BlockList Blocked => _blocked;
@@ -112,10 +176,54 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             { Owner = Application.Current.MainWindow };
         if (win.ShowDialog() != true) return;
         var reason = win.Reasons;
+        var before = _blocked.Snapshot();
         if (label) _blocked.BlockLabel(item.Rec, reason);
         else _blocked.BlockArtist(item.Rec, reason);
         ApplyFilters();
         _ = SyncFavoritesAsync();
+        if (reason.Learns()) _ = OfferSimilarAsync(item);
+        OfferUndo(L.F("'{0}' 차단했어요", label ? item.Rec.Label! : item.Artist), () =>
+        {
+            _blocked.Restore(before);
+            DropSimilarOfferFrom(item);
+            RefreshBlocked();
+        });
+    }
+
+    // ---- 되돌리기: 별로·차단 직후 잠깐 (카드가 바로 사라져서 잘못 눌렀을 때 찾아가기 어렵다) ----
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasUndo))] private string _undoText = "";
+    public bool HasUndo => UndoText.Length > 0;
+    private Action? _undo;
+    private int _undoVersion;
+
+    private async void OfferUndo(string text, Action undo)
+    {
+        _undo = undo;
+        UndoText = text;
+        int v = ++_undoVersion;
+        await Task.Delay(TimeSpan.FromSeconds(10));
+        if (v != _undoVersion) return;  // 그 사이 다른 되돌리기가 생겼다
+        _undo = null;
+        UndoText = "";
+    }
+
+    [RelayCommand]
+    private void Undo()
+    {
+        var undo = _undo;
+        _undo = null;
+        UndoText = "";
+        _undoVersion++;
+        undo?.Invoke();
+    }
+
+    /// <summary>되돌린 앨범 때문에 띄운 '닮은 추천 숨기기' 배너는 거둔다</summary>
+    private void DropSimilarOfferFrom(ReleaseItem item)
+    {
+        if (_similarFrom != item.Rec.DeezerAlbumId) return;
+        _similarFrom = null;
+        _similarOffer = [];
+        SimilarOfferText = "";
     }
 
     /// <summary>추천 설정 창에서 웹진을 켜고 끈 뒤</summary>
@@ -291,12 +399,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string NavLabel => IsYearMode ? L.F("{0}년", NavMonth.Year) : L.F("{0}년 {1}월", NavMonth.Year, NavMonth.Month, NavMonth);
 
     public Period CurrentPeriod => Periods.Create(Mode, SelectedDate);
-    public string PeriodKicker => Mode switch
-    {
-        PeriodKind.Year => "YEAR",
-        PeriodKind.Month => "MONTH",
-        _ => $"WEEK {System.Globalization.ISOWeek.GetWeekOfYear(SelectedDate)}"
-    };
     public string PeriodTitle => Mode switch
     {
         PeriodKind.Year => L.F("{0}년", SelectedDate.Year),
@@ -362,9 +464,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnPeriodChanged()
     {
+        _pageSize = PageStep;
+        ScrollTopRequested?.Invoke();
         NavMonth = new DateTime(SelectedDate.Year, SelectedDate.Month, 1);
-        foreach (var n in new[] { nameof(CanPrecise), nameof(PreciseLabel), nameof(IsYearMode), nameof(IsWeekMode), nameof(IsMonthMode), nameof(IsYearModeChecked),
-                                  nameof(NavLabel), nameof(PeriodKicker), nameof(PeriodTitle), nameof(PeriodRange) })
+        foreach (var n in new[] { nameof(CanPrecise), nameof(PreciseLabel), nameof(IsYearMode), nameof(IsWeekMode), nameof(IsMonthMode), nameof(IsYearModeChecked), nameof(CanAiWeekly),
+                                  nameof(NavLabel), nameof(PeriodTitle), nameof(PeriodRange) })
             OnPropertyChanged(n);
         BuildCalendar();
         _loadTask = LoadAsync();
@@ -377,6 +481,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>화면이 그 카드로 스크롤하도록 알린다 (MainWindow가 받는다)</summary>
     public event Action<ReleaseItem>? ScrollToRequested;
+    /// <summary>기간·탭·레시피를 바꾸면 목록을 맨 위로 (헤더가 고정이라 앞 화면의 스크롤 위치가 남으면 바뀐 줄 모른다)</summary>
+    public event Action? ScrollTopRequested;
 
     private async Task GoToNowPlayingAsync()
     {
@@ -406,11 +512,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             target = MakeItem(rec);
             _all = [.. _all, target];
         }
-        // 그 크레이트만 보이게 해서 6장 제한에 가려지지 않게
+        // 그 크레이트만 보이게 해서 6장 제한에 가려지지 않게 (Detail 을 먼저 정해 페이지에서도 잘리지 않게)
         _crate = target.CrateName;
+        Detail = target;
         ApplyFilters();
-
-        target.ShowTracks = true;
         await EnsureTracksAsync(target);
         // 재생 표시를 새 카드의 곡으로 옮긴다
         if (target.Tracks.FirstOrDefault(t => t.Number == trackNo) is { } track)
@@ -486,13 +591,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             .DistinctBy(r => r.DeezerAlbumId).ToList();
         var newByDay = unseen.ToLookup(r => r.ReleaseDate);
         static string? NewTip(int n) => n > 0 ? L.F("처음 보는 앨범 {0}장", n) : null;
+        var followed = _follows.All.SelectMany(f => _recommender.CachedDiscography(f.Id)
+                .Where(a => a.Released != null && a.RecordType != "compile").Select(a => (f.Name, a.Title, Date: a.Released!.Value)))
+            .Distinct().ToList();
+        var followByDay = followed.ToLookup(x => x.Date);
+        static string? FollowTip(IEnumerable<(string Name, string Title, DateOnly Date)> xs) =>
+            xs.Select(x => $"{x.Name} – {x.Title}").ToList() is { Count: > 0 } l
+                ? L.T("팔로우한 아티스트 발매작") + "\n" + string.Join("\n", l.Take(4)) + (l.Count > 4 ? " …" : "") : null;
         foreach (var d in Days)
         {
             (d.AiDots, d.AiTip) = Marks(byDay[DateOnly.FromDateTime(d.Date)]);
             var h = history.Where(x => x.Kind == PeriodKind.Week && x.Start.Date <= d.Date && d.Date <= x.End.Date).MaxBy(x => x.At);
             d.Analyzed = h != null;
             d.NewCount = newByDay[DateOnly.FromDateTime(d.Date)].Count();
-            d.Tip = Join(Join(h is { } w ? L.F("이 주 분석함 · {0:M.d HH:mm} · 추천 {1}장", w.At, w.Count) : null, NewTip(d.NewCount)), d.AiTip);
+            var fol = followByDay[DateOnly.FromDateTime(d.Date)].ToList();
+            d.FollowCount = fol.Count;
+            d.Tip = Join(Join(h is { } w ? L.F("이 주 분석함 · {0:M.d HH:mm} · 추천 {1}장", w.At, w.Count) : null, NewTip(d.NewCount)),
+                Join(FollowTip(fol), d.AiTip));
         }
         var byMonth = recs.Where(r => r.ReleaseDate.Year == SelectedDate.Year).ToLookup(r => r.ReleaseDate.Month);
         foreach (var m in Months)
@@ -501,7 +616,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var h = history.Where(x => x.Kind == PeriodKind.Month && x.Start.Year == SelectedDate.Year && x.Start.Month == m.Month).MaxBy(x => x.At);
             m.Analyzed = h != null;
             m.NewCount = unseen.Count(r => r.ReleaseDate.Year == SelectedDate.Year && r.ReleaseDate.Month == m.Month);
-            m.Tip = Join(Join(h is { } mo ? L.F("이 달 분석함 · {0:M.d HH:mm} · 추천 {1}장", mo.At, mo.Count) : null, NewTip(m.NewCount)), m.AiTip);
+            var folM = followed.Where(x => x.Date.Year == SelectedDate.Year && x.Date.Month == m.Month).ToList();
+            m.FollowCount = folM.Count;
+            m.Tip = Join(Join(h is { } mo ? L.F("이 달 분석함 · {0:M.d HH:mm} · 추천 {1}장", mo.At, mo.Count) : null, NewTip(m.NewCount)),
+                Join(FollowTip(folM), m.AiTip));
         }
     }
 
@@ -523,6 +641,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsRecsTab { get => SelectedTab == 0; set { if (value) SelectedTab = 0; } }
     public bool IsLibraryTab { get => SelectedTab == 1; set { if (value) SelectedTab = 1; } }
     public bool IsSavedTab { get => SelectedTab == 2; set { if (value) SelectedTab = 2; } }
+    /// <summary>별로 표시한 앨범 탭 (저장함은 즐겨찾기만 — 별로가 섞여 있으면 위시리스트를 보기 어렵다)</summary>
+    public bool IsDislikedTab { get => SelectedTab == 3; set { if (value) SelectedTab = 3; } }
 
     // ---- AI 커넥터 -----------------------------------------------------------
 
@@ -538,6 +658,55 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private static string AiKey(Period p) => p.Label;
 
     /// <summary>이 기간의 AI 결과. 예전 버전은 "기간|지역" 키로 저장했으니 그것도 합친다.</summary>
+    /// <summary>점수 없이 먼저 저장된 AI 추천(소리 서비스가 바빴을 때)에 점수를 매겨 다시 저장한다</summary>
+    private async Task RescoreAiAsync(Period period)
+    {
+        try
+        {
+            var all = AiPicksFor(period);
+            var bare = all.Where(r => r.Taste == null && r.Crate == null).ToList();
+            if (bare.Count == 0) return;
+            _owned ??= new OwnedLibrary(await _library.GetTracksAsync(_life.Token));
+            var scored = await _recommender.RescoreAsync(bare, _owned, ct: _life.Token);
+            var byId = scored.ToDictionary(r => r.DeezerAlbumId);
+            _aiPicks.Set(AiKey(period), [.. all.Select(r => byId.GetValueOrDefault(r.DeezerAlbumId, r))]);
+            _aiPicks.Save();
+            if (CurrentPeriod.Label != period.Label) return;
+            _all = [.. _all.Select(i => byId.TryGetValue(i.Rec.DeezerAlbumId, out var r) && !i.ShowTracks && !i.IsPlaying ? MakeItem(r, i.SavedNote) : i)];
+            ApplyFilters();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }
+    }
+
+    /// <summary>
+    /// AI 에게 보내는 취향 요약 (영어 머리글): 레시피별 대표 뮤지션 + 앱에서 남긴 신호.
+    /// 신호를 안 보내면 AI 는 차단한 아티스트도 찾아오고(앱에서 걸러질 뿐) 좋아요 방향을 모른다.
+    /// </summary>
+    private string AiTaste()
+    {
+        static string Line(string head, IEnumerable<string> items) =>
+            items.Where(x => x.Length > 0).Distinct().ToList() is { Count: > 0 } l ? $"- {head}: {string.Join("; ", l)}" : "";
+        var crates = string.Join("\n", _mine!.GroupBy(m => m.Playlist).Select(g =>
+        {
+            var e = _crates.Playlists[g.Key];
+            var crate = e.Style ?? (e.Region == "한국" ? ReleaseRecommender.KoreanCrate : $"{e.Region} (genre split by Deezer)");
+            return $"- playlist {g.Key} → crate {crate}, region {e.Region}: " +
+                   string.Join(", ", g.OrderByDescending(m => m.Tracks).Take(10).Select(m => m.Artist));
+        }));
+        var signals = new[]
+        {
+            Line("Liked (more like these)", _likedAlbums.All.Take(15).Select(s => $"{s.Rec.Artist} – {s.Rec.Album}")
+                .Concat(_likedTracks.All.TakeLast(10).Select(t => $"{t.Artist} – {t.Title}"))),
+            Line("Following (their scenes matter)", _follows.All.Select(f => f.Name)),
+            Line("Favorite labels", _labelAffinity.OrderByDescending(kv => kv.Value).Take(12).Select(kv => kv.Key)),
+            Line("Not for me (avoid similar sounds)", _disliked.All.Take(15).Select(d => $"{d.Rec.Artist} – {d.Rec.Album}")),
+            Line("Blocked artists (never suggest)", _blocked.Artists),
+            Line("Blocked labels (never suggest)", _blocked.Labels),
+        }.Where(x => x.Length > 0);
+        return "My crates (playlist → crate, region: representative artists):\n" + crates
+               + (signals.Any() ? "\n\nSignals from my listening in this app:\n" + string.Join("\n", signals) : "");
+    }
+
     private List<ReleaseRecommendation> AiPicksFor(Period p)
     {
         var all = new Dictionary<long, ReleaseRecommendation>();
@@ -545,6 +714,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (_aiPicks.TryGet(key, out var list))
                 foreach (var r in list.Select(FixOldRegion))
                     all[r.DeezerAlbumId] = all.TryGetValue(r.DeezerAlbumId, out var o) ? MergeAi(o, r) : r;
+        // 월·연: 주별로 찾은 결과(다른 키)도 그 기간에 발매됐으면 합친다
+        if (p.Kind != PeriodKind.Week)
+            foreach (var r in _aiPicks.FreshValues.SelectMany(l => l).Where(r => p.Contains(r.ReleaseDate)).Select(FixOldRegion))
+                all[r.DeezerAlbumId] = all.TryGetValue(r.DeezerAlbumId, out var o) ? MergeAi(o, r) : r;
         return [.. all.Values];
     }
 
@@ -552,6 +725,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// 지역 버그(모르는 아티스트가 한국으로 저장됨) 때 저장한 AI 결과 바로잡기:
     /// 이름에 한글이 없는데 한국이면 해외로 보고 해외 크레이트(장르 기준)로 다시 나눈다.
     /// </summary>
+    /// <summary>지역을 모른 채 저장된 예전 결과도 해외로 (지금은 엔진이 모르면 해외로 정한다). 모든 카드에 적용</summary>
+    private static ReleaseRecommendation UnknownToOverseas(ReleaseRecommendation r)
+    {
+        if (r.Region != Region.Unknown || r.FromPlaylist != null) return r;
+        var c = ReleaseRecommender.OverseasCrate(r.GenreName, null, r.Crate);
+        return r with { Region = Region.International, Crate = c, CrateFit = c == "Jazz" ? r.CrateFit : null };
+    }
+
+    /// <summary>AI 결과에만: 예전 지역 버그(한글 없는 이름이 한국으로 저장) 바로잡기. 일반 추천에는 쓰지 않는다 (영문 이름의 한국 아티스트가 있다)</summary>
     private static ReleaseRecommendation FixOldRegion(ReleaseRecommendation r)
     {
         if (r.Region != Region.Korea || RegionResolver.FromScript(r.Artist) == Region.Korea || r.FromPlaylist != null) return r;
@@ -564,7 +746,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private IReadOnlyList<IAiScout> Scouts => [new ClaudeScout(_aiSettings, _aiLedger), new GptScout(_aiSettings, _aiLedger)];
 
     /// <summary>
-    /// 사이드바 카드: 커넥터마다 한 줄 — "Claude Sonnet 5.5 · 오늘 $0.12/$1 · 주 $0.40/$5 · 남은 약 $4.60"
+    /// 사이드바 카드: 커넥터마다 모델 한 줄 + 금액 한 줄 — "Claude Sonnet 5.5" / "오늘 $0.12/$1 · 주 $0.40/$5 · 남은 약 $4.60"
+    /// (한 줄로 이으면 카드 폭에서 금액 중간이 끊겨 어색하게 줄바꿈됐다)
     /// </summary>
     private void RefreshAiStatus()
     {
@@ -592,7 +775,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (_keyProblems.TryGetValue(name, out var problem)) parts.Add(problem);
             else if (b.KeyExpiryWarning() is { } warn) parts.Add(warn);
             else if (b.KeyExpires is { } keyUntil) parts.Add(L.F("키 {0:M.d}까지", keyUntil));
-            return string.Join(" · ", parts);
+            return parts[0] + "\n" + string.Join(" · ", parts.Skip(1));
         }
         var lines = new List<string>();
         if (_aiSettings.Enabled)
@@ -641,13 +824,54 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// 지금 보는 기간에서 켜 둔 AI 커넥터들이 동시에 웹으로 찾는다. 결과는 기간별로 저장해 두고 다음에 바로 꺼내 쓴다.
     /// mode: "add" = 저장된 결과에 더하기, "replace" = 저장된 결과를 지우고 새로 찾기
     /// </summary>
+    /// <summary>AI 찾기 옵션: 주별로(월에서만) · 저장된 AI 결과 지우고 다시 (한 번 돌리면 풀린다 — 실수로 계속 지우지 않게)</summary>
+    [ObservableProperty] private bool _aiWeekly;
+    /// <summary>주별로 찾기는 주를 여럿 담은 월·연에서만 (연은 52번 검색이라 시작 전에 예상 비용을 묻는다)</summary>
+    public bool CanAiWeekly => !IsWeekMode;
+    [ObservableProperty] private bool _aiReplace;
+
     [RelayCommand]
     private async Task FindWithAiAsync(string? mode)
     {
         if (AiBusy) return;
-        bool replace = mode == "replace";
         if (!AiReady) { OpenConnector(); if (!AiReady) return; }
-        var period = CurrentPeriod;
+        bool replace = mode == "replace" || AiReplace && HasAiSaved;
+        bool weekly = mode == "weekly" || AiWeekly && CanAiWeekly;
+        AiReplace = false;
+        if (weekly) await FindWithAiWeeklyAsync(replace);
+        else await AiSearchAsync(CurrentPeriod, replace);
+    }
+
+    /// <summary>
+    /// AI 주별로 찾기 (월·연): 한 달(1년)을 한 번에 찾으면 검색 8회로 한 달을 훑어 주마다 몇 장씩만 건진다 → 주마다 따로 찾는다.
+    /// 결과는 주 키로 저장되고, 월 화면은 그 주들의 결과를 합쳐 보여 준다 (AiPicksFor). 비용은 주 수만큼.
+    /// </summary>
+    private async Task FindWithAiWeeklyAsync(bool replace)
+    {
+        var month = CurrentPeriod;
+        var weeks = new List<Period>();
+        for (var d = month.Start; d <= month.End; d = d.AddDays(7))
+            if (Periods.Create(PeriodKind.Week, d) is var w && weeks.All(x => x.Label != w.Label)) weeks.Add(w);
+        if (Periods.Create(PeriodKind.Week, month.End) is var last && weeks.All(x => x.Label != last.Label)) weeks.Add(last);
+        // 예상 비용: 최근 검색 한 번 비용 × 주 수 (기록이 없으면 Sonnet 기준 $0.15)
+        double per = _aiLedger.Recent(5) is { Count: > 0 } r ? r.Average() : 0.15;
+        if (!ConfirmWindow.Ask(Application.Current.MainWindow, L.T("AI 주별로 찾기"),
+                L.F("{0}을(를) 주 {1}번으로 나눠 AI로 찾을까요?\n한 번에 찾을 때보다 촘촘하지만 비용이 주 수만큼 들어요 (예상 약 ${2:0.00}).", month.Display, weeks.Count, per * weeks.Count),
+                L.F("약 ${0:0.00} 쓰고 찾기", per * weeks.Count))) return;
+        var start = DateTime.Now;
+        for (int i = 0; i < weeks.Count; i++)
+        {
+            if (i > 0 && !AiWeekly) break;  // 진행 중에 '주별로' 체크를 풀면 그 주까지만 하고 멈춘다 (연은 52번이라 오래 걸린다)
+            if (!await AiSearchAsync(weeks[i], replace, L.F("주별로 찾는 중 {0}/{1} · {2} · 멈추려면 '주별로' 체크를 풀어요", i + 1, weeks.Count, weeks[i].Display))) break;  // 한도에 닿으면 멈춘다
+        }
+        await LoadAsync();  // 월 화면에 주별 결과를 합쳐 다시 보여 준다
+        AiText = L.F("주별로 찾기 끝 · 이번 검색 {0}", AiUsageLedger.Money(_aiLedger.Spent(start)));
+        UpdateAiMarks();
+    }
+
+    /// <returns>계속해도 되면 true (한도·키 문제로 아무 커넥터도 못 돌리면 false)</returns>
+    private async Task<bool> AiSearchAsync(Period period, bool replace, string? stepText = null)
+    {
         var regionKey = _region;
         var focus = RegionKeys.First(r => r.Key == regionKey) is var rk && rk.Key != "all" ? rk.Label : null;
         // 일일·주간 한도나 충전액에 닿은 커넥터는 이번에 쉰다
@@ -658,25 +882,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (scouts.Count == 0)
         {
             AiText = string.Join(" · ", blocked.Select(b => $"{b.s.Name}: {b.why}")) + " " + L.T("(설정에서 한도를 바꿀 수 있어요)");
-            return;
+            return false;
         }
         var runStart = DateTime.Now;
         AiBusy = true;
         var status = new Dictionary<string, string>();
-        void Report(string who, string m) { lock (status) status[who] = m; AiText = string.Join("  ·  ", status.Values); }
+        void Report(string who, string m) { lock (status) status[who] = m; AiText = (stepText != null ? stepText + "  ·  " : "") + string.Join("  ·  ", status.Values); }
         var progress = new Progress<string>(m => AiText = m);
         try
         {
             var playlists = await _library.GetPlaylistsAsync(_life.Token);
             var tracks = await _library.GetTracksAsync(_life.Token);
             _mine ??= TasteProfile.PlaylistArtists(playlists, tracks, _crates);
-            var taste = string.Join("\n", _mine.GroupBy(m => m.Playlist).Select(g =>
-            {
-                var e = _crates.Playlists[g.Key];
-                var crate = e.Style ?? (e.Region == "한국" ? ReleaseRecommender.KoreanCrate : $"{e.Region} (장르는 Deezer 기준)");
-                return $"- {g.Key} 플레이리스트 → 레시피 {crate}, 지역 {e.Region}: " +
-                       string.Join(", ", g.OrderByDescending(m => m.Tracks).Take(10).Select(m => m.Artist));
-            }));
+            var taste = AiTaste();
             // 다시 찾기면 지난 AI 결과도 다시 나올 수 있게 제외 목록에서 뺀다
             var exclude = _all.Where(i => !(replace && i.IsAi)).Select(i => $"{i.Artist} – {i.Album}").ToList();
 
@@ -697,8 +915,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }));
             var picks = runs.SelectMany(r => r.picks).ToList();
             _owned ??= new OwnedLibrary(tracks);
-            var (recs, unverified) = picks.Count == 0 ? ([], 0)
-                : await _recommender.ScoreAiPicksAsync(picks, _owned, period, progress, _life.Token);
+            // Deezer 확인이 끝나면 점수 전에 먼저 저장한다: 소리 서비스가 다른 기간 분석으로 바쁘면 점수가 한참 걸리고,
+            // 그사이 앱을 끄면 AI 비용만 쓰고 결과가 사라졌다. 점수 없는 추천은 기간을 열 때 다시 점수를 매긴다
+            void SaveMatched(IReadOnlyList<ReleaseRecommendation> bare)
+            {
+                var have = AiPicksFor(period).ToDictionary(r => r.DeezerAlbumId);
+                foreach (var r in bare) have[r.DeezerAlbumId] = have.TryGetValue(r.DeezerAlbumId, out var o) ? MergeAi(o, r) : r;
+                _aiPicks.Set(AiKey(period), [.. have.Values]);
+                _aiPicks.Save();
+                if (_sound?.IsBusy == true)
+                    AiText = L.F("{0}장 확인해 저장했어요 · 소리 분석이 다른 작업 중이라 끝나면 점수를 매겨요", bare.Count);
+            }
+            var (recs, unverified, otherWeeks) = picks.Count == 0 ? ([], 0, [])
+                : await _recommender.ScoreAiPicksAsync(picks, _owned, period, progress, _life.Token, SaveMatched);
+            // AI가 날짜를 틀린 다른 주 발매: 버리지 않고 실제 발매 주에 저장 (점수는 그 주를 열 때)
+            foreach (var g in otherWeeks.GroupBy(r => Periods.Create(PeriodKind.Week, r.ReleaseDate.ToDateTime(TimeOnly.MinValue))))
+            {
+                var have = AiPicksFor(g.Key).ToDictionary(r => r.DeezerAlbumId);
+                foreach (var r in g) have[r.DeezerAlbumId] = have.TryGetValue(r.DeezerAlbumId, out var o) ? MergeAi(o, r) : r;
+                _aiPicks.Set(AiKey(g.Key), [.. have.Values]);
+            }
 
             if (replace)
             {
@@ -731,16 +967,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 ? L.F("{0} {1}장", r.Name, recs.Count(x => x.AiBy?.Any(b => b.StartsWith(r.Name, StringComparison.Ordinal)) == true))
                 : L.F("{0} 실패: {1}", r.Name, r.error)));
             AiText = L.F("AI 제안 {0}", summary) + (unverified > 0 ? " · " + L.F("Deezer에서 확인 못 한 {0}장은 뺐어요", unverified) : "")
+                     + (otherWeeks.Count > 0 ? " · " + L.F("다른 주 발매 {0}장은 그 주에 넣었어요", otherWeeks.Count) : "")
                      + " · " + L.F("이번 검색 {0}", AiUsageLedger.Money(_aiLedger.Spent(runStart)))
                      + (blocked.Count > 0 ? " · " + string.Join(", ", blocked.Select(b => L.F("{0} 쉼: {1}", b.s.Name, b.why))) : "");
         }
-        catch (OperationCanceledException) { AiText = ""; }
+        catch (OperationCanceledException) { AiText = ""; return false; }
         catch (Exception ex) { AiText = L.F("AI로 찾지 못했어요: {0}", ex.Message); }
         finally
         {
             AiBusy = false;
             UpdateAiSaved();
         }
+        return true;
     }
 
     // 이 기간에 저장된 AI 결과: "저장된 AI 제안 5장 · 10.27 06:36 검색"
@@ -768,14 +1006,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NoSaved))] private int _savedCount;
     public bool NoSaved => SavedCount == 0;
 
-    private ReleaseItem MakeItem(ReleaseRecommendation r, string? savedNote = null) =>
+    private ReleaseItem MakeItem(ReleaseRecommendation r, string? savedNote = null) => MakeItemCore(UnknownToOverseas(r), savedNote);
+
+    private ReleaseItem MakeItemCore(ReleaseRecommendation r, string? savedNote) =>
         new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
         {
             SavedNote = savedNote,
-            NearItems = [.. r.NearTracks.Take(3).Select(n => new NearTrackItem(n, FindLocalFile(n), PlayNear))],
+            FoundCover = _foundCovers.GetValueOrDefault(r.DeezerAlbumId),
+            // 카드의 비슷한 내 곡: 곡마다 들은 결과(수록곡 목록과 같은 곡) — 수록곡 목록에서 다시 계산한 것 → 점수 때 낸 곡 짝 → (예전 결과) 앨범 전체 기준
+            NearItems = [.. (_trackNear.TryGet(r.DeezerAlbumId.ToString(), out var tp) && tp.Count > 0 ? tp.Select(p => p.Near)
+                    : r.Pairs is { Count: > 0 } pairs ? pairs.Select(p => p.Near) : r.NearTracks.Take(3))
+                .Select(n => new NearTrackItem(n, FindLocalFile(n), PlayNear))],
             ToggleDislikeAction = ToggleDislike,
             IsDisliked = _disliked.Contains(r.DeezerAlbumId),
             IsNew = _newThisRun.Contains(r.DeezerAlbumId),
+            IsFollowed = IsFollowedRec(r),
+            ToggleFollowAction = ToggleFollowAsync,
             OpenAppleMusicAction = OpenAppleMusicAsync,
             ToggleLikeAction = ToggleLike,
             IsLiked = _likedAlbums.Contains(r.DeezerAlbumId),
@@ -814,6 +1060,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         var id = item.Rec.DeezerAlbumId;
         bool dislike = !_disliked.Contains(id);
+        bool wasLiked = _likedAlbums.Contains(id);
         if (dislike)
         {
             _disliked.Add(item.Rec);
@@ -826,6 +1073,131 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyFilters();   // 추천에서 바로 숨긴다
         RebuildSaved();
         _ = SyncFavoritesAsync();
+        if (!dislike) return;
+        _ = OfferSimilarAsync(item);
+        OfferUndo(L.F("'{0}' 관심 없음으로 숨겼어요", item.Album), () =>
+        {
+            if (_disliked.Contains(id)) ToggleDislike(item);
+            if (wasLiked && !_likedAlbums.Contains(id)) ToggleLike(item);  // 별로로 풀린 좋아요도 되돌린다
+            DropSimilarOfferFrom(item);
+        });
+    }
+
+    // ---- 별로·'소리 때문' 차단을 누른 자리에서: 이 목록에서 아주 닮은 추천도 같이 숨길지 묻는다 ----
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasSimilarOffer))] private string _similarOfferText = "";
+    public bool HasSimilarOffer => SimilarOfferText.Length > 0;
+    /// <summary>배너가 묻는 중 (숨기기 버튼). false 면 자동으로 뺀 결과를 알리기만 한다</summary>
+    [ObservableProperty] private bool _similarAsk = true;
+    private List<long> _similarOffer = [];
+    /// <summary>배너를 띄운 별로·차단 앨범 (되돌리면 배너도 거둔다)</summary>
+    private long? _similarFrom;
+    /// <summary>다시 분석 후 물어본 것 (저장 키 → 앨범 id). 숨기기·그대로를 누르기 전에 앱을 껐다 켜도 그 기간을 열면 다시 묻는다</summary>
+    private readonly JsonCache<List<long>> _pendingDrops = new("pending-drops", TimeSpan.FromDays(90));
+    private string? _pendingKey;
+
+    /// <summary>저장된 결과를 열 때: 아직 답하지 않은 질문이 있으면 다시 띄운다 (목록에 남아 있는 것만)</summary>
+    private void RestorePendingDrops(string key)
+    {
+        if (!_pendingDrops.TryGet(key, out var ids) || ids.Count == 0) return;
+        var still = ids.Where(id => _all.Any(i => i.Rec.DeezerAlbumId == id)).ToList();
+        if (still.Count == 0) { _pendingDrops.Set(key, []); _pendingDrops.Save(); return; }
+        _similarOffer = still;
+        _similarFrom = null;
+        _pendingKey = key;
+        SimilarAsk = true;
+        SimilarOfferText = L.F("관심 없는 앨범과 소리가 거의 같은 추천이 {0}장 있어요 · {1}", still.Count, ShortList(still));
+    }
+
+    /// <summary>
+    /// 다시 분석한 뒤: 별로 목록(별로·'소리 때문' 차단·바로 넘긴 앨범)과 아주 닮은(0.85) 추천을 설정대로 묻거나 뺀다.
+    /// 점수에는 이미 감점이 들어가지만 화면은 소리를 들은 앨범을 다 보여 줘서, 감점만으로는 목록에서 사라지지 않는다.
+    /// </summary>
+    private async Task CheckDislikeMatchesAsync(Period period, string key)
+    {
+        if (_sound == null || _recPrefs.DropMode == 2) return;
+        var candidates = FilteredBase().Where(i => !i.IsMine && !i.IsLiked && !i.IsSaved && !i.IsDisliked)
+            .Select(i => i.Rec.DeezerAlbumId).Distinct().ToList();
+        if (candidates.Count == 0) return;
+        try
+        {
+            // 기준은 직접 별로·'소리 때문' 차단한 앨범만 (바로 넘긴 앨범까지 넣으면 거의 다 걸린다)
+            var refs = _disliked.All.Select(d => d.Rec.DeezerAlbumId).Concat(_blocked.AlbumIds).Distinct();
+            var hits = await _sound.DislikeMatchesAsync(candidates, refs, ct: _life.Token);
+            if (hits.Count == 0 || CurrentPeriod.Label != period.Label) return;
+            _similarOffer = [.. hits.Select(h => h.Id)];
+            _similarFrom = null;
+            var names = ShortList(hits.Select(h => h.Id));
+            if (_recPrefs.DropMode == 1)
+            {
+                HideSimilar();  // 목록·저장 결과에서 뺀다 (배너를 닫는다)
+                SimilarAsk = false;
+                SimilarOfferText = L.F("관심 없는 앨범과 소리가 거의 같은 {0}장을 숨겼어요 · {1}", hits.Count, names);
+            }
+            else
+            {
+                SimilarAsk = true;
+                SimilarOfferText = L.F("관심 없는 앨범과 소리가 거의 같은 추천이 {0}장 있어요 · {1}", hits.Count, names);
+                _pendingKey = key;
+                _pendingDrops.Set(key, _similarOffer);
+                _pendingDrops.Save();
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }
+    }
+
+    private async Task OfferSimilarAsync(ReleaseItem item)
+    {
+        if (_sound == null) return;
+        // 내 플리·팔로우·좋아요·저장한 앨범은 묻지 않는다 (그 자체로 원하는 앨범)
+        var candidates = FilteredBase().Where(i => i != item && !i.IsMine && !i.IsLiked && !i.IsSaved && !i.IsDisliked)
+            .Select(i => i.Rec.DeezerAlbumId).Distinct().ToList();
+        if (candidates.Count == 0) return;
+        try
+        {
+            var near = (await _sound.SimilarAlbumsAsync(item.Rec.DeezerAlbumId, candidates, ct: _life.Token)).Take(5).ToList();
+            // 기다리는 사이 되돌렸으면 묻지 않는다
+            if (near.Count == 0 || (!_disliked.Contains(item.Rec.DeezerAlbumId) && !_blocked.IsBlocked(item.Rec))) return;
+            _similarOffer = [.. near.Select(n => n.Id)];
+            _similarFrom = item.Rec.DeezerAlbumId;
+            SimilarAsk = true;
+            SimilarOfferText = L.F("방금 관심 없음으로 표시한 '{0}'와 소리가 거의 같은 추천 {1}장 · {2}", item.Album, near.Count, ShortList(near.Select(n => n.Id)));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 바쁘면 묻지 않는다
+    }
+
+    /// <summary>배너에 넣을 앨범 이름: 앞 3장 + '외 N장'</summary>
+    private string ShortList(IEnumerable<long> ids)
+    {
+        var names = ids.Select(id => _all.FirstOrDefault(i => i.Rec.DeezerAlbumId == id)).OfType<ReleaseItem>().Select(i => $"{i.Artist} – {i.Album}").ToList();
+        return string.Join(" · ", names.Take(3)) + (names.Count > 3 ? " " + L.F("외 {0}장", names.Count - 3) : "");
+    }
+
+    /// <summary>같이 숨기기: 이 목록과 저장된 결과에서만 뺀다 (별로로 학습하지 않는다 — 한 번 누른 것보다 학습이 커지지 않게)</summary>
+    [RelayCommand]
+    private void HideSimilar()
+    {
+        var ids = _similarOffer.ToHashSet();
+        _all = [.. _all.Where(i => !ids.Contains(i.Rec.DeezerAlbumId))];
+        var key = RecKey(CurrentPeriod, RegionKeys.First(r => r.Key == _region).ConfigRegion);
+        if (_recResults.TryGet(key, out var saved)) { _recResults.Set(key, [.. saved.Where(r => !ids.Contains(r.DeezerAlbumId))]); _recResults.Save(); }
+        var ai = AiPicksFor(CurrentPeriod);
+        if (ai.Any(r => ids.Contains(r.DeezerAlbumId))) { _aiPicks.Set(AiKey(CurrentPeriod), [.. ai.Where(r => !ids.Contains(r.DeezerAlbumId))]); _aiPicks.Save(); }
+        KeepSimilar();
+        ApplyFilters();
+    }
+
+    [RelayCommand]
+    private void KeepSimilar()
+    {
+        _similarOffer = [];
+        _similarFrom = null;
+        SimilarOfferText = "";
+        if (_pendingKey != null)  // 답했으니 다시 묻지 않는다
+        {
+            _pendingDrops.Set(_pendingKey, []);
+            _pendingDrops.Save();
+            _pendingKey = null;
+        }
     }
 
     private void ToggleSave(ReleaseItem item)
@@ -863,7 +1235,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>저장함이 바뀌면 추천 결과·후보 풀 저장 키가 바뀐다 (저장 앨범이 점수와 시드에 들어가니까)</summary>
     private string FavoritesVersion =>
-        $"{_likedAlbums.All.Count}-{_likedAlbums.All.Sum(s => s.Rec.DeezerAlbumId % 100_000):x}-{_likedTracks.All.Count}";
+        $"{_likedAlbums.All.Count}-{_likedAlbums.All.Sum(s => s.Rec.DeezerAlbumId % 100_000):x}-{_likedTracks.All.Count}-{_follows.All.Count}";
 
     private void RebuildSaved()
     {
@@ -878,21 +1250,39 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var list = g.ToList();
             SavedSections.Add(new CrateSection(g.Key, list, list.Count, list.Count(i => i.IsMine), false, _ => { }));
         }
-        // 별로 표시한 앨범은 맨 아래에 따로 (👎를 다시 누르면 되돌린다)
-        var disliked = _disliked.All.Select(d => MakeItem(d.Rec, L.F("{0:M.d} 별로", d.SavedAt))).ToList();
-        if (disliked.Count > 0)
-            SavedSections.Add(new CrateSection(L.T("별로 표시한 앨범"), disliked, disliked.Count, 0, false, _ => { }));
+        // 별로 표시한 앨범은 별로 탭에 (👎를 다시 누르면 되돌린다)
+        DislikedItems.Clear();
+        foreach (var d in _disliked.All.OrderByDescending(d => d.SavedAt)) DislikedItems.Add(MakeItem(d.Rec, L.F("{0:M.d} 관심 없음", d.SavedAt)));
+        DislikedCount = DislikedItems.Count;
+        _ = FillCoversAsync(items.Concat(DislikedItems));
     }
+
+    public ObservableCollection<ReleaseItem> DislikedItems { get; } = [];
+    [ObservableProperty] private int _dislikedCount;
     partial void OnSelectedTabChanged(int value)
     {
         OnPropertyChanged(nameof(IsRecsTab));
         OnPropertyChanged(nameof(IsLibraryTab));
         OnPropertyChanged(nameof(IsSavedTab));
+        OnPropertyChanged(nameof(IsDislikedTab));
+        ScrollTopRequested?.Invoke();
     }
 
     private void SelectCrate(string key)
     {
         _crate = key;
+        _pageSize = PageStep;
+        ApplyFilters();
+        ScrollTopRequested?.Invoke();
+    }
+
+    /// <summary>한 레시피만 볼 때 처음 그리는 카드 수. 연 보기는 레시피 하나에 수백 장이라 한 번에 그리면 느리다</summary>
+    public const int PageStep = 60;
+    private int _pageSize = PageStep;
+
+    private void ShowMoreCards()
+    {
+        _pageSize += PageStep;
         ApplyFilters();
     }
 
@@ -918,7 +1308,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var c in CrateChips) c.IsSelected = c.Key == _crate;
         foreach (var c in TypeChips) c.IsSelected = c.Key == "all" ? _types.Count == 0 : _types.Contains(c.Key);
         foreach (var c in RegionChips) c.IsSelected = c.Key == _region;
+        OnPropertyChanged(nameof(FilterSummary));
     }
+
+    /// <summary>탭 줄 오른쪽 필터 버튼: 지금 고른 형식 · 지역 (예: "앨범·EP · 전체 지역")</summary>
+    public string FilterSummary =>
+        (_types.Count == 0 ? L.T("모든 형식") : string.Join("·", TypeChips.Where(c => c.IsSelected).Select(c => c.Label)))
+        + " · " + (_region == "all" ? L.T("모든 지역") : RegionChips.First(c => c.IsSelected).Label);
 
     private IEnumerable<ReleaseItem> FilteredBase()
     {
@@ -983,7 +1379,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (picks.Count > 0)
             {
                 _owned ??= new OwnedLibrary(await _library.GetTracksAsync(_life.Token));
-                var (recs, _) = await _recommender.ScoreAiPicksAsync(picks, _owned, null,
+                var (recs, _, _) = await _recommender.ScoreAiPicksAsync(picks, _owned, null,
                     new Progress<string>(m => SyncText = L.F("웹진 추천 확인 중 · {0}", m)), _life.Token);
                 var all = AllWebzinePicks().ToDictionary(r => r.DeezerAlbumId);
                 foreach (var r in recs)
@@ -1055,12 +1451,50 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 shown = [.. list.Where(i => i.IsMine).Take(6 - sugg), .. list.Where(i => !i.IsMine)];
                 shown = shown.Take(6).ToList();
             }
-            Sections.Add(new CrateSection(g.Key, shown, list.Count, mine, all && list.Count > 6, SelectCrate));
+            // 고르는 건 위 순서(점수), 보여 주는 건 발매일 최신순. 레시피 하나만 볼 때는 전부 최신순이라 60장씩도 최신부터
+            // (같은 날이면 위 순서 그대로 — 정렬이 안정적이다)
+            shown = [.. shown.OrderByDescending(i => i.Rec.ReleaseDate)];
+            int hidden = 0;
+            if (!all && shown.Count > _pageSize)
+            {
+                // 수록곡 창에 열린 카드는 잘리지 않게 (재생 중인 앨범으로 이동할 때)
+                var page = shown.Take(_pageSize).ToList();
+                if (Detail is { } d && shown.Contains(d) && !page.Contains(d)) page.Add(d);
+                hidden = shown.Count - page.Count;
+                shown = page;
+            }
+            Sections.Add(new CrateSection(g.Key, shown, list.Count, mine, all && list.Count > 6, SelectCrate, hidden, ShowMoreCards));
         }
         RecCount = items.Count;
         EmptyText = IsBusy ? "" : items.Count == 0
             ? (_all.Count == 0 ? L.T("이 기간에 찾은 발매작이 없어요.") : L.T("이 조건에 맞는 발매작이 없어요. 형식·지역 필터를 넓혀 보세요."))
             : "";
+        _ = FillCoversAsync(Sections.SelectMany(s => s.Items));
+    }
+
+    // ---- 커버가 없는 카드: 화면에 그린 것만 따로 찾는다 (발매 전 앨범은 Deezer 목록에 커버가 아직 없다) ----
+    /// <summary>이번 실행에서 찾아 본 결과 (null = 찾는 중이거나 못 찾음 → 이번 실행에서는 다시 찾지 않는다)</summary>
+    private readonly Dictionary<long, string?> _foundCovers = [];
+
+    private async Task FillCoversAsync(IEnumerable<ReleaseItem> items)
+    {
+        var todo = items.Where(i => i.CoverUrl == null).Select(i => i.Rec).DistinctBy(r => r.DeezerAlbumId)
+            .Where(r => !_foundCovers.ContainsKey(r.DeezerAlbumId)).ToList();
+        if (todo.Count == 0) return;
+        foreach (var r in todo) _foundCovers[r.DeezerAlbumId] = null;
+        foreach (var r in todo)
+        {
+            try
+            {
+                if (await _artwork.FindReleaseCoverAsync(r.DeezerAlbumId, r.Artist, r.Album, _life.Token) is not { } url) continue;
+                _foundCovers[r.DeezerAlbumId] = url;
+                foreach (var i in _all.Concat(SavedSections.SelectMany(x => x.Items)).Concat(DislikedItems).Where(i => i.Rec.DeezerAlbumId == r.DeezerAlbumId))
+                    i.FoundCover = url;
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException) { _foundCovers.Remove(r.DeezerAlbumId); }
+        }
+        _artwork.Save();
     }
 
     // ---- 불러오기 -----------------------------------------------------------
@@ -1121,6 +1555,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 .Where(a => seeds.All(x => !string.Equals(x.Artist, a, StringComparison.OrdinalIgnoreCase)))
                 .Select(a => new TasteArtist(a, 0.9, 0, "좋아요"));
             seeds = [.. seeds, .. savedSeeds];
+            // 팔로우한 아티스트는 가중치 최대로 출발점에
+            seeds = [.. seeds, .. _follows.All.Where(f => seeds.All(x => !string.Equals(x.Artist, f.Name, StringComparison.OrdinalIgnoreCase)))
+                .Select(f => new TasteArtist(f.Name, 1.0, 0, FollowList.Tag))];
             if (seeds.Count == 0) seeds = TasteProfile.Build(tracks);
             _mine ??= TasteProfile.PlaylistArtists(playlists, tracks, _crates);
             _likedArtists.UnionWith(_mine.Select(m => ListeningAnalyzer.NormalizeArtist(m.Artist)));  // 피처링 가산점용
@@ -1138,12 +1575,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>플레이리스트 뮤지션 디스코그래피를 뒤에서 모으고, 끝나면 지금 보는 기간을 다시 불러온다.</summary>
     private async Task RefreshMineAsync(IReadOnlyList<PlaylistArtist> mine)
     {
-        var progress = new Progress<string>(m => SyncText = L.F("내 플리 뮤지션 신보 모으는 중… {0}",
+        var progress = new Progress<string>(m => SyncText = L.F("내 플리 뮤지션 발매작 모으는 중… {0}",
             m.Replace("플레이리스트 뮤지션 ", "").Replace(L.T("플레이리스트 뮤지션 "), "")));
         try
         {
             _mineSyncText = true;
-            SyncText = L.F("내 플리 뮤지션 {0:N0}명의 신보 모으는 중…", mine.Count);
+            SyncText = L.F("내 플리 뮤지션 {0:N0}명의 발매작 모으는 중…", mine.Count);
             await Task.Run(() => _recommender.RefreshMineAsync(mine, progress, _life.Token));
             SyncText = "";
             _mineSyncText = false;
@@ -1152,7 +1589,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (!IsBusy) await LoadAsync(force: true);  // 새로 모은 플리 뮤지션 신보 반영
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { SyncText = L.F("플리 뮤지션 신보를 모으지 못했어요: {0}", ex.Message); }
+        catch (Exception ex) { SyncText = L.F("플리 뮤지션 발매작을 모으지 못했어요: {0}", ex.Message); }
         finally { _mineRefresh = null; }
     }
 
@@ -1220,6 +1657,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
     /// <summary>분석 이력 (달력 표시용): 기간마다 마지막 분석 시각과 추천 장수</summary>
     private readonly JsonCache<RecHistory> _recHistory = new("rec-history", TimeSpan.FromDays(3650));
+
+    /// <summary>
+    /// 설정 → 저장된 추천 비우기: 모델·설정이 바뀐 뒤 예전 추천을 버리고 지금 기간부터 새로 계산한다.
+    /// 지우는 것: 기간별 추천 결과·분석 이력(달력 회색 선). 남기는 것: AI·웹진 제안, 좋아요·별로·차단·팔로우, 소리 분석 캐시(다시 듣지 않아 빠르다).
+    /// </summary>
+    public async Task ClearSavedRecsAsync()
+    {
+        _recResults.Clear();
+        _recResults.Save();
+        _recHistory.Clear();
+        _recHistory.Save();
+        await _poolLock.WaitAsync(_life.Token);
+        try { _pools.Clear(); } finally { _poolLock.Release(); }
+        UpdateAiMarks();
+        await LoadAsync(force: true);
+    }
     public sealed record RecHistory(PeriodKind Kind, DateTime Start, DateTime End, DateTime At, int Count);
     [ObservableProperty] private string _recSavedNote = "";
     public bool HasRecSaved => RecSavedNote.Length > 0;
@@ -1231,23 +1684,36 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>기간 · 지역 · 추천 설정마다 따로 저장 (설정을 바꾸면 결과가 달라지니까)</summary>
     private string RecKey(Period period, string? focus) =>
-        $"{period.Label}|{focus ?? "all"}|{_recPrefs.Amount}{_recPrefs.Adventure}{(_recPrefs.ExcludeKnown ? 1 : 0)}{(_recPrefs.ExcludeInstrumental ? "" : "i")}";
+        $"{period.Label}|{focus ?? "all"}|{_recPrefs.Amount}{_recPrefs.Adventure}{(_recPrefs.ExcludeKnown ? 1 : 0)}{(_recPrefs.ExcludeInstrumental ? "" : "i")}{(_recPrefs.Tracks == 1 ? "h" : "")}";
 
     /// <summary>
-    /// 지난 기간은 저장 결과를 그대로 쓴다. 끝난 지 7일이 안 된 기간은 신보·디스코그래피가 계속 바뀌니 12시간만 쓴다.
+    /// 지난 기간은 저장 결과를 그대로 쓴다. 끝난 지 7일이 안 된 기간은 신보·디스코그래피가 계속 바뀌니 잠깐만 쓴다 (FreshFor).
+    /// 유효 시간이 지난 결과도 버리지 않는다 — 열 때 먼저 보여 주고 뒤에서 새로 계산한다 (LoadAsync).
     /// </summary>
     private bool TryGetSavedRecs(string key, Period period, out List<ReleaseRecommendation> recs, out DateTime at)
     {
         if (!_recResults.TryGetAt(key, out recs, out at)) return false;
         bool recent = period.End >= DateTime.Today.AddDays(-7);
-        return !recent || DateTime.Now - at < TimeSpan.FromHours(12);
+        return !recent || DateTime.Now - at < FreshFor(period.Kind);
     }
+
+    /// <summary>
+    /// 진행 중인 기간의 저장 결과 유효 시간: 주 12시간, 월 하루, 연 3일.
+    /// 넓은 기간일수록 다시 계산이 오래 걸리고(연은 앨범 만 장 안팎) 하루 사이 바뀌는 비율은 작다.
+    /// </summary>
+    private static TimeSpan FreshFor(PeriodKind kind) => kind switch
+    {
+        PeriodKind.Year => TimeSpan.FromDays(3),
+        PeriodKind.Month => TimeSpan.FromDays(1),
+        _ => TimeSpan.FromHours(12),
+    };
 
     /// <summary>
     /// 주·월을 열 때 그 기간을 품은 월·연 결과가 저장돼 있으면 그 기간 발매작만 잘라 온다 (같은 지역·추천 설정일 때).
     /// 연·월 결과는 기간 전체에서 순위를 매긴 것이라, 그 주만 더 촘촘하게 보려면 "다시 분석".
     /// </summary>
-    private bool TryGetWiderRecs(Period period, string? focus, out List<ReleaseRecommendation> recs, out DateTime at, out string label)
+    private bool TryGetWiderRecs(Period period, string? focus, out List<ReleaseRecommendation> recs, out DateTime at, out string label,
+        bool allowStale = false)
     {
         recs = [];
         at = default;
@@ -1263,7 +1729,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             // 주가 두 달에 걸치면 한 달 결과로는 다 못 덮는다
             if (w.Start > period.Start || w.End < period.End) continue;
-            if (!TryGetSavedRecs(RecKey(w, focus), w, out var all, out var t)) continue;
+            var wKey = RecKey(w, focus);
+            if (!(allowStale ? _recResults.TryGetAt(wKey, out var all, out var t) : TryGetSavedRecs(wKey, w, out all, out t))) continue;
             recs = [.. all.Where(r => period.Contains(r.ReleaseDate))];
             at = t;
             label = w.Display;  // 표시용 (Label은 캐시 키)
@@ -1371,6 +1838,64 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private Task Reanalyze() => LoadAsync(force: true);
 
+    /// <summary>AI 결과 + 웹진 추천 (같은 앨범이면 배지를 합친다)</summary>
+    private List<ReleaseRecommendation> SavedPicksFor(Period period) =>
+        [.. AiPicksFor(period).Concat(WebzinePicksFor(period)).GroupBy(r => r.DeezerAlbumId).Select(g => g.Aggregate(MergeAi))];
+
+    // ---- 계산 멈추기·뒤에서 새로 계산 ----
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowProgress))] private bool _isRefreshing;
+    /// <summary>진행 막대와 '멈추기': 처음 계산 중이거나, 저장된 결과를 보여 준 채 뒤에서 새로 계산 중</summary>
+    public bool ShowProgress => IsBusy || IsRefreshing;
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(ShowProgress));
+
+    /// <summary>계산을 멈춘다. 처음 계산이었으면 AI·웹진 제안만 남기고, 뒤에서 새로 계산 중이었으면 보던 저장 결과를 그대로 둔다</summary>
+    [RelayCommand]
+    private void StopLoad()
+    {
+        bool first = IsBusy;
+        _loadCts?.Cancel();
+        IsBusy = false;
+        IsRefreshing = false;
+        if (first)
+        {
+            _all = [.. SavedPicksFor(CurrentPeriod).Select(r => MakeItem(r))];
+            ApplyFilters();
+            BusyText = L.T("멈췄어요 · '다시 분석'을 누르면 처음부터 다시 계산해요");
+        }
+        else BusyText = L.T("새로 계산을 멈췄어요 · 저장된 추천을 그대로 보여 줘요");
+    }
+
+    /// <summary>유효 시간이 지난 저장 결과를 보여 준 채 뒤에서 새로 계산하고, 끝나면 새 결과로 다시 그린다</summary>
+    private async Task RefreshStaleAsync(Period period, string? focus, string key, CancellationToken ct)
+    {
+        IsRefreshing = true;
+        var progress = new Progress<string>(m => { if (!ct.IsCancellationRequested) BusyText = L.F("저장된 추천을 보여 주는 중 · 새로 계산: {0}", m); });
+        try
+        {
+            _owned ??= new OwnedLibrary(await _library.GetTracksAsync(ct));
+            var pool = await PoolAsync(focus, progress, ct);
+            var result = await _recommender.RecommendAsync(pool, _owned, period, RecOptions.ForPeriod(period.Kind), progress, ct);
+            if (ct.IsCancellationRequested) return;
+            // 소리 분석까지 된 결과만 저장 (아니면 보던 저장 결과를 그대로 둔다)
+            if (!result.SoundScored || result.Releases.Count == 0)
+            {
+                BusyText = L.T("새로 계산하지 못해 저장된 추천을 그대로 보여 줘요");
+                return;
+            }
+            _recResults.Set(key, [.. result.Releases]);
+            _recHistory.Set(period.Label, new RecHistory(period.Kind, period.Start, period.End, DateTime.Now, result.Releases.Count));
+            _recHistory.Save();
+            _recResults.Save();
+            IsRefreshing = false;
+            BusyText = "";
+            await LoadAsync();  // 이제 저장 결과가 새것이라 그대로 다시 그린다
+            if (CurrentPeriod.Label == period.Label) _ = CheckDislikeMatchesAsync(period, key);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { BusyText = L.F("새로 계산하지 못했어요: {0}", ex.Message); }
+        finally { if (!ct.IsCancellationRequested) IsRefreshing = false; }
+    }
+
     private async Task LoadAsync(bool force = false)
     {
         _loadCts?.Cancel();
@@ -1382,12 +1907,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var regionKey = _region;
         var focus = RegionKeys.First(r => r.Key == regionKey).ConfigRegion;
         var key = RecKey(period, focus);
-        // AI 결과 + 웹진 추천 (같은 앨범이면 배지를 합친다)
-        var aiRecs = AiPicksFor(period).Concat(WebzinePicksFor(period)).GroupBy(r => r.DeezerAlbumId)
-            .Select(g => g.Aggregate(MergeAi)).ToList();
+        string? freshKey = null;  // 새로 계산했으면 그 저장 키 — 별로·차단과 아주 닮은 추천을 확인한다
+        bool refresh = false;     // 지난 저장 결과를 그렸다 → 끝에서 새로 계산
+        var aiRecs = SavedPicksFor(period);
+        if (aiRecs.Any(r => r.Taste == null && r.Crate == null && r.AiBy?.Any(b => !b.StartsWith("웹진", StringComparison.Ordinal)) == true))
+            _ = RescoreAiAsync(period);
         UpdateAiSaved();
 
         IsBusy = true;
+        IsRefreshing = false;  // 앞 기간의 뒤 계산은 위에서 취소됐다
         EmptyText = "";
         RecSavedNote = "";
         _ = LoadLibraryAsync(period, ct);
@@ -1403,6 +1931,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             List<ReleaseRecommendation> releases;
             bool soundScored = true;
+            bool fresh = false;  // 이번에 새로 계산했다 (저장된 결과가 아니다)
+            bool stale = false;  // 유효 시간이 지난 저장 결과를 보여 준다 → 그린 뒤 뒤에서 새로 계산
             if (!force && period.Kind != PeriodKind.Week && TryGetPrecise(period, focus, out var precise, out var preciseAt))
             {
                 releases = precise;
@@ -1426,6 +1956,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                     _recHistory.Save();
                 }
             }
+            // 유효 시간이 지났어도 저장 결과가 있으면 기다리게 하지 않는다 (연 보기는 다시 계산이 몇 분 걸린다)
+            else if (!force && _recResults.TryGetAt(key, out var old, out var oldAt))
+            {
+                releases = old;
+                stale = true;
+                RecSavedNote = L.F("저장된 추천 · {0:M.d HH:mm} 분석", oldAt);
+            }
+            else if (!force && TryGetWiderRecs(period, focus, out var oldWider, out var oldWiderAt, out var oldLabel, allowStale: true))
+            {
+                releases = oldWider;
+                stale = true;
+                RecSavedNote = L.F("{0} 분석에서 가져옴 · {1:M.d HH:mm}", oldLabel, oldWiderAt);
+            }
             else
             {
                 _owned ??= new OwnedLibrary(await _library.GetTracksAsync(ct));
@@ -1434,6 +1977,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 if (ct.IsCancellationRequested) return;
                 releases = [.. result.Releases];
                 soundScored = result.SoundScored;
+                fresh = soundScored;
                 // 소리 분석까지 된 결과만 저장 (소리 서비스가 늦게 뜬 경우는 다음에 다시 계산)
                 if (soundScored && releases.Count > 0)
                 {
@@ -1453,9 +1997,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 _all = [.. _all.Select(i => byId.Remove(i.Rec.DeezerAlbumId, out var r) ? MakeItem(MergeAi(i.Rec, r)) : i),
                         .. byId.Values.Select(r => MakeItem(r))];
             }
+            await MergeFollowedAsync(period, ct);
+            if (ct.IsCancellationRequested) return;
             _resultsRegion = focus != null ? regionKey : "all";
+            if (fresh) freshKey = key;
             IsBusy = false;
             BusyText = soundScored ? "" : L.T("소리 분석 없이 아티스트 연결로만 골랐어요");
+            if (stale) refresh = true;
         }
         catch (OperationCanceledException) { return; }
         catch (Exception ex)
@@ -1467,6 +2015,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyFilters();
         UpdateHeat();
         if (!IsBusy) MarkSeen();
+        if (freshKey != null) _ = CheckDislikeMatchesAsync(period, freshKey);
+        else if (!IsBusy) RestorePendingDrops(key);
+        // 기다리지 않는다 (재생 중 앨범으로 이동처럼 불러오기를 기다리는 곳이 몇 분씩 막히지 않게)
+        if (refresh) _ = RefreshStaleAsync(period, focus, key, ct);
     }
 
     private async Task LoadLibraryAsync(Period period, CancellationToken ct)
@@ -1506,7 +2058,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             Player.Toggle();
             return;
         }
-        item.ShowTracks = true;
+        Detail = item;  // 재생하면 상세 패널에 수록곡을 연다 (지금 어느 곡인지 보이게)
         if (!await EnsureTracksAsync(item)) return;
         target ??= item.Tracks.FirstOrDefault(t => t.HasPreview);
         if (target?.Preview is not { } url)
@@ -1527,16 +2079,62 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (next != null) _ = PlayReleaseAsync(item, next);
     }
 
+    // ---- 앨범 상세 패널 (오른쪽): 수록곡을 카드 안에서 펼치면 그 줄만 길어져 목록이 들쭉날쭉해서 따로 연다 ----
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasDetail))] private ReleaseItem? _detail;
+    public bool HasDetail => Detail != null;
+
+    /// <summary>열린 앨범의 카드는 ShowTracks 로 표시만 (수록곡 버튼이 주황)</summary>
+    partial void OnDetailChanged(ReleaseItem? oldValue, ReleaseItem? newValue)
+    {
+        if (oldValue != null) oldValue.ShowTracks = false;
+        if (newValue != null) newValue.ShowTracks = true;
+    }
+
+    [RelayCommand]
+    private void CloseDetail() => Detail = null;
+
+    /// <summary>오른쪽 창에서 ↑↓: 화면에 보이는 순서대로 이전·다음 앨범을 연다 (카드 목록으로 돌아가지 않고 넘겨 보기)</summary>
+    public void StepDetail(int step)
+    {
+        if (Detail == null) return;
+        var list = Sections.SelectMany(s => s.Items).ToList();
+        if (!list.Contains(Detail)) list = [.. SavedSections.SelectMany(s => s.Items)];
+        int i = list.IndexOf(Detail);
+        if (i < 0 || i + step < 0 || i + step >= list.Count) return;
+        var next = list[i + step];
+        _ = ToggleTracksAsync(next);
+        ScrollToRequested?.Invoke(next);
+    }
+
+    /// <summary>←→: 지금 재생 중인 앨범의 이전·다음 곡 (미리듣기가 있는 곡만)</summary>
+    public void StepTrack(int step)
+    {
+        if (Player.NowRelease is not { Current: { } cur } item) return;
+        var tracks = step > 0 ? item.Tracks.SkipWhile(t => t != cur).Skip(1) : item.Tracks.TakeWhile(t => t != cur).Reverse();
+        if (tracks.FirstOrDefault(t => t.HasPreview) is { } next) _ = PlayReleaseAsync(item, next);
+    }
+
+    /// <summary>Space: 듣던 것이 있으면 재생/일시정지, 없으면 열린 앨범을 튼다</summary>
+    public void TogglePlay()
+    {
+        if (Player.HasMedia) Player.Toggle();
+        else if (Detail != null) _ = PlayReleaseAsync(Detail, null);
+    }
+
     private async Task ToggleTracksAsync(ReleaseItem item)
     {
-        item.ShowTracks = !item.ShowTracks;
-        if (item.ShowTracks) await EnsureTracksAsync(item);
+        if (Detail == item) { Detail = null; return; }
+        Detail = item;
+        await EnsureTracksAsync(item);
     }
 
     /// <summary>수록곡을 받는다. 미리듣기 URL은 몇 시간 뒤 만료되므로 30분이 지났으면 새로 받는다.</summary>
     private async Task<bool> EnsureTracksAsync(ReleaseItem item)
     {
-        if (item.Tracks.Count > 0 && DateTime.Now - item.TracksLoadedAt < TimeSpan.FromMinutes(30)) return true;
+        // 30분 안이면 그대로. 단 미리듣기가 빈 곡이 있으면 다시 열 때마다(1분 간격) 다시 받아 본다 (발매 직후에는 곡마다 미리듣기가 늦게 붙는다)
+        var age = DateTime.Now - item.TracksLoadedAt;
+        if (item.Tracks.Count > 0 && age < TimeSpan.FromMinutes(30)
+            && (item.Tracks.All(t => t.HasPreview) || age < TimeSpan.FromMinutes(1))) return true;
         bool first = item.Tracks.Count == 0;
         if (first) item.TracksStatus = L.T("수록곡 불러오는 중…");
         try
@@ -1544,6 +2142,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var tracks = await _recommender.AlbumTracksAsync(item.Rec.DeezerAlbumId);
             item.SetTracks(tracks);
             item.TracksStatus = tracks.Count == 0 ? L.T("수록곡 정보가 없어요") : null;
+            _ = LoadTrackNearAsync(item);
             return tracks.Count > 0;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
@@ -1551,6 +2150,43 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             item.TracksStatus = L.T("수록곡을 불러오지 못했어요");
             return !first;
         }
+    }
+
+    /// <summary>수록곡마다 비슷한 내 곡 (곡 미리듣기를 소리 서비스가 듣는다, 한 번 들은 곡은 캐시)</summary>
+    private readonly JsonCache<List<TrackPair>> _trackNear = new("track-near", TimeSpan.FromDays(365));
+
+    private async Task LoadTrackNearAsync(ReleaseItem item)
+    {
+        if (_sound == null) return;
+        var tracks = item.Tracks.Where(t => t.Id != 0 && t.HasPreview).ToList();
+        if (tracks.Count == 0) return;
+        try
+        {
+            var near = await _sound.TrackNearAsync(tracks.Select(t => (t.Id, t.Preview)), _life.Token);
+            if (near.Count == 0) return;
+            // 많이 닮은 곡만: 가장 닮은 곡과 0.03 이내, 최대 3곡, 내 곡이 겹치면 한 번만.
+            // 카드의 '비슷한 내 곡'도 같은 결과로 바꿔 둘이 어긋나지 않게 한다 (전에는 카드는 앞 3곡을 섞은 평균 기준이라 달랐다)
+            double best = near.Values.Max(v => v.Sim);
+            var top = new List<KeyValuePair<long, (string Near, double Sim)>>();
+            var mine = new HashSet<string>();
+            foreach (var kv in near.OrderByDescending(kv => kv.Value.Sim))
+            {
+                if (kv.Value.Sim < best - 0.03 || top.Count == 3) break;
+                if (mine.Add(kv.Value.Near)) top.Add(kv);
+            }
+            var shown = top.ToDictionary(kv => kv.Key, kv => kv.Value);
+            foreach (var t in item.Tracks)
+            {
+                t.Near = shown.TryGetValue(t.Id, out var n) ? n.Near : null;
+                t.IsClosest = t.Near != null && n.Sim == best && near.Count > 1;
+            }
+            var titleOf = item.Tracks.GroupBy(t => t.Id).ToDictionary(g => g.Key, g => g.First().Title);
+            List<TrackPair> pairs = [.. top.Select(kv => new TrackPair(titleOf.GetValueOrDefault(kv.Key, ""), kv.Value.Near, kv.Value.Sim))];
+            _trackNear.Set(item.Rec.DeezerAlbumId.ToString(), pairs);
+            _trackNear.Save();
+            item.NearItems = [.. pairs.Select(p => new NearTrackItem(p.Near, FindLocalFile(p.Near), PlayNear))];
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }  // 서비스가 바쁘거나 꺼져 있으면 표시하지 않는다
     }
 
     // ---- 비슷한 내 곡: "아티스트 – 곡명" → 내 라이브러리 파일 ----
@@ -1580,13 +2216,33 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return path != null && File.Exists(path) ? path : null;
     }
 
-    private void PlayNear(NearTrackItem item)
+    private void PlayNear(NearTrackItem item) => _ = PlayNearAsync(item);
+
+    /// <summary>비슷한 내 곡: 내 파일로 (전곡). 파일이 없으면 Deezer 에서 같은 곡을 찾아 30초 미리듣기로</summary>
+    private async Task PlayNearAsync(NearTrackItem item)
     {
-        if (item.Path is not { } path) return;
         if (Player.IsCurrent(item.SetPlaying)) { Player.Toggle(); return; }
         var dash = item.Label.IndexOf(" – ", StringComparison.Ordinal);
         var (artist, title) = dash > 0 ? (item.Label[..dash], item.Label[(dash + 3)..]) : ("", item.Label);
-        Player.Play(new Uri(path), $"{title} — {artist}", L.T("비슷한 내 곡 · 내 파일 (전곡)"), null, item.SetPlaying);
+        if (item.Path is { } path)
+        {
+            Player.Play(new Uri(path), $"{title} — {artist}", L.T("비슷한 내 곡 · 내 파일 (전곡)"), null, item.SetPlaying);
+            return;
+        }
+        try
+        {
+            var hit = await _deezer.FindTrackAsync(artist, title, _life.Token);
+            if (hit?.Preview is not { Length: > 0 } preview)
+            {
+                Player.Subtitle = L.F("{0}: 내 파일도 Deezer 미리듣기도 찾지 못했어요", item.Label);
+                return;
+            }
+            Player.Play(new Uri(preview), $"{title} — {artist}", L.T("비슷한 내 곡 · Deezer 미리듣기 30초 (내 PC에 파일이 없어요)"), null, item.SetPlaying);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Player.Subtitle = L.F("{0}: 미리듣기를 불러오지 못했어요", item.Label);
+        }
     }
 
     private Task PlayLibraryAsync(LibraryAlbumItem item)

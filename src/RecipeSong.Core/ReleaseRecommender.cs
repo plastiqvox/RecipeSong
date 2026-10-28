@@ -33,6 +33,8 @@ public sealed record RecommendOptions
     public IReadOnlySet<string> BlockedLabels { get; init; } = new HashSet<string>();
     /// <summary>동명이인으로 막은 Deezer 아티스트 id (이름이 같은 다른 사람은 그대로)</summary>
     public IReadOnlySet<long> BlockedArtistIds { get; init; } = new HashSet<long>();
+    /// <summary>앨범에서 들을 곡: false 전곡(최대 20곡) / true Deezer 인기 상위 3곡 (빠르다)</summary>
+    public bool HitsOnly { get; init; }
     /// <summary>원래 앨범이 있으면 인스트루멘털 버전은 뺀다</summary>
     public bool ExcludeInstrumental { get; init; } = true;
 
@@ -309,15 +311,19 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     /// <summary>
     /// AI 커넥터가 찾은 발매작: Deezer에서 실제로 있는지 확인하고 (없으면 버린다) 같은 방식으로 소리·지역·점수를 매긴다.
     /// </summary>
-    public async Task<(IReadOnlyList<ReleaseRecommendation> Recs, int Unverified)> ScoreAiPicksAsync(
+    /// <param name="matched">Deezer 확인이 끝나면 소리 점수 전에 부른다 (점수 없는 추천) — 소리 서비스가 바빠 기다리는 사이 앱이 꺼져도 AI 비용이 날아가지 않게 먼저 저장한다</param>
+    /// <returns>OtherWeeks: 기간 밖(최근 1년 안) 발매 — 점수 없이, 실제 발매 주에 저장하라고 따로 돌려준다</returns>
+    public async Task<(IReadOnlyList<ReleaseRecommendation> Recs, int Unverified, IReadOnlyList<ReleaseRecommendation> OtherWeeks)> ScoreAiPicksAsync(
         IReadOnlyList<AiPick> picks, OwnedLibrary owned, Period? period,
-        IProgress<string>? progress = null, CancellationToken ct = default)
+        IProgress<string>? progress = null, CancellationToken ct = default,
+        Action<IReadOnlyList<ReleaseRecommendation>>? matched = null)
     {
         progress?.Report(L.F("AI가 찾은 {0}장 Deezer에서 확인 중…", picks.Count));
         var found = await Task.WhenAll(picks.Select(async p => (p, m: await MatchAiPickAsync(p, period, ct))));
         foreach (var (p, m) in found)
             AiDebugLog.Write(p.By, $"{(m.Album != null ? "확인" : "제외")} {p.Artist} – {p.Album} ({p.ReleaseDate}): {m.Note}");
         var hits = new List<(PoolArtist c, DzAlbum a)>();
+        var others = new List<(PoolArtist c, DzAlbum a)>();
         // 여러 커넥터가 같은 앨범을 고르면 한 장으로 합치고 누가 골랐는지 모두 남긴다
         var byAlbum = new Dictionary<long, List<AiPick>>();
         int accepted = 0;
@@ -327,16 +333,14 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             if (owned.HasAlbum(artist.Name, a.Title)) continue;
             accepted++;
             if (byAlbum.TryGetValue(a.Id, out var same)) { same.Add(p); continue; }
-            hits.Add((new PoolArtist(artist.Id, artist.Name, 0, ["AI"], [a]), a));
+            (m.OtherWeek ? others : hits).Add((new PoolArtist(artist.Id, artist.Name, 0, ["AI"], [a]), a));
             byAlbum[a.Id] = [p];
         }
-        if (hits.Count == 0) return ([], picks.Count);
         // 지역은 AI가 더 잘 안다 (이름만으로는 모르는 아티스트가 많다) → 크레이트(해외 장르 등)도 그 지역 기준으로 정해진다
         var regionHints = byAlbum
             .Where(kv => SoundRegions.ContainsKey(kv.Value[0].Region ?? ""))
             .ToDictionary(kv => kv.Key, kv => SoundRegions[kv.Value[0].Region!]);
-        var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, new RecommendOptions(), progress, ct, regionHints);
-        return ([.. recs.Select(r =>
+        ReleaseRecommendation WithAi(ReleaseRecommendation r)
         {
             var ps = byAlbum[r.DeezerAlbumId].DistinctBy(p => p.By).ToList();
             return r with
@@ -346,16 +350,43 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 BecauseOf = ["AI 제안"],
                 SourceUrl = ps[0].Source,
             };
-        }).OrderByDescending(r => r.Score)], picks.Count - accepted);
+        }
+        List<ReleaseRecommendation> otherWeeks = [.. others.Select(h => WithAi(Bare(h.c, h.a, regionHints.GetValueOrDefault(h.a.Id, Region.Unknown))))];
+        if (hits.Count == 0) return ([], picks.Count - accepted, otherWeeks);
+        matched?.Invoke([.. hits.Select(h => WithAi(Bare(h.c, h.a, regionHints.GetValueOrDefault(h.a.Id, Region.Unknown))))]);
+        var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, new RecommendOptions(), progress, ct, regionHints);
+        return ([.. recs.Select(WithAi).OrderByDescending(r => r.Score)], picks.Count - accepted, otherWeeks);
+    }
+
+    /// <summary>소리 점수 전의 추천 (레시피·취향 없음). Taste == null 이면 아직 점수를 안 매긴 것</summary>
+    private static ReleaseRecommendation Bare(PoolArtist c, DzAlbum a, Region region) =>
+        new(c.Name, a.Title, a.RecordType ?? "album", a.Released ?? DateOnly.FromDateTime(DateTime.Today), null,
+            a.Cover, a.Id, a.Link, null, region, null, null, null, [], ["AI 제안"], false, -1, ArtistId: c.Id);
+
+    /// <summary>
+    /// 점수 없이 저장된 AI·웹진 추천(소리 서비스가 바쁠 때 먼저 저장한 것)에 소리 점수를 매긴다. AI 표시(배지·이유·출처)는 그대로 둔다.
+    /// </summary>
+    public async Task<List<ReleaseRecommendation>> RescoreAsync(IReadOnlyList<ReleaseRecommendation> bare, OwnedLibrary owned,
+        IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        var hits = bare.Select(r => (c: new PoolArtist(r.ArtistId, r.Artist, 0, ["AI"], []),
+            a: new DzAlbum(r.DeezerAlbumId, r.Album, r.CoverUrl, r.ReleaseDate.ToString("yyyy-MM-dd"), r.RecordType, r.Link))).ToList();
+        hits = [.. hits.Select(h => (h.c with { Albums = [h.a] }, h.a))];
+        var hints = bare.Where(r => r.Region != Region.Unknown).ToDictionary(r => r.DeezerAlbumId, r => r.Region);
+        var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, new RecommendOptions(), progress, ct, hints);
+        var byId = bare.ToDictionary(r => r.DeezerAlbumId);
+        return [.. recs.Select(r => byId.TryGetValue(r.DeezerAlbumId, out var o)
+            ? r with { AiReason = o.AiReason, AiBy = o.AiBy, BecauseOf = o.BecauseOf, SourceUrl = o.SourceUrl } : r)];
     }
 
     /// <summary>
     /// AI가 말한 앨범을 Deezer에서 찾는다. 표기가 조금 달라도 (괄호 꼬리말, 원어/영문, EP·싱글 표기) 같은 앨범으로 본다.
     /// 1) 일반 검색 상위 10개 중 아티스트·제목이 맞는 것
     /// 2) 없으면 그 아티스트의 디스코그래피에서 제목이 맞는 것, 그래도 없으면 그 기간에 나온 그 아티스트의 발매작
-    /// 발매일: Deezer 날짜가 기간 ±3일이거나, AI가 확인했다는 날짜가 기간 안이고 Deezer 날짜와 30일 이내 (선공개 싱글 날짜가 붙는 경우)
+    /// 발매일: Deezer 날짜가 기간 ±3일이거나, AI가 확인했다는 날짜가 기간 안이고 Deezer 날짜와 7일 이내 (선공개 싱글 날짜가 붙는 경우. 30일이면 AI가 날짜를 잘못 말한 지난 주 앨범이 섞였다)
     /// </summary>
-    private async Task<(DzAlbum? Album, string Note)> MatchAiPickAsync(AiPick p, Period? period, CancellationToken ct)
+    /// <returns>OtherWeek: 기간 밖이지만 최근 1년 안 발매 — 버리지 않고 실제 발매 주에 넣는다 (AI가 날짜만 틀린 경우)</returns>
+    private async Task<(DzAlbum? Album, string Note, bool OtherWeek)> MatchAiPickAsync(AiPick p, Period? period, CancellationToken ct)
     {
         var artistKey = ListeningAnalyzer.NormalizeArtist(p.Artist);
         var titleKey = TasteProfile.TitleKey(p.Album);
@@ -368,13 +399,17 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         bool InPeriod(DateOnly d) => period is not { } pr
             ? d >= DateOnly.FromDateTime(DateTime.Today.AddYears(-1))
             : Enumerable.Range(-3, 7).Any(k => pr.Contains(d.AddDays(k)))
-              || aiDate is { } x && pr.Contains(x) && Math.Abs(d.DayNumber - x.DayNumber) <= 30;
+              || aiDate is { } x && pr.Contains(x) && Math.Abs(d.DayNumber - x.DayNumber) <= 7;
 
-        async Task<(DzAlbum?, string)> Check(long id, string how)
+        bool Recent(DateOnly d) => d >= DateOnly.FromDateTime(DateTime.Today.AddYears(-1));
+
+        async Task<(DzAlbum?, string, bool)> Check(long id, string how)
         {
             var full = await deezer.AlbumAsync(id, ct);
-            if (full?.Released is not { } d) return (null, $"{how}: 발매일 없음");
-            return InPeriod(d) ? (full, $"{how} (Deezer {d:yyyy-MM-dd})") : (null, $"{how}: 발매일 {d:yyyy-MM-dd}가 기간 밖");
+            if (full?.Released is not { } d) return (null, $"{how}: 발매일 없음", false);
+            if (InPeriod(d)) return (full, $"{how} (Deezer {d:yyyy-MM-dd})", false);
+            return Recent(d) ? (full, $"{how}: 발매일 {d:yyyy-MM-dd} — 그 주에 넣음", true)
+                : (null, $"{how}: 발매일 {d:yyyy-MM-dd}가 1년보다 오래됨 (재발매로 봄)", false);
         }
 
         // 1) 일반 검색
@@ -384,22 +419,52 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
 
         // 2) 아티스트 디스코그래피
         var artist = (await deezer.SearchArtistsAsync(p.Artist, ct)).FirstOrDefault(a => SameArtist(a.Name));
-        if (artist == null) return (null, "Deezer에 아티스트 없음");
+        if (artist == null) return (null, "Deezer에 아티스트 없음", false);
         var albums = await _discography.GetOrAddAsync(artist.Id.ToString(), async () => [.. await deezer.ArtistAlbumsAsync(artist.Id, ct)]);
         if (albums.FirstOrDefault(a => SameTitle(a.Title)) is { } byTitle)
             return await Check(byTitle.Id, "디스코그래피 제목 일치");
         if (period != null && albums.Where(a => a.Released is { } d && period.Value.Contains(d) && a.RecordType != "compile")
                 .OrderByDescending(a => TypeWeight(a.RecordType)).FirstOrDefault() is { } inPeriod)
             return await Check(inPeriod.Id, $"제목은 다르지만 기간 내 발매작 '{inPeriod.Title}'");
-        return (null, $"아티스트는 있지만 해당 앨범 없음 (Deezer 앨범 {albums.Count}장)");
+        return (null, $"아티스트는 있지만 해당 앨범 없음 (Deezer 앨범 {albums.Count}장)", false);
     }
 
-    /// <summary>3~4) 발매작 목록에 소리·레이블·지역·점수를 매긴다. toScore에 있는 것만 소리를 듣는다.</summary>
+    /// <summary>
+    /// 팔로우한 아티스트의 기간 내 발매작 (저장된 추천 결과에도 더할 수 있게 따로). 디스코그래피는 캐시, 없으면 Deezer에서.
+    /// 점수는 플리 뮤지션과 같은 방식이라 항상 앞에 놓인다.
+    /// </summary>
+    public async Task<List<ReleaseRecommendation>> FollowedAsync(IReadOnlyList<PlaylistArtist> follows, OwnedLibrary owned, Period period,
+        RecommendOptions options, IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        var hits = new List<(PoolArtist c, DzAlbum a)>();
+        foreach (var f in follows.Where(f => f.DeezerId != 0))
+        {
+            var albums = await FollowedDiscographyAsync(f.DeezerId, ct);
+            var c = new PoolArtist(f.DeezerId, f.Artist, 0, [f.Playlist], albums, f);
+            hits.AddRange(albums.Where(a => a.Released is { } d && period.Contains(d) && a.RecordType != "compile" && !owned.HasAlbum(f.Artist, a.Title)
+                    && !(options.ExcludeInstrumental && IsRedundantInstrumental(c, a, owned)))
+                .DistinctBy(a => a.Id).Select(a => (c, a)));
+        }
+        SaveCaches();
+        if (hits.Count == 0) return [];
+        var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, options, progress, ct);
+        return recs;
+    }
+
+    public async Task<List<DzAlbum>> FollowedDiscographyAsync(long artistId, CancellationToken ct = default) =>
+        _discography.TryGet(artistId.ToString(), out var cached) ? cached
+            : await _discography.GetOrAddAsync(artistId.ToString(), async () => [.. await deezer.ArtistAlbumsAsync(artistId, ct)]);
+
+    /// <summary>캐시에 있는 디스코그래피만 (달력 표시용, 요청 없음)</summary>
+    public IReadOnlyList<DzAlbum> CachedDiscography(long artistId) =>
+        _discography.TryGetStale(artistId.ToString(), out var albums, out _) ? albums : [];
+
     /// <summary>"앨범 (Instrumental)"인데 같은 아티스트의 원래 앨범이 디스코그래피나 내 라이브러리에 있다</summary>
     private static bool IsRedundantInstrumental(PoolArtist c, DzAlbum a, OwnedLibrary owned) =>
         AlbumVariants.InstrumentalBase(a.Title) is { } original
         && (c.Albums.Any(o => o.Id != a.Id && AlbumVariants.SameTitle(o.Title, original)) || owned.HasAlbum(c.Name, original));
 
+    /// <summary>3~4) 발매작 목록에 소리·레이블·지역·점수를 매긴다. toScore에 있는 것만 소리를 듣는다.</summary>
     private async Task<(List<ReleaseRecommendation> Recs, bool HeardAny)> ScoreHitsAsync(
         List<(PoolArtist c, DzAlbum a)> hits, IReadOnlyList<long> toScore, OwnedLibrary owned,
         RecommendOptions options, IProgress<string>? progress, CancellationToken ct,
@@ -410,9 +475,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
         var detailed = toScore.ToHashSet();
         if (sound != null)
         {
-            progress?.Report(L.F("미리듣기 소리 분석 준비 중… ({0}장)", toScore.Count));
+            progress?.Report(L.F("미리듣기 소리 확인 중… ({0}장 · 이미 들은 앨범은 바로 넘어가요)", toScore.Count));
             var coverOf = hits.DistinctBy(h => h.a.Id).ToDictionary(h => h.a.Id, h => h.a.Cover);
-            try { sounds = await sound.ScoreAlbumsAsync(toScore, progress, ct, coverOf); }
+            try { sounds = await sound.ScoreAlbumsAsync(toScore, progress, ct, coverOf, options.HitsOnly); }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 progress?.Report(L.F("소리 분석을 건너뜀: {0}", ex.Message));
@@ -448,7 +513,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 var (name, p) = snd.Region.MaxBy(kv => kv.Value);
                 if (p >= 0.8 && SoundRegions.TryGetValue(name, out var guessed)) r = guessed;
             }
-            regionOf[h.c.Id] = r;
+            // 끝까지 모르면 해외로: 이름 문자로 한국·일본은 이미 가려지고, 소리 레시피 모델은 일본 플레이리스트로만 배워
+            // 모르는 채로 두면 캐나다 아티스트도 '일본 인디'로 들어갔다 (Andy Shauf). 해외면 Deezer 장르로 나뉜다
+            regionOf[h.c.Id] = r == Region.Unknown && h.c.Mine?.Style == null ? Region.International : r;
         }
         if (lookups > 0) regions.Save();
 
@@ -471,7 +538,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
             var (c, a) = hits[i];
             var snd = heard[i];
             // 플리 뮤지션: 일본 크레이트 플레이리스트면 그 크레이트, 한국 플레이리스트면 한국음악
-            string? crate = c.Mine?.Style ?? (c.Mine?.Region == "한국" || c.Mine == null && regionOf[c.Id] == Region.Korea ? KoreanCrate : null);
+            string? crate = c.Mine?.Style ?? (c.Mine?.Region == "한국" || c.Mine is null or { Region: "" } && regionOf[c.Id] == Region.Korea ? KoreanCrate : null);
             double? fit = null, taste = null;
             double score;
             if (snd != null)
@@ -518,7 +585,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 FavNear: favZOf.GetValueOrDefault(i) >= 1.0 ? snd?.FavNear : null,
                 LikedLabel: labelAff >= 0.2 ? info.Label : null,
                 WithLiked: withLiked,
-                Fans: c.Fans));
+                Fans: c.Fans,
+                Pairs: snd?.Pairs,
+                Genres: snd?.Genres));
         }
         return (recs, heard.Any(s => s != null));
     }
@@ -542,9 +611,26 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
     }
 
     /// <summary>앨범 전체 수록곡과 미리듣기 URL (재생 직전에 받는다). URL은 몇 시간 뒤 만료된다.</summary>
-    public async Task<IReadOnlyList<AlbumTrack>> AlbumTracksAsync(long deezerAlbumId, CancellationToken ct = default) =>
-        [.. (await deezer.AlbumTracksAsync(deezerAlbumId, 200, ct)).Select((t, i) =>
-            new AlbumTrack(i + 1, t.Title, t.Artist?.Name, TimeSpan.FromSeconds(t.Duration), string.IsNullOrEmpty(t.Preview) ? null : t.Preview, t.Rank, t.Id))];
+    /// <summary>
+    /// 수록곡. 앨범 목록에 미리듣기가 빈 곡은 곡 정보를 한 번 더 받아 본다 (곡 정보에는 있거나, 막힌 곡이면 같은 곡의 다른 판에 있는 경우가 있다).
+    /// 그래도 없으면 발매 전이거나 막힌 곡이다.
+    /// </summary>
+    public async Task<IReadOnlyList<AlbumTrack>> AlbumTracksAsync(long deezerAlbumId, CancellationToken ct = default)
+    {
+        var tracks = await deezer.AlbumTracksAsync(deezerAlbumId, 200, ct);
+        var previews = await Task.WhenAll(tracks.Select(async t =>
+        {
+            if (!string.IsNullOrEmpty(t.Preview) || t.Id == 0) return t.Preview;
+            try
+            {
+                var full = await deezer.TrackAsync(t.Id, ct);
+                return !string.IsNullOrEmpty(full?.Preview) ? full.Preview : full?.Alternative?.Preview;
+            }
+            catch (HttpRequestException) { return null; }
+        }));
+        return [.. tracks.Select((t, i) => new AlbumTrack(i + 1, t.Title, t.Artist?.Name, TimeSpan.FromSeconds(t.Duration),
+            string.IsNullOrEmpty(previews[i]) ? null : previews[i], t.Rank, t.Id))];
+    }
 
     private Task<List<DzArtist>> RelatedAsync(long id, int limit, CancellationToken ct) =>
         _related.GetOrAddAsync($"{id}:{limit}", async () => [.. await deezer.RelatedArtistsAsync(id, limit, ct)]);

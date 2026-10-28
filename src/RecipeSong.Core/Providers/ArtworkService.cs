@@ -26,6 +26,20 @@ public sealed class ArtworkService(DeezerClient deezer, ITunesSearchClient itune
         return art;
     }
 
+    /// <summary>
+    /// 커버가 없는 추천 신보 (발매 전이라 Deezer 목록에 커버가 아직 없는 경우가 많다): Deezer 앨범을 다시 보고 → iTunes Search.
+    /// 못 찾은 결과는 캐시하지 않는다 (발매일 즈음 커버가 올라오면 다음에 찾는다).
+    /// </summary>
+    public async Task<string?> FindReleaseCoverAsync(long deezerAlbumId, string artist, string album, CancellationToken ct = default)
+    {
+        var key = $"release\u001f{deezerAlbumId}";
+        if (_cache.TryGet(key, out var hit)) return hit.ArtworkUrl;
+        var url = (deezerAlbumId != 0 ? (await deezer.AlbumAsync(deezerAlbumId, ct))?.Cover : null)
+                  ?? (await itunes.FindAlbumAsync(artist, album, ct))?.ArtworkUrl;
+        if (url != null) _cache.Set(key, new AlbumArt(url, deezerAlbumId));
+        return url;
+    }
+
     public void Save() => _cache.Save();
 
     /// <summary>음원 파일에 내장된 커버를 꺼내 캐시 폴더에 저장한다.</summary>

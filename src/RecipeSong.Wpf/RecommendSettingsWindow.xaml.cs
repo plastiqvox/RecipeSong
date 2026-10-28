@@ -6,7 +6,9 @@ using RecipeSong.Core;
 namespace RecipeSong.Wpf;
 
 /// <summary>추천 설정: 0 기본 / 1 많이 / 2 최대, 모험 0 익숙하게 / 1 보통 / 2 새롭게</summary>
-public sealed record RecPrefs(int Amount = 0, int Adventure = 1, bool ExcludeKnown = false, bool ExcludeInstrumental = true);
+/// <param name="DropMode">다시 분석한 뒤 별로·차단과 아주 닮은 추천: 0 물어보기 / 1 자동으로 빼기 / 2 그대로(순서만 내림)</param>
+public sealed record RecPrefs(int Amount = 0, int Adventure = 1, bool ExcludeKnown = false, bool ExcludeInstrumental = true, int Tracks = 0,
+    int DropMode = 0);
 
 public partial class RecommendSettingsWindow : Window
 {
@@ -15,6 +17,19 @@ public partial class RecommendSettingsWindow : Window
         ("기본", "후보 아티스트 1,000명 · 추가 제안 150장까지 소리 분석. 처음 보는 주 30초 안팎."),
         ("많이", "후보 아티스트 2,000명 · 추가 제안 300장. 처음 보는 주 1분 안팎, 후보를 넓힐 때 Deezer에서 한 번 더 받아요."),
         ("최대", "후보 아티스트 3,000명 · 추가 제안 500장. 처음 보는 주 1~2분, 월·연 단위로 넓게 볼 때."),
+    ];
+
+    private static readonly (string Label, string Hint)[] TrackModes =
+    [
+        ("전곡", "수록곡 전부(최대 20곡)의 30초 미리듣기를 들어요. 앨범 전체의 성격을 봐요. 처음 보는 주는 오래 걸려요."),
+        ("인기곡 3곡", "Deezer 인기 상위 3곡만 들어요. 빠르지만 앨범 뒤쪽 곡의 성격은 빠질 수 있어요."),
+    ];
+
+    private static readonly (string Label, string Hint)[] DropModes =
+    [
+        ("물어보기", "다시 분석한 뒤 관심 없음·차단한 앨범과 아주 닮은 추천이 있으면 목록 위에서 뺄지 물어요."),
+        ("자동으로 빼기", "묻지 않고 빼고, 뺀 앨범을 알려 줘요."),
+        ("그대로", "빼지 않고 점수만 깎아 아래로 내려요."),
     ];
 
     private static readonly (string Label, string Hint)[] Adventures =
@@ -33,13 +48,18 @@ public partial class RecommendSettingsWindow : Window
     public RecommendSettingsWindow(RecPrefs prefs, RecipeSong.Core.BlockList blocked, ViewModels.MainViewModel vm)
     {
         InitializeComponent();
+        DarkTitleBar.Apply(this);
+        MaxHeight = SystemParameters.WorkArea.Height - 24;  // 화면보다 길면 본문만 스크롤 (버튼 줄은 아래 고정)
         _blocked = blocked;
         _vm = vm;
         ShowBlocked();
+        ShowFollows();
         ShowWebzines();
         Result = prefs;
         Build(AmountGrid, AmountHint, Amounts, prefs.Amount);
         Build(AdventureGrid, AdventureHint, Adventures, prefs.Adventure);
+        Build(TracksGrid, TracksHint, TrackModes, prefs.Tracks);
+        Build(DropGrid, DropHint, DropModes, prefs.DropMode);
         ExcludeKnownBox.IsChecked = prefs.ExcludeKnown;
         ExcludeInstrumentalBox.IsChecked = prefs.ExcludeInstrumental;
     }
@@ -80,11 +100,58 @@ public partial class RecommendSettingsWindow : Window
     }
 
     // ---- 차단 목록: 칩을 누르면 해제 ----
+    // ---- 팔로우: 칩을 누르면 해제 ----
+    private bool _followsChanged;
+
+    private void ShowFollows()
+    {
+        FollowPanel.Children.Clear();
+        var all = _vm.Follows.All.ToList();
+        ShowCount(FollowCount, FollowFilterBox, all.Count);
+        foreach (var f in all.Where(f => Matches(FollowFilter, f.Name)))
+        {
+            var b = new Button { Style = (Style)FindResource("Bare"), Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(0, 0, 6, 6),
+                ToolTip = L.T("눌러서 팔로우 해제") };
+            b.Content = new TextBlock { Text = $"★ {f.Name}  ✕", FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("Text2") };
+            b.Click += (_, _) => { _vm.Follows.Unfollow(f.Id); _followsChanged = true; ShowFollows(); };
+            FollowPanel.Children.Add(b);
+        }
+        FollowEmpty.Visibility = all.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // ---- 늘어나는 목록 (팔로우·차단): 개수 표시, 6개를 넘으면 이름 찾기 ----
+    private const int FilterFrom = 7;
+
+    private static void ShowCount(TextBlock count, FrameworkElement filter, int n)
+    {
+        count.Text = n > 0 ? n.ToString() : "";
+        filter.Visibility = n >= FilterFrom ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static bool Matches(TextBox filter, string name) =>
+        filter.Text.Trim() is not { Length: > 0 } q || name.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+    private void Filter_Changed(object sender, TextChangedEventArgs e)
+    {
+        FollowFilterHint.Visibility = FollowFilter.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        BlockedFilterHint.Visibility = BlockedFilter.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (sender == FollowFilter) ShowFollows(); else ShowBlocked();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        if (_followsChanged) _ = _vm.RefreshFollowsAsync();
+    }
+
     private void ShowBlocked()
     {
         BlockedPanel.Children.Clear();
+        int total = _blocked.Artists.Count + _blocked.Labels.Count + _blocked.SameName.Count;
+        ShowCount(BlockedCount, BlockedFilterBox, total);
         void Add(string kind, string name, Action unblock)
         {
+            if (!Matches(BlockedFilter, name)) return;
             var b = new Button { Style = (Style)FindResource("Bare"), Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(0, 0, 6, 6),
                 ToolTip = L.T("눌러서 차단 해제") };
             b.Content = new TextBlock { Text = $"{kind} · {name}  ✕", FontSize = 12, Foreground = (System.Windows.Media.Brush)FindResource("Text2") };
@@ -94,7 +161,7 @@ public partial class RecommendSettingsWindow : Window
         foreach (var a in _blocked.Artists.ToList()) Add(L.T("아티스트"), a, () => _blocked.UnblockArtist(a));
         foreach (var l in _blocked.Labels.ToList()) Add(L.T("레이블"), l, () => _blocked.UnblockLabel(l));
         foreach (var s in _blocked.SameName.ToList()) Add(L.T("동명이인"), $"{s.Name} ({s.Album})", () => _blocked.UnblockSameName(s));
-        BlockedEmpty.Visibility = BlockedPanel.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        BlockedEmpty.Visibility = total == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static int Selected(UniformGrid grid) =>
@@ -102,7 +169,8 @@ public partial class RecommendSettingsWindow : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        Result = new RecPrefs(Selected(AmountGrid), Selected(AdventureGrid), ExcludeKnownBox.IsChecked == true, ExcludeInstrumentalBox.IsChecked == true);
+        Result = new RecPrefs(Selected(AmountGrid), Selected(AdventureGrid), ExcludeKnownBox.IsChecked == true, ExcludeInstrumentalBox.IsChecked == true,
+            Selected(TracksGrid), Selected(DropGrid));
         DialogResult = true;
     }
 }

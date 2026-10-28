@@ -39,6 +39,23 @@ public sealed class DeezerClient(HttpClient http)
     public async Task<IReadOnlyList<DzTrack>> AlbumTracksAsync(long albumId, int limit = 3, CancellationToken ct = default) =>
         (await GetAsync<DzList<DzTrack>>($"/album/{albumId}/tracks?limit={limit}", ct))?.Data ?? [];
 
+    /// <summary>아티스트+곡명으로 곡을 찾는다 (내 파일이 없는 '비슷한 내 곡'을 미리듣기로 들을 때)</summary>
+    public async Task<DzTrack?> FindTrackAsync(string artist, string title, CancellationToken ct = default)
+    {
+        var q = $"artist:\"{artist}\" track:\"{title}\"";
+        var hit = (await GetAsync<DzList<DzTrack>>($"/search/track?q={Uri.EscapeDataString(q)}&limit=5", ct))?.Data?
+            .FirstOrDefault(t => !string.IsNullOrEmpty(t.Preview));
+        if (hit != null) return hit;
+        // 따옴표 검색은 자주 비어서 온다 → 그냥 이어 붙여 한 번 더. 이때는 다른 아티스트 곡이 걸릴 수 있어 아티스트가 맞는 것만
+        return (await GetAsync<DzList<DzTrack>>($"/search/track?q={Uri.EscapeDataString($"{artist} {title}")}&limit=10", ct))?.Data?
+            .FirstOrDefault(t => !string.IsNullOrEmpty(t.Preview) && t.Artist?.Name is { } name
+                && (name.Contains(artist, StringComparison.OrdinalIgnoreCase) || artist.Contains(name, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>곡 하나 (앨범 목록에 미리듣기가 비어 있을 때 다시 물어본다. 막힌 곡은 alternative 에 같은 곡의 다른 판이 온다)</summary>
+    public Task<DzTrack?> TrackAsync(long trackId, CancellationToken ct = default) =>
+        GetAsync<DzTrack>($"/track/{trackId}", ct);
+
     /// <summary>앨범 상세: 레이블, 발매일, 수록곡(미리듣기 포함).</summary>
     public Task<DzAlbum?> AlbumAsync(long albumId, CancellationToken ct = default) =>
         GetAsync<DzAlbum>($"/album/{albumId}", ct);
@@ -121,4 +138,5 @@ public sealed record DzTrack(
     [property: JsonPropertyName("duration")] int Duration = 0,
     [property: JsonPropertyName("artist")] DzArtist? Artist = null,
     [property: JsonPropertyName("rank")] int Rank = 0,
-    [property: JsonPropertyName("id")] long Id = 0);
+    [property: JsonPropertyName("id")] long Id = 0,
+    [property: JsonPropertyName("alternative")] DzTrack? Alternative = null);

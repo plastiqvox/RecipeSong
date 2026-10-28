@@ -10,7 +10,7 @@
         <TextBlock x:Name="Sub" Style="{StaticResource MutedText}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
 
         <TextBlock Text="{local:Tr '소리 때문이에요'}" Style="{StaticResource Kicker}" Margin="0,20,0,2"/>
-        <TextBlock Text="{local:Tr '이 앨범을 별로로 학습해요. 비슷한 소리의 다른 신보도 덜 추천해요.'}" Style="{StaticResource MutedText}" FontSize="12"
+        <TextBlock Text="{local:Tr '이 앨범을 관심 없음으로 학습해요. 비슷한 소리의 다른 발매작도 덜 추천해요.'}" Style="{StaticResource MutedText}" FontSize="12"
                    Margin="0,0,0,8" TextWrapping="Wrap"/>
         <WrapPanel x:Name="SoundPanel"/>
 
@@ -19,7 +19,7 @@
                    Margin="0,0,0,8" TextWrapping="Wrap"/>
         <WrapPanel x:Name="OtherPanel"/>
         <TextBlock x:Name="SameNameHint" Style="{StaticResource MutedText}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed"
-                   Text="{local:Tr '이름만 같은 다른 아티스트: 이 Deezer 아티스트만 막아요. 같은 이름의 진짜 아티스트 신보는 그대로 나와요.'}"/>
+                   Text="{local:Tr '이름만 같은 다른 아티스트: 이 Deezer 아티스트만 막아요. 같은 이름의 진짜 아티스트 발매작은 그대로 나와요.'}"/>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
             <Button Style="{StaticResource Bare}" Padding="18,8" IsCancel="True">

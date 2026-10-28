@@ -100,8 +100,9 @@ public sealed record TasteArtist(string Artist, double Weight, int PlayCount, st
 /// Playlist: 이 뮤지션 곡이 가장 많은 플레이리스트 (크레이트·지역을 여기서 정한다).
 /// Titles: 내 라이브러리의 이 뮤지션 곡·앨범 제목 (정규화) — Deezer 동명이인 확인용.
 /// </summary>
+/// <param name="DeezerId">팔로우한 아티스트처럼 Deezer id를 이미 알면 (0이면 이름으로 찾는다)</param>
 public sealed record PlaylistArtist(string Artist, string Playlist, string? Style, string Region, int Tracks,
-    IReadOnlySet<string> Titles);
+    IReadOnlySet<string> Titles, long DeezerId = 0);
 
 public enum Region { Korea, Japan, International, SoutheastAsia, Unknown }
 
@@ -117,14 +118,21 @@ public sealed record ReleaseRecommendation(
     IReadOnlyList<string> BecauseOf, bool IsKnownArtist, double Score,
     string? FromPlaylist = null, string? AiReason = null, IReadOnlyList<string>? AiBy = null,
     string? FavNear = null, string? LikedLabel = null, string? WithLiked = null, int Fans = 0,
-    string? SourceUrl = null, long ArtistId = 0);
+    string? SourceUrl = null, long ArtistId = 0, IReadOnlyList<TrackPair>? Pairs = null, IReadOnlyList<string>? Genres = null);
+
+/// <summary>이 앨범의 곡 ≈ 가장 닮은 내 곡 ("아티스트 – 곡명"), 소리 서비스가 미리듣기 곡마다 매긴다</summary>
+public sealed record TrackPair(string Track, string Near, double Sim);
 
 /// <summary>
 /// AI 커넥터가 웹에서 찾은 발매작 (Deezer 확인 전). Region은 crates.json 이름 (일본/한국/해외/동남아).
 /// By: 제안한 커넥터 이름 ("Claude", "GPT").
 /// </summary>
 public sealed record AiPick(string Artist, string Album, string? ReleaseDate, string? Type, string? Region, string Reason, string? Source,
-    string By = "");
+    string By = "")
+{
+    /// <summary>로그에서 다시 불러온 제안의 이유 자리 (원래 이유는 로그에 없다). 화면은 이 값을 보고 번역·흐리게 표시한다</summary>
+    public const string RecoveredReason = "다시 불러온 AI 제안 (추천 이유는 남아 있지 않아요)";
+}
 
 public sealed record RecommendationResult(
     Period Period,
@@ -138,7 +146,8 @@ public sealed record RecommendationResult(
 public sealed record AlbumSound(
     IReadOnlyDictionary<string, double>? Style, IReadOnlyDictionary<string, double>? Region,
     double? Taste, IReadOnlyList<string> Near, string? Label, string? Genre,
-    double? Fav = null, string? FavNear = null, double? Dis = null, IReadOnlyList<string>? With = null)
+    double? Fav = null, string? FavNear = null, double? Dis = null, IReadOnlyList<string>? With = null,
+    IReadOnlyList<TrackPair>? Pairs = null, IReadOnlyList<string>? Genres = null)
 {
     /// <summary>Fav: 저장함 앨범과 닮은 정도, FavNear: 가장 닮은 저장 앨범 ("아티스트 – 앨범")</summary>
     public bool Heard => Style != null;

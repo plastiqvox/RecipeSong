@@ -1,4 +1,4 @@
-﻿// 엔진 점검용 콘솔:  dotnet run --project src/RecipeSong.Cli -- recommend 2026-W43 [crate] [top]
+// 엔진 점검용 콘솔:  dotnet run --project src/RecipeSong.Cli -- recommend 2026-W43 [crate] [top]
 //                   dotnet run --project src/RecipeSong.Cli -- status
 using System.Text;
 using RecipeSong.Core;
@@ -29,6 +29,46 @@ if (cmd == "webzines")
         }
         catch (Exception ex) { Console.WriteLine($"== {f.Name}: 실패 {ex.Message}"); }
     }
+    return;
+}
+// 소리 점수를 기다리다 저장되지 못한 AI 제안을 ai-debug.log 의 '제출' 줄에서 되살린다 (API 비용 없이 Deezer 만 다시 확인).
+//   ai-recover "2026-10-27 22:02"   ← 그 시각의 '제출' 줄. 앱이 켜져 있으면 앱이 캐시를 덮어쓰므로 닫고 돌린다.
+// 날짜는 AI가 말한 날이 아니라 Deezer 발매일이 속한 주에 저장하고, 소리 점수는 앱에서 그 주를 열 때 매긴다.
+if (cmd == "ai-recover")
+{
+    if (System.Diagnostics.Process.GetProcessesByName("RecipeSong.Wpf").Length > 0)
+    {
+        Console.WriteLine("RecipeSong 앱을 닫고 다시 실행하세요 (앱이 AI 결과 캐시를 덮어씁니다).");
+        return;
+    }
+    if (settings.CacheDirectory is { Length: > 0 } cacheDir) CacheLocation.Directory = cacheDir;
+    var at = args.ElementAtOrDefault(1) ?? "";
+    var log = Path.Combine(CacheLocation.Directory, "ai-debug.log");
+    var line = File.ReadLines(log).LastOrDefault(l => l.StartsWith(at) && l.Contains("] 제출 "));
+    if (line == null) { Console.WriteLine($"'{at}' 의 제출 줄을 찾지 못했어요."); return; }
+    // 같은 시각의 '확인' 줄에서 모델 이름 (예: Claude Sonnet 5.5)
+    var by = File.ReadLines(log).Where(l => l.StartsWith(at[..Math.Min(at.Length, 16)]) && l.Contains("] 확인 "))
+        .Select(l => l[(l.IndexOf('[') + 1)..l.IndexOf(']')]).FirstOrDefault() ?? "Claude";
+    var picks = line[(line.IndexOf("장: ") + 3)..].Split(" | ", StringSplitOptions.RemoveEmptyEntries).Select(s =>
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(s, @"^(.+?) – (.+) \((\d{4}-\d{2}-\d{2})\)$");
+        return m.Success ? new AiPick(m.Groups[1].Value, m.Groups[2].Value, m.Groups[3].Value, null, null,
+            AiPick.RecoveredReason, null, by) : null;
+    }).OfType<AiPick>().ToList();
+    Console.WriteLine($"{by} 제출 {picks.Count}장 다시 확인");
+    var recov = new ReleaseRecommender(new DeezerClient(new HttpClient()), new RegionResolver(new HttpClient()));
+    List<ReleaseRecommendation> bare = [];
+    var (_, _, olderWeeks) = await recov.ScoreAiPicksAsync(picks, new OwnedLibrary(await library.GetTracksAsync()), null, matched: b => bare = [.. b]);
+    bare = [.. bare, .. olderWeeks];
+    var cache = new JsonCache<List<ReleaseRecommendation>>("ai-picks", TimeSpan.FromDays(3650));
+    foreach (var g in bare.GroupBy(r => Periods.Create(PeriodKind.Week, r.ReleaseDate.ToDateTime(TimeOnly.MinValue)).Label))
+    {
+        var list = cache.TryGet(g.Key, out var have) ? have : [];
+        var add = g.Where(r => list.All(o => o.DeezerAlbumId != r.DeezerAlbumId)).ToList();
+        cache.Set(g.Key, [.. list, .. add]);
+        foreach (var r in g) Console.WriteLine($"  {g.Key} ← {r.Artist} – {r.Album} ({r.ReleaseDate:M.d}){(add.Contains(r) ? "" : " (이미 있음)")}");
+    }
+    cache.Save();
     return;
 }
 if (cmd == "status")

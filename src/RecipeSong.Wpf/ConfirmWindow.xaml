@@ -1,0 +1,22 @@
+<Window x:Class="RecipeSong.Wpf.ConfirmWindow" Icon="/Assets/logo.png"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:RecipeSong.Wpf"
+        Width="440" SizeToContent="Height" ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
+        FontFamily="{StaticResource Sans}">
+    <!-- 확인 창: Windows 기본 MessageBox 대신 앱 모양으로, 버튼에는 '확인' 대신 실제로 하는 일을 쓴다 -->
+    <StackPanel Margin="26,22">
+        <TextBlock x:Name="Heading" FontSize="17" FontWeight="Bold" TextWrapping="Wrap"/>
+        <TextBlock x:Name="Body" Style="{StaticResource MutedText}" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" LineHeight="20"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+            <Button Style="{StaticResource Bare}" Padding="18,8" IsCancel="True">
+                <TextBlock Text="{local:Tr '취소'}" Foreground="{StaticResource Text2}"/>
+            </Button>
+            <Button Style="{StaticResource Bare}" Padding="18,8" Margin="8,0,0,0" IsDefault="True" Click="Ok_Click"
+                    Background="{StaticResource Accent}" BorderBrush="{StaticResource Accent}">
+                <TextBlock x:Name="OkText" Foreground="{StaticResource OnAccent}" FontWeight="Bold"/>
+            </Button>
+        </StackPanel>
+    </StackPanel>
+</Window>

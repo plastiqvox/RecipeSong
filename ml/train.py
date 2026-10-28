@@ -27,6 +27,8 @@ ROOT = Path(__file__).parent
 DATA = ROOT / "data"
 DEFAULT_EMB = "emb_larger_clap_general"
 COVER_SCALE = 0.7  # 소리+커버 지역 판정에서 커버 부분의 비중
+EFFNET_FOLDER = "emb_discogs_effnet"  # 레시피 보조: EffNet 장르판 임베딩 (장르 태그를 낼 때 신보도 같이 나온다)
+EFFNET_SCALE = 1.0
 
 
 def load_embeddings(folder: str = DEFAULT_EMB) -> tuple[list[str], np.ndarray]:
@@ -133,6 +135,20 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
         rc_clf, rc_acc = fit_eval(xc, yr[has_cover], groups[has_cover], region_classes, "지역 (소리 + 커버)", C, log, weights[has_cover])
         region_cover = {**head(rc_clf, region_classes, rc_acc), "cover_mean": cover_mean.round(6).tolist(), "cover_scale": COVER_SCALE}
 
+    # 레시피: 소리(CLAP) + 장르(EffNet 장르판 임베딩). 장르에 특화된 모델이라 레시피 경계(Jazz/Rock 등)를 보탠다
+    style_effnet = None
+    if (DATA / EFFNET_FOLDER).exists():
+        ek, ee = load_embeddings(EFFNET_FOLDER)
+        eidx = {k: i for i, k in enumerate(ek)}
+        pids = [keys[r] for r in rows]
+        has_eff = np.array([p in eidx for p in pids]) & has_style
+        if has_eff.sum() > 1000:
+            ev = ee[[eidx[p] for p, h in zip(pids, has_eff) if h]]
+            eff_mean = ev.mean(axis=0)
+            xe = np.hstack([x[has_eff], EFFNET_SCALE * preprocess(ev, eff_mean)])
+            se_clf, se_acc = fit_eval(xe, ys[has_eff], groups[has_eff], style_classes, "스타일 (소리 + 장르)", C, log, weights[has_eff])
+            style_effnet = {**head(se_clf, style_classes, se_acc), "effnet_mean": eff_mean.round(6).tolist(), "effnet_scale": EFFNET_SCALE}
+
     # 스타일 라벨이 없는 곡(해외·한국)에 스타일 추정 결과 분포
     no_style = ~has_style
     if no_style.any():
@@ -151,6 +167,7 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
         "style": head(style_clf, style_classes, style_acc),
         "region": head(region_clf, region_classes, region_acc),
         "region_cover": region_cover,
+        "style_effnet": style_effnet,
         "config": config,
     }
 
