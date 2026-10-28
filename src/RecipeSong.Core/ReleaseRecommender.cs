@@ -513,7 +513,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, RegionResolver regio
                 progress?.Report(L.F("아티스트 지역 확인 중… {0}", ++lookups));
                 r = await regions.ResolveAsync(h.c.Name, ct);
             }
-            if (r == Region.Unknown && sounds.TryGetValue(h.a.Id, out var snd) && snd.Region != null)
+            if (r == Region.Unknown && sounds.TryGetValue(h.a.Id, out var snd) && snd.Region is { Count: > 0 })
             {
                 var (name, p) = snd.Region.MaxBy(kv => kv.Value);
                 if (p >= 0.8 && SoundRegions.TryGetValue(name, out var guessed)) r = guessed;

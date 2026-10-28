@@ -38,7 +38,7 @@ public partial class RecipeSetupWindow : Window
         var grid = new Grid { Margin = new Thickness(0, 4, 0, 4) };
         grid.ColumnDefinitions.Add(new ColumnDefinition());
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(260) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(330) });
 
         var use = new CheckBox { IsChecked = entry != null, VerticalAlignment = VerticalAlignment.Center, FontSize = 14,
             Content = new TextBlock { Inlines = { new System.Windows.Documents.Run(p.Name),
@@ -48,10 +48,12 @@ public partial class RecipeSetupWindow : Window
             BorderBrush = (Brush)FindResource("Line3"), BorderThickness = new Thickness(1), VerticalContentAlignment = VerticalAlignment.Center };
         System.Windows.Automation.AutomationProperties.SetName(name, L.F("레시피 이름: {0}", p.Name));
         var regions = new UniformGrid { Rows = 1 };
-        var region = entry?.Region ?? Guess(p);
-        foreach (var r in CrateConfig.Regions)
-            regions.Children.Add(new RadioButton { Style = (Style)FindResource("Segment"), GroupName = "region-" + p.Name, Content = L.T(r), Tag = r,
-                IsChecked = r == region, FontSize = 12, Padding = new Thickness(0, 4, 0, 4) });
+        var region = entry != null ? entry.Region : Guess(p);
+        // 맨 앞 '섞임'(Tag null): 여러 나라가 섞인 플레이리스트. 지역을 꼭 고르게 하면 틀린 지역을 배운다
+        foreach (var r in new string?[] { null }.Concat(CrateConfig.Regions))
+            regions.Children.Add(new RadioButton { Style = (Style)FindResource("Segment"), GroupName = "region-" + p.Name,
+                Content = r == null ? L.T("섞임") : L.T(r), Tag = r, IsChecked = r == region, FontSize = 12, Padding = new Thickness(0, 4, 0, 4),
+                ToolTip = r == null ? L.T("여러 나라 음악이 섞여 있어요. 지역은 배우지 않고 아티스트 이름·MusicBrainz 로만 판정해요") : null });
         var regionBox = new Border { Margin = new Thickness(12, 0, 0, 0), Padding = new Thickness(3), CornerRadius = new CornerRadius(9),
             Background = (Brush)FindResource("Surface2"), Child = regions };
 
@@ -77,8 +79,8 @@ public partial class RecipeSetupWindow : Window
     private CrateConfig.Entry? Existing(string playlist) =>
         _current.Uses(playlist) ? _current.Playlists[playlist] : null;
 
-    /// <summary>처음 고를 때 지역 기본값: 곡 아티스트 이름의 글자 (한글 → 한국, 가나·한자 → 일본), 아니면 해외</summary>
-    private static string Guess(Playlist p)
+    /// <summary>처음 고를 때 지역 기본값: 아티스트 이름 글자가 뚜렷하면 (한글 → 한국, 가나·한자 → 일본), 아니면 '섞임'</summary>
+    private static string? Guess(Playlist p)
     {
         int ko = 0, ja = 0;
         foreach (var t in p.Tracks.Take(200))
@@ -88,7 +90,7 @@ public partial class RecipeSetupWindow : Window
             else if (r == Region.Japan) ja++;
         }
         int n = Math.Min(200, p.Tracks.Count);
-        return ko * 3 > n ? "한국" : ja * 3 > n ? "일본" : "해외";
+        return ko * 2 > n ? "한국" : ja * 2 > n ? "일본" : null;
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -100,9 +102,9 @@ public partial class RecipeSetupWindow : Window
         {
             Playlists = used.ToDictionary(r => r.Playlist, r => new CrateConfig.Entry(
                 r.Name.Text.Trim() is { Length: > 0 } n ? n : null,
-                r.Regions.Children.OfType<RadioButton>().FirstOrDefault(b => b.IsChecked == true)?.Tag as string ?? "해외")),
-            // 예전 설정의 '학습에서 빼는 플레이리스트'는 그대로 (고른 플레이리스트는 빼지 않는다)
-            Ignore = [.. _current.Ignore.Where(i => used.All(r => r.Playlist != i))],
+                r.Regions.Children.OfType<RadioButton>().FirstOrDefault(b => b.IsChecked == true)?.Tag as string)),
+            // 예전 설정의 '학습에서 빼는 플레이리스트'는 이 라이브러리에 있는 것만 (만든 사람의 예시 설정이 따라오지 않게), 고른 플레이리스트는 빼지 않는다
+            Ignore = [.. _current.Ignore.Where(i => _rows.Any(r => r.Playlist == i) && used.All(r => r.Playlist != i))],
         };
         DialogResult = true;
     }

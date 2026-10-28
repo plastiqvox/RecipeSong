@@ -143,9 +143,14 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
     style_clf, style_acc = fit_eval(x[has_style], ys[has_style], groups[has_style], style_classes, "스타일 (크레이트)", C, log,
                                     weights[has_style])
 
-    region_classes = sorted(set(regions))
-    yr = np.array([region_classes.index(r) for r in regions])
-    region_clf, region_acc = fit_eval(x, yr, groups, region_classes, "지역", C, log, weights)
+    # 지역: '섞임'(null)으로 둔 플레이리스트 곡은 지역 학습에서 뺀다 (여러 나라가 섞인 플레이리스트를 한 지역으로 배우지 않게)
+    has_region = np.array([r is not None for r in regions])
+    region_classes = sorted({r for r in regions if r})
+    yr = np.array([region_classes.index(r) if r else -1 for r in regions])
+    if region_classes:
+        region_clf, region_acc = fit_eval(x[has_region], yr[has_region], groups[has_region], region_classes, "지역", C, log, weights[has_region])
+    else:
+        log("\n[지역] 지역을 고른 플레이리스트가 없어 학습하지 않음 (지역은 이름 글자·MusicBrainz 로만 판정)")
 
     def head(clf, classes, acc):
         coef, icpt = clf.coef_, clf.intercept_
@@ -158,8 +163,8 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
     # 지역: 소리 + 앨범 커버 (커버 글자·디자인이 지역을 잘 알려 준다). 커버가 있는 곡만으로 따로 학습한다.
     region_cover = None
     cover = covers.load()
-    has_cover = np.array([k in cover for k in album_keys])
-    if has_cover.sum() > 1000:
+    has_cover = np.array([k in cover for k in album_keys]) & has_region
+    if region_classes and has_cover.sum() > 1000:
         cv = np.stack([cover[k] for k, h in zip(album_keys, has_cover) if h])
         cover_mean = cv.mean(axis=0)
         xc = np.hstack([x[has_cover], COVER_SCALE * preprocess(cv, cover_mean)])
@@ -185,8 +190,8 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
     if no_style.any():
         guess = style_clf.predict(x[no_style])
         log("\n[스타일 추정: 스타일 라벨이 없는 곡]")
-        for r in sorted({regions[i] for i in np.where(no_style)[0]}):
-            m = np.array([regions[i] == r for i in np.where(no_style)[0]])
+        for r in sorted({regions[i] or "섞임" for i in np.where(no_style)[0]}):
+            m = np.array([(regions[i] or "섞임") == r for i in np.where(no_style)[0]])
             dist = Counter(style_classes[g] for g in guess[m])
             log(f"   {r}: " + ", ".join(f"{k} {v / m.sum():.0%}" for k, v in dist.most_common()))
 
@@ -196,7 +201,8 @@ def run(xml: str, emb_folder: str = DEFAULT_EMB, C: float = 2.0, log=print) -> d
         "tracks": len(rows),
         "mean": mean.round(6).tolist(),
         "style": head(style_clf, style_classes, style_acc),
-        "region": head(region_clf, region_classes, region_acc),
+        "region": head(region_clf, region_classes, region_acc) if region_classes
+                  else {"classes": [], "coef": [], "intercept": [], "cv_accuracy": 0.0},
         "region_cover": region_cover,
         "style_effnet": style_effnet,
         "config": config,

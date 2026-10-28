@@ -81,6 +81,8 @@ ml/
 3. 사이드바 "내 취향 모델"의 **학습 시작**을 누른다. 라이브러리 곡을 모두 듣고 학습한다 (1만 5천 곡이 RTX 3080 Ti로 약 1시간, 중간에 꺼도 이어서). 그동안에도 앱은 아티스트 연결만으로 추천한다.
 
 - 레시피 설정은 `ml/data/crates.json`에 저장된다. 저장소의 `ml/crates.json`은 만든 사람의 플레이리스트 예시다.
+- 여러 나라가 섞인 플레이리스트는 지역을 **섞임**으로 둔다. 그 곡은 지역 학습에서 빠지고, 지역은 이름 글자·MusicBrainz 로만 판정한다.
+- (선택) 카드의 장르 태그: [Essentia 모델](https://essentia.upf.edu/models/feature-extractors/discogs-effnet/)에서 `discogs-effnet-bsdynamic-1.onnx`와 `.json`을 받아 `ml/data/models/`에 둔다. CC BY-NC-SA 4.0(비상업)이라 저장소에 넣지 않았다. 없으면 장르 태그만 빠지고 추천은 그대로다.
 - 레시피 이름을 비운 플레이리스트는 지역만 배운다. 해외는 Deezer 장르(인디·얼터 / 일렉트로닉 / 소울·힙합)로, 한국은 '한국음악' 하나로 나뉜다.
 - 모델: `laion/larger_clap_general`. (`laion/larger_clap_music` 체크포인트는 어떤 입력에도 같은 출력을 내는 고장 상태라 쓰지 않는다.)
 - 이후에는 앱이 iTunes 라이브러리 변경을 감지해 **새 곡만 분석하고 재학습**한다. 새 모델이 이전보다 2%p 넘게 나빠지면 이전 모델을 유지한다.

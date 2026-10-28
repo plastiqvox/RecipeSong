@@ -12,9 +12,10 @@ public sealed class CrateConfig
     /// <summary>레시피 설정 창에서 고를 수 있는 지역 (추천 엔진의 Region 과 같은 이름)</summary>
     public static readonly string[] Regions = ["일본", "한국", "해외", "동남아"];
 
+    /// <summary>Region 이 null 이면 '섞임': 지역을 학습하지 않는다 (여러 나라가 섞인 플레이리스트)</summary>
     public sealed record Entry(
         [property: JsonPropertyName("style")] string? Style,
-        [property: JsonPropertyName("region")] string Region);
+        [property: JsonPropertyName("region")] string? Region);
 
     [JsonPropertyName("playlists")] public Dictionary<string, Entry> Playlists { get; init; } = [];
     [JsonPropertyName("ignore")] public List<string> Ignore { get; init; } = [];
@@ -42,9 +43,9 @@ public sealed class CrateConfig
     public int Matching(IEnumerable<string> playlistNames) => playlistNames.Count(Uses);
 
     /// <summary>해외 플레이리스트에 레시피 이름을 하나도 안 붙였으면 해외 발매작은 Deezer 장르로 나눈다 (만든 사람의 방식)</summary>
-    public bool SplitsOverseasByGenre => RegionWithoutStyle("해외");
+    [JsonIgnore] public bool SplitsOverseasByGenre => RegionWithoutStyle("해외");
     /// <summary>한국 플레이리스트에 레시피 이름을 안 붙였으면 한국 발매작은 '한국음악' 하나로</summary>
-    public bool KoreanAsOneRecipe => RegionWithoutStyle("한국");
+    [JsonIgnore] public bool KoreanAsOneRecipe => RegionWithoutStyle("한국");
 
     private bool RegionWithoutStyle(string region)
     {

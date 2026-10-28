@@ -540,7 +540,8 @@ class Service:
         x = train.preprocess(e[None, :], self.mean)[0]
         res = {}
         for name, (coef, icpt, classes) in self.heads.items():
-            res[name] = {c: round(float(p), 4) for c, p in zip(classes, softmax(coef @ x + icpt))}
+            # 지역을 하나도 고르지 않았으면(모두 '섞임') 지역 확률은 비워 둔다
+            res[name] = {c: round(float(p), 4) for c, p in zip(classes, softmax(coef @ x + icpt))} if classes else {}
         if self.style_effnet is not None and key is not None and (ef := self.album_effnet.get(key)) is not None:
             coef, icpt, classes, emean, scale = self.style_effnet
             xs = np.concatenate([x, scale * train.preprocess(ef[None, :], emean)[0]])

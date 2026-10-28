@@ -71,7 +71,7 @@ public static class TasteProfile
             var (home, n) = kv.Value.MaxBy(x => x.Value);
             var entry = config.Playlists[home];
             IReadOnlySet<string> set = titles.TryGetValue(kv.Key, out var s) ? s : new HashSet<string>();
-            return new PlaylistArtist(kv.Key, home, entry.Style, entry.Region, kv.Value.Values.Sum(), set);
+            return new PlaylistArtist(kv.Key, home, entry.Style, entry.Region ?? "", kv.Value.Values.Sum(), set);
         }).OrderByDescending(a => a.Tracks)];
     }
 

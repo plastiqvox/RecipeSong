@@ -412,7 +412,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var p = CurrentPeriod;
             // 저장된 결과를 꺼낸 건지 방금 분석한 건지 탭과 상관없이 보이게
-            var source = RecSavedNote.Length > 0 ? RecSavedNote : L.T("내 레시피 기준으로 소리를 듣고 골랐어요");
+            var source = RecSavedNote.Length > 0 ? RecSavedNote
+                : IsTrained ? L.T("내 레시피 기준으로 소리를 듣고 골랐어요") : L.T("아직 학습 전이라 아티스트 연결로만 골랐어요");
             return L.F("{0:yyyy.M.d} – {1:M.d} 발매 · {2}", p.Start, p.End.AddDays(-1), source);
         }
     }
@@ -691,8 +692,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var e = _crates.Playlists[g.Key];
             var crate = e.Style ?? (e.Region == "한국" && _recommender.KoreanAsOneRecipe ? ReleaseRecommender.KoreanCrate
-                : e.Region == "해외" && _recommender.SplitOverseasByGenre ? $"{e.Region} (genre split by Deezer)" : $"{e.Region} (picked by sound)");
-            return $"- playlist {g.Key} → crate {crate}, region {e.Region}: " +
+                : e.Region == "해외" && _recommender.SplitOverseasByGenre ? $"{e.Region} (genre split by Deezer)" : $"{e.Region ?? "mixed"} (picked by sound)");
+            return $"- playlist {g.Key} → crate {crate}, region {e.Region ?? "mixed"}: " +
                    string.Join(", ", g.OrderByDescending(m => m.Tracks).Take(10).Select(m => m.Artist));
         }));
         var signals = new[]
@@ -1518,11 +1519,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         BuildTasteExtras(tracks);
         // 다른 사람 라이브러리: 레시피 설정(만든 사람의 플레이리스트 이름)에 맞는 플레이리스트가 하나도 없으면 먼저 레시피를 고르게 한다
         var playlists = await _library.GetPlaylistsAsync(_life.Token);
-        if (_crates.Matching(playlists.Select(p => p.Name)) == 0) await OpenRecipeSetupAsync(firstRun: true);
+        _playlistNames = [.. playlists.Select(p => p.Name)];
+        if (_crates.Matching(_playlistNames) == 0) await OpenRecipeSetupAsync(firstRun: true);
         await LoadAsync();
     }
 
     // ---- 레시피 설정 (플레이리스트 → 레시피 이름 · 지역) ----
+    /// <summary>이 라이브러리의 플레이리스트 이름 (학습 전 칩: 레시피 설정 중 이 라이브러리에 있는 것만)</summary>
+    private IReadOnlyList<string> _playlistNames = [];
+
     private string MlDirectory => _sound?.MlDirectory ?? _settings.MlDirectory ?? SoundService.FindMlDirectory() ?? ".";
 
     /// <summary>해외·한국을 Deezer 장르 / '한국음악' 하나로 나누는 규칙은 레시피 설정을 따른다 (그 지역 플레이리스트에 레시피 이름이 없을 때만)</summary>
@@ -2326,10 +2331,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (!s.Trained)
         {
             // 처음 설치: 레시피 설정의 이름으로 칩 순서만 잡고 '학습 시작'을 보인다 (그때까지는 아티스트 연결만으로 추천)
-            _crateOrder = RecipeOrder(_crates.Playlists.Values.Select(e => e.Style).OfType<string>().Distinct());
+            // 레시피 설정을 아직 안 했으면(만든 사람의 예시 설정) 그 이름은 칩으로 쓰지 않는다
+            _crateOrder = RecipeOrder(_crates.Playlists.Where(kv => _playlistNames.Contains(kv.Key))
+                .Select(kv => kv.Value.Style).OfType<string>().Distinct());
             ModelDevice = s.Gpu != null ? "GPU" : s.Device.ToUpperInvariant();
             ModelTitle = L.T("아직 학습 전");
-            ModelSub = L.F("레시피 플레이리스트의 소리를 분석해 학습해요. 처음 한 번, 라이브러리 {0:N0}곡이면 GPU로 1시간 안팎", s.Library);
+            // 걸리는 시간: 남은 곡 기준 (GPU 로 1분에 250곡 안팎, CPU 는 훨씬 느리다)
+            int minutes = Math.Max(1, (int)Math.Ceiling(s.NewTracks / 250.0));
+            ModelSub = s.Gpu != null
+                ? L.F("레시피 플레이리스트의 소리를 분석해 학습해요. 처음 한 번, {0:N0}곡 · GPU로 {1}분 안팎", s.NewTracks, minutes)
+                : L.F("레시피 플레이리스트의 소리를 분석해 학습해요. 처음 한 번, {0:N0}곡 · GPU가 없어 오래 걸려요", s.NewTracks);
             UpdateText = s.Embedded > 0 ? L.F("분석해 둔 {0:N0}곡에서 이어서 해요", s.Embedded) : "";
             HasUpdate = true;
             ApplyFilters();

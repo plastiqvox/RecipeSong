@@ -27,14 +27,14 @@
                 <TextBlock x:Name="Intro" Style="{StaticResource MutedText}" Margin="0,6,0,0" TextWrapping="Wrap"
                            Text="{local:Tr '내 플레이리스트를 레시피로 써요. 레시피는 소리로 배울 묶음(예: 일본 인디, Jazz)이고, 지역은 그 플레이리스트 음악이 나온 곳이에요. 발매작은 레시피별로 나뉘고, 플레이리스트에 있는 뮤지션의 발매작은 항상 나와요.'}"/>
                 <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"
-                           Text="{local:Tr '레시피 이름을 비우면 지역만 배워요 (해외는 Deezer 장르로, 한국은 \'한국음악\' 하나로 나눠요). 고른 플레이리스트 두 곳 이상에 들어 있는 곡은 학습에서 빠져요. 15곡 이상인 플레이리스트만 보여요.'}"/>
+                           Text="{local:Tr '레시피 이름을 비우면 지역만 배워요 (해외는 Deezer 장르로, 한국은 \'한국음악\' 하나로 나눠요). 여러 나라가 섞인 플레이리스트는 지역을 \'섞임\'으로 두세요. 고른 플레이리스트 두 곳 이상에 들어 있는 곡은 학습에서 빠져요. 15곡 이상인 플레이리스트만 보여요.'}"/>
 
                 <!-- 머리줄 -->
                 <Grid Margin="0,20,0,6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition/>
                         <ColumnDefinition Width="200"/>
-                        <ColumnDefinition Width="260"/>
+                        <ColumnDefinition Width="330"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="{local:Tr '플레이리스트'}" Style="{StaticResource Kicker}"/>
                     <TextBlock Grid.Column="1" Text="{local:Tr '레시피 이름'}" Style="{StaticResource Kicker}" Margin="12,0,0,0"/>
