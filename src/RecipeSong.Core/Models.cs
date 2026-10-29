@@ -166,3 +166,9 @@ public sealed record AlbumArt(string? ArtworkUrl, long? DeezerAlbumId = null);
 
 /// <summary>앨범 수록곡 한 곡 (Deezer). Preview는 30초 미리듣기 URL, Rank는 Deezer 인기 점수 (0~1,000,000).</summary>
 public sealed record AlbumTrack(int Number, string Title, string? Artist, TimeSpan Duration, string? Preview, int Rank = 0, long Id = 0);
+
+/// <summary>소리 서비스 요청 줄의 상태: 차례 기다림 · 처리 중 · 앱에서 멈췄지만 서비스가 끝내는 중</summary>
+public enum SoundJobState { Waiting, Running, Orphan }
+
+/// <summary>소리 서비스 요청 하나 (cmd: score_albums · update · favorites · track_near …, Message: 마지막 진행 문구)</summary>
+public sealed record SoundJob(string Cmd, SoundJobState State, string Message);

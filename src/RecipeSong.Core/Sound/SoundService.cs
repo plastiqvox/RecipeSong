@@ -20,7 +20,27 @@ public sealed class SoundService : IAsyncDisposable
     private Process? _proc;
     private int _nextId;
 
-    private sealed record Pending(TaskCompletionSource<JsonElement> Done, IProgress<string>? Progress);
+    private sealed record Pending(TaskCompletionSource<JsonElement> Done, IProgress<string>? Progress, QueueEntry Entry);
+
+    /// <summary>
+    /// 요청 줄 (디버그 순서도의 '소리 서비스' 칸): 차례를 기다리는 것 · 처리 중인 것 · 앱에서 멈췄지만 서비스가 아직 끝내는 중인 것.
+    /// 서비스는 요청을 하나씩 처리하므로 이 줄이 미리듣기·분석이 기다리는 이유다
+    /// </summary>
+    private sealed class QueueEntry(long ticket, string cmd)
+    {
+        public long Ticket { get; } = ticket;
+        public string Cmd { get; } = cmd;
+        public volatile SoundJobState State = SoundJobState.Waiting;
+        public volatile string Message = "";
+    }
+    private readonly ConcurrentDictionary<long, QueueEntry> _queue = new();
+    private long _ticket;
+
+    /// <summary>지금 줄 (먼저 온 것부터)</summary>
+    public IReadOnlyList<SoundJob> Queue => [.. _queue.Values.OrderBy(e => e.Ticket).Select(e => new SoundJob(e.Cmd, e.State, e.Message))];
+
+    /// <summary>서비스를 처음 띄우는 중일 때 진행 문구</summary>
+    public static string StartingText => L.T("소리 서비스 시작 중 (처음 한 번 모델을 읽어요)");
 
     public static string LogPath => Path.Combine(CacheLocation.Directory, "sound-service.log");
 
@@ -208,24 +228,42 @@ public sealed class SoundService : IAsyncDisposable
             .Select(a => (a.GetProperty("id").GetInt64(), a.GetProperty("sim").GetDouble(), a.GetProperty("like").GetInt64()))];
     }
 
-    /// <summary>다른 요청을 처리하는 중 (요청은 한 번에 하나씩 — 새 요청은 줄을 선다)</summary>
-    public bool IsBusy => _serial.CurrentCount == 0;
+    /// <summary>
+    /// 다른 요청을 처리하는 중 (요청은 한 번에 하나씩 — 새 요청은 줄을 선다).
+    /// 앱에서 취소한 요청도 서비스는 끝까지 처리하므로(답이 올 때까지 _pending 에 남는다) 그것도 바쁜 것으로 본다
+    /// </summary>
+    public bool IsBusy => _serial.CurrentCount == 0 || _pending.Values.Any(p => p.Done.Task.IsCanceled);
+
+    /// <summary>앞 요청 때문에 차례를 기다릴 때 진행 문구 (디버그 순서도 창이 이 문구로 '차례 기다림'을 표시한다)</summary>
+    public static string WaitingText => L.T("소리 서비스가 앞 요청을 처리하는 중 · 차례를 기다려요");
 
     private async Task<JsonElement> CallAsync(string cmd, object? args, IProgress<string>? progress, CancellationToken ct)
     {
-        await StartAsync(ct);
-        await _serial.WaitAsync(ct);
+        var entry = new QueueEntry(Interlocked.Increment(ref _ticket), cmd);
+        _queue[entry.Ticket] = entry;
+        bool acquired = false;
         try
         {
+            if (_proc == null || !_ready.Task.IsCompleted) progress?.Report(StartingText);
+            await StartAsync(ct);
+            if (IsBusy) progress?.Report(WaitingText);
+            await _serial.WaitAsync(ct);
+            acquired = true;
+            entry.State = SoundJobState.Running;
             int id = Interlocked.Increment(ref _nextId);
-            var pending = new Pending(new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously), progress);
+            var pending = new Pending(new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously), progress, entry);
             _pending[id] = pending;
             var line = JsonSerializer.Serialize(new { id, cmd, args });
             await _proc!.StandardInput.WriteLineAsync(line.AsMemory(), ct);
-            using var reg = ct.Register(() => pending.Done.TrySetCanceled(ct));
+            // 앱에서 멈춰도 서비스는 이 요청을 끝까지 처리한다 → 답이 올 때까지 줄에 '멈춘 요청 마무리'로 남긴다
+            using var reg = ct.Register(() => { if (pending.Done.TrySetCanceled(ct)) entry.State = SoundJobState.Orphan; });
             return await pending.Done.Task;
         }
-        finally { _serial.Release(); }
+        finally
+        {
+            if (acquired) _serial.Release();
+            if (entry.State != SoundJobState.Orphan) _queue.TryRemove(entry.Ticket, out _);
+        }
     }
 
     private async Task ReadStdoutAsync()
@@ -242,11 +280,16 @@ public sealed class SoundService : IAsyncDisposable
                 if (ev.GetString() == "ready") _ready.TrySetResult();
                 else if (msg.TryGetProperty("id", out var pid) && pid.ValueKind == JsonValueKind.Number
                          && _pending.TryGetValue(pid.GetInt32(), out var p))
-                    p.Progress?.Report(msg.GetProperty("message").GetString() ?? "");
+                {
+                    var text = msg.GetProperty("message").GetString() ?? "";
+                    p.Entry.Message = text;
+                    p.Progress?.Report(text);
+                }
                 continue;
             }
             if (!msg.TryGetProperty("id", out var idEl) || idEl.ValueKind != JsonValueKind.Number) continue;
             if (!_pending.TryRemove(idEl.GetInt32(), out var done)) continue;
+            _queue.TryRemove(done.Entry.Ticket, out _);
             if (msg.GetProperty("ok").GetBoolean()) done.Done.TrySetResult(msg.GetProperty("result"));
             else done.Done.TrySetException(new InvalidOperationException(msg.GetProperty("error").GetString()));
         }
@@ -255,6 +298,7 @@ public sealed class SoundService : IAsyncDisposable
         _ready.TrySetException(err);
         foreach (var p in _pending.Values) p.Done.TrySetException(err);
         _pending.Clear();
+        _queue.Clear();
     }
 
     private async Task ReadStderrAsync()

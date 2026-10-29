@@ -136,6 +136,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
         options ??= new RecommendOptions();
+        Step(progress, RecStage.Mine);
         var suggestions = seeds.Count > 0 ? await SuggestionsAsync(seeds, options, progress, ct) : [];
         if (mine is not { Count: > 0 }) return new CandidatePool(suggestions, DateTime.Now);
 
@@ -160,6 +161,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
     /// </summary>
     public async Task RefreshMineAsync(IReadOnlyList<PlaylistArtist> mine, IProgress<string>? progress = null, CancellationToken ct = default)
     {
+        Step(progress, RecStage.Mine);
         var todo = mine.Where(m =>
         {
             var key = ListeningAnalyzer.NormalizeArtist(m.Artist);
@@ -194,17 +196,18 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                     _discography.Set(i.ToString(), [.. await deezer.ArtistAlbumsAsync(i, ct)]);
     
                 int d = Interlocked.Increment(ref done);
-                if (d % 25 == 0) progress?.Report(L.F("라이브러리 뮤지션 {0}/{1}", d, todo.Count));
+                if (d % 25 == 0) progress?.Report(L.F("아카이브 뮤지션 {0}/{1}", d, todo.Count));
                 if (d % 250 == 0) SaveCaches();
             });
         }
-        finally { SaveCaches(); }
+        finally { SaveCaches(); Step(progress, RecStage.Done); }
     }
 
     private async Task<List<PoolArtist>> SuggestionsAsync(
         IReadOnlyList<TasteArtist> seeds, RecommendOptions options, IProgress<string>? progress, CancellationToken ct)
     {
         // 1) 시드 → 비슷한 아티스트 2단계
+        Step(progress, RecStage.Seeds);
         progress?.Report(L.T("취향 아티스트 찾는 중…"));
         var seedIds = (await Task.WhenAll(seeds.Select(async s => (s, id: await ArtistIdAsync(s.Artist, ct)))))
             .Where(x => x.id != null).Select(x => (x.s, id: x.id!.Value)).ToList();
@@ -213,6 +216,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         foreach (var (s, id) in seedIds)
             Add(cands, id, s.Artist, s.Weight, s.Artist);
 
+        Step(progress, RecStage.Related);
         progress?.Report(L.T("비슷한 아티스트 모으는 중…"));
         var hop1 = new List<(DzArtist a, double score, string seed)>();
         foreach (var (s, rel) in await Task.WhenAll(seedIds.Select(async x => (x.s, rel: await RelatedAsync(x.id, 25, ct)))))
@@ -234,6 +238,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
 
         // 2) 기간 내 발매작
         var pool = cands.Values.OrderByDescending(c => c.Score).Take(options.MaxArtists).ToList();
+        Step(progress, RecStage.Discography);
         int done = 0;
         var discos = await Task.WhenAll(pool.Select(async c =>
         {
@@ -255,6 +260,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         RecommendOptions? options = null, IProgress<string>? progress = null, CancellationToken ct = default)
     {
         options ??= new RecommendOptions();
+        Step(progress, RecStage.Releases);
         var inPeriod = pool.Artists
             .SelectMany(c => c.Albums
                 .Where(a => a.Released is { } d && period.Contains(d) && a.RecordType != "compile")
@@ -271,15 +277,17 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             .OrderByDescending(x => x.c.Score * TypeWeight(x.a.RecordType))
             .Take(options.MaxScored).ToList();
         var hits = mineHits.Concat(others).ToList();
-        if (hits.Count == 0) return new RecommendationResult(period, [], false);
+        if (hits.Count == 0) { Step(progress, RecStage.Done); return new RecommendationResult(period, [], false); }
 
         // 연·월 단위면 라이브러리 뮤지션 발매작이 수백 장이라 앞쪽만 소리를 듣는다
         var toScore = mineHits.Take(options.MaxMineScored).Concat(others).Select(h => h.a.Id).ToList();
+        progress?.Report(L.F("그 기간 발매작 {0}장 · 소리를 들을 {1}장 (아카이브 뮤지션 + 연결 점수 상위)", inPeriod.Count, toScore.Count));
         var (recs, heardAny) = await ScoreHitsAsync(hits, toScore, owned, options, progress, ct);
         // 차단 레이블은 레이블을 알게 된 뒤에 뺀다
         if (options.BlockedLabels.Count > 0)
             recs.RemoveAll(r => RecipeSong.Core.LabelAffinity.Keys(r.Label).Any(options.BlockedLabels.Contains));
         progress?.Report(L.F("추천 {0}장", recs.Count));
+        Step(progress, RecStage.Done);
         return new RecommendationResult(period,
             [.. recs.OrderByDescending(r => r.FromPlaylist != null).ThenByDescending(r => r.Score)],
             heardAny);
@@ -295,6 +303,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         IProgress<string>? progress = null, CancellationToken ct = default,
         Action<IReadOnlyList<ReleaseRecommendation>>? matched = null)
     {
+        Step(progress, RecStage.AiCheck);
         progress?.Report(L.F("AI가 찾은 {0}장 Deezer에서 확인 중…", picks.Count));
         var found = await Task.WhenAll(picks.Select(async p => (p, m: await MatchAiPickAsync(p, period, ct))));
         foreach (var (p, m) in found)
@@ -325,13 +334,14 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             };
         }
         List<ReleaseRecommendation> otherWeeks = [.. others.Select(h => WithAi(Bare(h.c, h.a)))];
-        if (hits.Count == 0) return ([], picks.Count - accepted, otherWeeks);
+        if (hits.Count == 0) { Step(progress, RecStage.Done); return ([], picks.Count - accepted, otherWeeks); }
         matched?.Invoke([.. hits.Select(h => WithAi(Bare(h.c, h.a)))]);
         var options = new RecommendOptions();
         var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, options, progress, ct);
         // 내 곡과 닮지 않은 앨범도 점수와 함께 저장한다 (화면에서 TasteOk 로 숨긴다 — 다시 찾거나 다시 점수 매기지 않게)
         foreach (var r in recs.Where(r => !TasteOk(r, options)))
             AiDebugLog.Write(byAlbum[r.DeezerAlbumId][0].By, $"숨김 {r.Artist} – {r.Album}: 내 곡과 닮음 {r.Taste:F3} < {options.MinOutsideTaste:F2}");
+        Step(progress, RecStage.Done);
         return ([.. recs.Select(WithAi).OrderByDescending(r => r.Score)], picks.Count - accepted, otherWeeks);
     }
 
@@ -356,6 +366,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             a: new DzAlbum(r.DeezerAlbumId, r.Album, r.CoverUrl, r.ReleaseDate.ToString("yyyy-MM-dd"), r.RecordType, r.Link))).ToList();
         hits = [.. hits.Select(h => (h.c with { Albums = [h.a] }, h.a))];
         var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, new RecommendOptions(), progress, ct);
+        Step(progress, RecStage.Done);
         var byId = bare.ToDictionary(r => r.DeezerAlbumId);
         return [.. recs.Select(r => byId.TryGetValue(r.DeezerAlbumId, out var o)
             ? r with { AiReason = o.AiReason, AiBy = o.AiBy, BecauseOf = o.BecauseOf, SourceUrl = o.SourceUrl } : r)];
@@ -418,6 +429,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
     public async Task<List<ReleaseRecommendation>> FollowedAsync(IReadOnlyList<PlaylistArtist> follows, OwnedLibrary owned, Period period,
         RecommendOptions options, IProgress<string>? progress = null, CancellationToken ct = default)
     {
+        Step(progress, RecStage.Follow);
         var hits = new List<(PoolArtist c, DzAlbum a)>();
         foreach (var f in follows.Where(f => f.DeezerId != 0))
         {
@@ -428,8 +440,10 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                 .DistinctBy(a => a.Id).Select(a => (c, a)));
         }
         SaveCaches();
-        if (hits.Count == 0) return [];
+        Step(progress, RecStage.Releases);
+        if (hits.Count == 0) { Step(progress, RecStage.Done); return []; }
         var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, options, progress, ct);
+        Step(progress, RecStage.Done);
         return recs;
     }
 
@@ -454,6 +468,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         // 3) 소리 분석 (레이블·장르도 같이 온다)
         IReadOnlyDictionary<long, AlbumSound> sounds = new Dictionary<long, AlbumSound>();
         var detailed = toScore.ToHashSet();
+        Step(progress, RecStage.Listen);
         if (sound != null)
         {
             progress?.Report(L.F("미리듣기 소리 확인 중… ({0}장 · 이미 들은 앨범은 바로 넘어가요)", toScore.Count));
@@ -463,6 +478,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                 progress?.Report(L.F("소리 분석을 건너뜀: {0}", ex.Message));
             }
         }
+        Step(progress, RecStage.Score);
         // 소리 서비스 결과가 없으면 레이블·장르만 직접 조회 (캐시, 많을 때는 캐시에 있는 것만)
         var infos = await Task.WhenAll(hits.Select(async h =>
             sounds.TryGetValue(h.a.Id, out var s) ? new AlbumInfo(s.Label, s.Genre, s.With)
@@ -520,6 +536,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         }
 
         // 5) 칸 (장르 묶음)
+        Step(progress, RecStage.Genre);
         var groups = await GroupsAsync(hits, infos, heard, scores, options, progress, ct);
 
         var recs = new List<ReleaseRecommendation>();
@@ -598,6 +615,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
         if (genres is not { Enabled: true }) return 0;
+        Step(progress, RecStage.Genre);
         var todo = new List<ReleaseRecommendation>();
         foreach (var r in recs.OrderByDescending(r => r.Score).DistinctBy(r => r.DeezerAlbumId))
         {
@@ -610,6 +628,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             if (i % 20 == 19) { genres.Save(); progress?.Report(L.F("장르 확인 {0}/{1}", i + 1, todo.Count)); }
         }
         genres.Save();
+        Step(progress, RecStage.Done);
         return todo.Count;
     }
 
@@ -648,6 +667,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         double mean = xs.Average(), sd = Math.Sqrt(xs.Average(x => (x - mean) * (x - mean)));
         return [.. xs.Select(x => sd < 1e-9 ? 0 : (x - mean) / sd)];
     }
+
+    /// <summary>디버그 순서도 창에 지금 단계를 알린다 (progress 가 IStageProgress 일 때만)</summary>
+    private static void Step(IProgress<string>? progress, RecStage stage) => (progress as IStageProgress)?.Stage(stage);
 
     private static double TypeWeight(string? type) => type switch
     {

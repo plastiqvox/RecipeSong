@@ -16,8 +16,10 @@ public sealed class AppSettings
     public string? UvPath { get; set; }
     /// <summary>화면 언어 (ko / en). 비우면 Windows 표시 언어를 따른다.</summary>
     public string? Language { get; set; }
-    /// <summary>iTunes에 곡이 추가되면 자동으로 소리 분석 + 취향 모델 재학습</summary>
+    /// <summary>내 아카이브(iTunes 라이브러리)에 곡이 추가되면 자동으로 소리 분석 + 취향 모델 재학습</summary>
     public bool AutoRetrain { get; set; } = true;
+    /// <summary>디버그: 추천을 계산할 때 순서도 창을 띄워 지금 단계를 보여 준다</summary>
+    public bool DebugPipeline { get; set; }
 
     /// <summary>시험용: 이 환경 변수가 있으면 설정·캐시를 그 폴더(settings.json, cache\)에서 쓴다 — 쓰고 있는 앱 데이터를 건드리지 않고 UI 시험</summary>
     public static string? TestDataDir => Environment.GetEnvironmentVariable("RECIPESONG_DATA") is { Length: > 0 } d ? d : null;

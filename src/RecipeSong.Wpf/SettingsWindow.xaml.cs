@@ -5,7 +5,7 @@ using RecipeSong.Core;
 
 namespace RecipeSong.Wpf;
 
-/// <summary>앱 설정 (톱니 버튼): 언어 · iTunes 라이브러리 · 자동 분석 · 장르 정보 키 · 저장 위치와 용량. 추천 방식은 '추천 설정' 창에 따로.</summary>
+/// <summary>앱 설정 (톱니 버튼): 언어 · iTunes 라이브러리 · 자동 분석 · 장르 정보 키 · 디버그 · 저장 위치와 용량. 추천 방식은 '추천 설정' 창에 따로.</summary>
 public partial class SettingsWindow : Window
 {
     private readonly AppSettings _app;
@@ -26,6 +26,9 @@ public partial class SettingsWindow : Window
         AutoRetrainBox.IsChecked = vm.AutoUpdate;
         AutoRetrainBox.Checked += (_, _) => vm.AutoUpdate = true;
         AutoRetrainBox.Unchecked += (_, _) => vm.AutoUpdate = false;
+        DebugPipelineBox.IsChecked = vm.DebugPipeline;
+        DebugPipelineBox.Checked += (_, _) => vm.DebugPipeline = true;
+        DebugPipelineBox.Unchecked += (_, _) => vm.DebugPipeline = false;
         ShowLanguages();
         ShowLibrary();
         ShowGenreKeys();

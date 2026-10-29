@@ -35,7 +35,7 @@
 
 - 진한 날일수록 내 취향 발매작이 많은 날. 분석해 둔 기간(회색 선), AI가 찾은 날(Claude 주황 · GPT 초록 점), 웹진 소개(보라 점), 팔로우 아티스트 발매(★)가 한눈에 보인다.
 - 한 번 계산한 기간은 저장해 두고 바로 연다. 오래된 결과도 먼저 보여 주고 뒤에서 새로 계산한다.
-- 지난 해도 그대로 고를 수 있다. 연 보기는 "정밀 분석"으로 월 단위로 쪼개 촘촘하게.
+- 지난 해도 그대로 고를 수 있다. 월·연 보기는 "주별로 촘촘히 계산"으로 주 단위로 쪼개 촘촘하게 (이미 계산한 주는 건너뛴다).
 
 ### 더 넓게 찾고 싶을 때
 
@@ -45,7 +45,7 @@
 
 ## 주요 기능
 
-- **탭**: 추천 발매작 · 내 라이브러리(그 기간에 나온, 내가 가진 앨범) · 저장함 · 관심 없음.
+- **탭**: 추천 발매작 · 내 아카이브(그 기간에 나온, 내가 가진 앨범) · 저장함 · 관심 없음.
 - **필터**: 장르 칩(끌어서 순서 변경), 형식(앨범·EP·싱글). 전체 보기는 칸마다 6장, "전체 N장 보기"로 펼친다.
 - **학습 신호**: 저장 · 좋아요(앨범·곡) · 관심 없음 · 차단 사유(소리 때문인지)가 다음 추천에 바로 들어간다. 관심 없음·차단은 10초 안에 되돌릴 수 있다.
 - **추천 설정**: 추천 양(기본/많이/최대), 모험 정도(익숙하게/보통/새롭게), 앨범에서 들을 곡(전곡/인기곡 3곡), 아는 아티스트 빼기, 인스트루멘털 버전 빼기, 팔로우·차단 목록.
@@ -66,6 +66,7 @@
 dotnet run --project src/RecipeSong.Wpf
 ```
 
+- 저장소의 `run-dev.cmd` 를 더블클릭해도 같다. 설치판과 캐시·설정을 같이 쓰므로 설치판이 켜져 있으면 실행하지 않는다.
 - Windows 전용 (WPF, .NET 9).
 - iTunes 라이브러리(`Music\iTunes\iTunes Music Library.xml`)는 자동으로 찾는다. 없으면 처음에 한 번 묻는다.
 - 소리 분석 서비스는 `ml/` 폴더와 `uv`가 있으면 앱이 띄운다. 없으면 아티스트 연결만으로 추천한다.
@@ -113,7 +114,7 @@ ml/
 ```powershell
 $env:CRATE_ITUNES_XML = "C:\Users\<me>\Music\iTunes\iTunes Music Library.xml"
 dotnet run --project src/RecipeSong.Cli -- status
-dotnet run --project src/RecipeSong.Cli -- recommend 2026-W43 --region 해외 --type album --top 5
+dotnet run --project src/RecipeSong.Cli -- recommend 2026-W43 --crate 인디·록 --type album --top 5
 ```
 
 캐시와 로그: `%LOCALAPPDATA%\RecipeSong\` (`sound-service.log`는 소리 분석 서비스 로그).
