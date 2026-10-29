@@ -39,11 +39,15 @@ public partial class SettingsWindow : Window
     private void ShowGenreKeys()
     {
         var s = _vm.GenreSettings;
+        // 앱에 키가 들어 있으면 Last.fm 칸은 숨긴다 (예전에 직접 넣은 키가 있으면 지울 수 있게 칸을 둔다)
+        bool builtIn = RecipeSong.Core.Providers.GenreSourceSettings.BuiltInLastFmKey.Length > 0 && !s.HasStoredLastFmKey;
+        LastFmField.Visibility = builtIn ? Visibility.Collapsed : Visibility.Visible;
+        LastFmBuiltIn.Visibility = builtIn ? Visibility.Visible : Visibility.Collapsed;
         LastFmStored.Visibility = s.HasStoredLastFmKey && LastFmBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         DiscogsStored.Visibility = s.HasStoredDiscogsToken && DiscogsBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         GenreKeyStatus.Text = s.LastFmKey == null && s.DiscogsToken == null
             ? L.T("키가 없으면 Deezer 장르와 소리로만 나눠요.")
-            : s.HasStoredLastFmKey || s.DiscogsToken != null ? "" : L.T("앱에 들어 있는 Last.fm 키를 써요.");
+            : "";
         LastFmBox.PasswordChanged -= GenreBox_Changed;
         LastFmBox.PasswordChanged += GenreBox_Changed;
         DiscogsBox.PasswordChanged -= GenreBox_Changed;

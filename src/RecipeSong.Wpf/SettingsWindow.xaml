@@ -75,12 +75,17 @@
                 <TextBlock Text="{local:Tr '장르 정보'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
                 <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"
                            Text="{local:Tr '추천을 장르 칸으로 나눌 때 Last.fm 태그를 먼저 보고, 없으면 Discogs, 그다음 Deezer 장르, 그래도 모르면 소리가 닮은 앨범을 따라가요. 키는 이 PC의 Windows 계정으로 암호화해 저장해요.'}"/>
-                <TextBlock Text="{local:Tr 'Last.fm API 키'}" FontSize="13" Foreground="{StaticResource Text2}" Margin="0,0,0,4"/>
-                <Grid>
-                    <PasswordBox x:Name="LastFmBox" Style="{StaticResource Field}" AutomationProperties.Name="{local:Tr 'Last.fm API 키'}"/>
-                    <TextBlock x:Name="LastFmStored" Text="{local:Tr '저장한 키 사용 중 ••••••••'}" Style="{StaticResource MutedText}" FontSize="13"
-                               Margin="12,0" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed"/>
-                </Grid>
+                <!-- 앱에 Last.fm 키가 들어 있으면(secrets/lastfm.key 로 빌드) 칸 대신 한 줄. 키 없이 빌드했거나 예전에 넣은 키가 있으면 칸을 보인다 -->
+                <TextBlock x:Name="LastFmBuiltIn" Text="{local:Tr 'Last.fm은 앱에 들어 있는 키를 써요 (장르 태그 · 비슷한 아티스트).'}"
+                           FontSize="13" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,0,0,4" Visibility="Collapsed"/>
+                <StackPanel x:Name="LastFmField">
+                    <TextBlock Text="{local:Tr 'Last.fm API 키'}" FontSize="13" Foreground="{StaticResource Text2}" Margin="0,0,0,4"/>
+                    <Grid>
+                        <PasswordBox x:Name="LastFmBox" Style="{StaticResource Field}" AutomationProperties.Name="{local:Tr 'Last.fm API 키'}"/>
+                        <TextBlock x:Name="LastFmStored" Text="{local:Tr '저장한 키 사용 중 ••••••••'}" Style="{StaticResource MutedText}" FontSize="13"
+                                   Margin="12,0" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed"/>
+                    </Grid>
+                </StackPanel>
                 <TextBlock Text="{local:Tr 'Discogs 개인 토큰 (선택)'}" FontSize="13" Foreground="{StaticResource Text2}" Margin="0,10,0,4"/>
                 <Grid>
                     <PasswordBox x:Name="DiscogsBox" Style="{StaticResource Field}" AutomationProperties.Name="{local:Tr 'Discogs 개인 토큰'}"/>
