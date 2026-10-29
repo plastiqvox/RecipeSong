@@ -227,6 +227,30 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                 hop1.Add((rel[i], sc, s.Artist));
             }
 
+        // Last.fm 비슷한 아티스트도 1단계에 더한다 (키가 있을 때). Deezer 연관과 겹치면 점수가 더해져 위로 올라간다.
+        // 2단계(넓히기)는 Deezer 만: Last.fm 이름은 Deezer 아티스트로 찾아 이어야 해서 2단계까지 하면 처음 한 번이 몇 분 걸린다
+        if (genres?.HasLastFm == true)
+        {
+            var known = hop1.Select(h => h.a).Concat(seedIds.Select(x => new DzArtist(x.id, x.s.Artist, null, null)))
+                .GroupBy(a => ListeningAnalyzer.NormalizeArtist(a.Name)).ToDictionary(g => g.Key, g => g.First());
+            int nf = 0;
+            foreach (var (s, _) in seedIds)
+            {
+                if (++nf % 10 == 0) progress?.Report(L.F("Last.fm 비슷한 아티스트 {0}/{1}", nf, seedIds.Count));
+                var sim = await genres.SimilarArtistsAsync(s.Artist, LastFmSimilarLimit, ct);
+                for (int i = 0; i < sim.Count; i++)
+                {
+                    var a = known.GetValueOrDefault(ListeningAnalyzer.NormalizeArtist(sim[i].Name)) ?? await ExactArtistAsync(sim[i].Name, ct);
+                    if (a == null) continue;
+                    // 순위와 Last.fm 닮음 점수를 같이 본다 (Deezer 연관은 순위만: 1 → 0.3)
+                    double sc = s.Weight * (1 - 0.7 * i / sim.Count) * (0.5 + 0.5 * Math.Clamp(sim[i].Match, 0, 1));
+                    Add(cands, a.Id, a.Name, sc, s.Artist, a.Fans);
+                    hop1.Add((a, sc, s.Artist));
+                }
+            }
+            genres.Save();
+        }
+
         var hop2Seeds = hop1.OrderByDescending(h => h.score).DistinctBy(h => h.a.Id).Take(options.Hop2Seeds).ToList();
         int n2 = 0;
         foreach (var (h, rel) in await Task.WhenAll(hop2Seeds.Select(async h => (h, rel: await RelatedAsync(h.a.Id, 15, ct)))))
@@ -657,6 +681,20 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
     private Task<List<DzArtist>> RelatedAsync(long id, int limit, CancellationToken ct) =>
         _related.GetOrAddAsync($"{id}:{limit}", async () => [.. await deezer.RelatedArtistsAsync(id, limit, ct)]);
 
+    /// <summary>시드 하나에서 물어볼 Last.fm 비슷한 아티스트 수 (이름을 Deezer 에서 찾아야 해서 Deezer 연관 25보다 적게)</summary>
+    private const int LastFmSimilarLimit = 12;
+
+    // Last.fm 이름 → Deezer 아티스트 (이름이 정확히 같은 것만 — 동명이인·다른 사람이 섞이지 않게). 못 찾은 것도 90일 기억한다
+    private readonly JsonCache<DzArtist?> _lastFmArtists = new("lastfm-deezer-artists", TimeSpan.FromDays(90));
+
+    private async Task<DzArtist?> ExactArtistAsync(string name, CancellationToken ct)
+    {
+        var norm = ListeningAnalyzer.NormalizeArtist(name);
+        if (norm.Length == 0) return null;
+        return await _lastFmArtists.GetOrAddAsync(norm, async () =>
+            (await deezer.SearchArtistsAsync(name, ct)).FirstOrDefault(a => ListeningAnalyzer.NormalizeArtist(a.Name) == norm));
+    }
+
     private async Task<long?> ArtistIdAsync(string name, CancellationToken ct) =>
         await _artistIds.GetOrAddAsync(ListeningAnalyzer.NormalizeArtist(name),
             async () => (await deezer.FindArtistAsync(name, ct))?.Id);
@@ -685,6 +723,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         _mineIds.Save();
         _related.Save();
         _discography.Save();
+        _lastFmArtists.Save();
     }
 
     private static void Add(Dictionary<long, Candidate> map, long id, string name, double score, string because, int fans = 0)

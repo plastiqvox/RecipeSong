@@ -119,6 +119,8 @@ public sealed class GenreSources
     private readonly JsonCache<List<string>> _albumTags = new("genre-album-tags", TimeSpan.FromDays(180));
     private readonly JsonCache<List<string>> _artistTags = new("genre-artist-tags", TimeSpan.FromDays(365));
     private readonly JsonCache<List<string>> _discogs = new("genre-discogs", TimeSpan.FromDays(365));
+    // Last.fm 비슷한 아티스트 (후보 모으기에 Deezer 연관과 같이 쓴다). Deezer 연관 캐시와 같은 14일
+    private readonly JsonCache<List<SimilarArtist>> _similar = new("lastfm-similar", TimeSpan.FromDays(14));
     private readonly Throttle _lastFmGate = new(TimeSpan.FromMilliseconds(250));
     private readonly Throttle _discogsGate = new(TimeSpan.FromMilliseconds(1100));
 
@@ -133,6 +135,40 @@ public sealed class GenreSources
     }
 
     public bool Enabled => Settings.LastFmKey != null || Settings.DiscogsToken != null;
+
+    /// <summary>Last.fm 키가 있다 (비슷한 아티스트를 물을 수 있다)</summary>
+    public bool HasLastFm => Settings.LastFmKey != null;
+
+    /// <summary>
+    /// Last.fm 비슷한 아티스트 (artist.getSimilar, 닮음 순). Last.fm 은 청취 기록 전체로 잇기 때문에 Deezer 연관이 약한 인디·한국 아티스트도 잘 잇는다.
+    /// 키가 없거나 실패하면 빈 목록 (네트워크 실패는 캐시하지 않는다)
+    /// </summary>
+    public async Task<IReadOnlyList<SimilarArtist>> SimilarArtistsAsync(string artist, int limit, CancellationToken ct)
+    {
+        if (Settings.LastFmKey is not { } key) return [];
+        var k = $"{ArtistKey(artist)}:{limit}";
+        if (_similar.TryGet(k, out var hit)) return hit;
+        await _lastFmGate.WaitAsync(ct);
+        try
+        {
+            var r = await _http.GetFromJsonAsync<LastFmSimilar>(
+                $"https://ws.audioscrobbler.com/2.0/?method=artist.getsimilar&artist={Esc(artist)}&limit={limit}&autocorrect=1&api_key={key}&format=json", ct);
+            if (r == null) return [];
+            if (r.Error != null)
+            {
+                if (r.Error == 6) _similar.Set(k, []);  // 6: 그런 아티스트 없음
+                return [];
+            }
+            List<SimilarArtist> list = [.. (r.Similar?.Artist ?? [])
+                .Where(a => a.Name is { Length: > 0 })
+                .Select(a => new SimilarArtist(a.Name!, double.TryParse(a.Match, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var m) ? m : 0))];
+            _similar.Set(k, list);
+            return list;
+        }
+        catch (HttpRequestException) { return []; }
+        catch (JsonException) { return []; }
+    }
 
     /// <summary>
     /// 칸을 정할 때까지 차례로 본다: Last.fm 앨범 태그 → 아티스트 태그 → Discogs.
@@ -165,6 +201,7 @@ public sealed class GenreSources
         _albumTags.Save();
         _artistTags.Save();
         _discogs.Save();
+        _similar.Save();
     }
 
     /// <summary>Last.fm 태그 (많이 붙은 순). count 가 10 미만인 태그는 몇 사람만 붙인 것이라 뺀다. 실패하면 null</summary>
@@ -235,8 +272,18 @@ public sealed class GenreSources
     private sealed record LastFmTagList([property: JsonPropertyName("tag")] List<LastFmTag>? Tag);
     private sealed record LastFmTag([property: JsonPropertyName("name")] string Name, [property: JsonPropertyName("count")] int Count);
 
+    private sealed record LastFmSimilar(
+        [property: JsonPropertyName("similarartists")] LastFmSimilarList? Similar,
+        [property: JsonPropertyName("error")] int? Error);
+    private sealed record LastFmSimilarList([property: JsonPropertyName("artist")] List<LastFmSimilarItem>? Artist);
+    // match 는 "0.81" 처럼 문자열로 온다
+    private sealed record LastFmSimilarItem([property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("match")] string? Match);
+
     private sealed record DiscogsSearch([property: JsonPropertyName("results")] List<DiscogsResult>? Results);
     private sealed record DiscogsResult(
         [property: JsonPropertyName("genre")] List<string>? Genre,
         [property: JsonPropertyName("style")] List<string>? Style);
 }
+
+/// <summary>Last.fm 비슷한 아티스트 하나 (Match: 0~1, 1이 가장 닮음)</summary>
+public sealed record SimilarArtist(string Name, double Match);

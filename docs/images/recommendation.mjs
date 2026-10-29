@@ -1,7 +1,7 @@
 // 추천 흐름 그림 원본 (shorts-deck 스킬).
 //   node ~/.claude/skills/shorts-deck/build.mjs docs/images/recommendation.mjs
 // → recommendation-flow.svg, genre-ladder.svg. 추천 방식을 바꾸면 이 파일을 고치고 다시 만든다.
-// tone "focus" 는 2026-10-29 레시피·국적 구분을 빼고 바꾼 곳.
+// tone "focus" 는 0.2 에서 바뀐 곳 (레시피·국적 구분을 빼고 장르 칸으로, 비슷한 아티스트에 Last.fm 을 더함).
 export default (k) => {
   const X = { l: 300, c: 800, r: 1300 };
   const Y = (i) => 90 + i * 165;
@@ -10,7 +10,7 @@ export default (k) => {
   const lib = C(X.c, 0, "내 아카이브 전체", "플레이리스트와 상관없이");
   const base = C(X.l, 1, "내 곡 소리 기준", "하트 1 · 90일+ 안 들은 곡 0", "focus");
   const seed = C(X.c, 1, "시드 아티스트", "곡 가중치 합 상위 80명 + 하트·팔로우", "focus");
-  const similar = C(X.c, 2, "비슷한 아티스트 2단계", "Deezer 연관 · 상위 1,000명");
+  const similar = C(X.c, 2, "비슷한 아티스트 2단계", "Deezer 연관 + Last.fm · 상위 1,000명", "focus");
   const mine = C(X.r, 2, "내 아카이브 뮤지션", "가중치 상위 500명 · 신보 항상 앞", "focus");
   const rel = C(X.c, 3, "그 기간 발매작", "가진 앨범·차단 빼고");
   const listen = C(X.c, 4, "미리듣기 소리 분석", "CLAP · 앨범당 최대 20곡");

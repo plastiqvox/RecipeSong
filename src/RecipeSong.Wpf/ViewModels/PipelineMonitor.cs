@@ -130,7 +130,7 @@ public sealed partial class PipelineMonitor : ObservableObject
         new("seed", 1, 1, L.T("시드 아티스트"), L.T("많이 듣고 좋아한 80명 + 하트·팔로우"), RecStage.Seeds),
         new("mine", 2, 1, L.T("내 아카이브 뮤지션"), L.T("상위 500명 · 신보 항상 앞"), RecStage.Mine),
         new("follow", 3, 1, L.T("팔로우 뮤지션"), L.T("☆ 누른 아티스트 · 신보 항상 앞"), RecStage.Follow),
-        new("related", 1, 2, L.T("비슷한 아티스트 2단계"), L.T("Deezer 연관 아티스트"), RecStage.Related),
+        new("related", 1, 2, L.T("비슷한 아티스트 2단계"), L.T("Deezer 연관 + Last.fm 비슷한"), RecStage.Related),
         new("disco", 1, 3, L.T("디스코그래피"), L.T("후보 아티스트의 앨범 목록 · 3일 캐시"), RecStage.Discography),
         new("releases", 1, 4, L.T("그 기간 고르기"), L.T("가진·차단 빼고 · 연결 점수 상위만 듣기"), RecStage.Releases),
         new("aisearch", 3, 4, L.T("AI 웹 검색 · 웹진 글"), L.T("커넥터별 웹 검색 · 웹진 RSS"), RecStage.AiSearch),
