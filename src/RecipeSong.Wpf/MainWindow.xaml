@@ -465,7 +465,7 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <!-- 내 플리 배지: 외곽선만 (주황 칠은 섹션 안 모든 카드에 같은 값이 반복돼 시끄러웠다) -->
+                            <!-- 내 라이브러리 뮤지션 배지: 외곽선만 (주황 칠은 섹션 안 모든 카드에 같은 값이 반복돼 시끄러웠다) -->
                             <Border Margin="{Binding BadgeMargin}" Padding="8,1" CornerRadius="10" BorderThickness="1" BorderBrush="{StaticResource Line3}"
                                     Visibility="{Binding Badge, Converter={StaticResource EmptyCollapsed}}" ToolTip="{Binding BadgeTip}">
                                 <StackPanel Orientation="Horizontal">
@@ -609,6 +609,10 @@
                     <Setter TargetName="follow" Property="Fill" Value="#F5C04A"/>
                     <Setter TargetName="follow" Property="Stroke" Value="#F5C04A"/>
                 </DataTrigger>
+                <DataTrigger Binding="{Binding IsMarked}" Value="True">
+                    <!-- 마지막으로 본 카드: 창을 닫거나 카드가 빠진 뒤에도 자리를 잃지 않게 (열린 카드보다 옅게) -->
+                    <Setter TargetName="cardBorder" Property="BorderBrush" Value="#80F0A04B"/>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding ShowTracks}" Value="True">
                     <!-- 오른쪽 수록곡 창에 열린 카드: 카드 테두리로 어느 카드인지 보이게 -->
                     <Setter TargetName="cardBorder" Property="BorderBrush" Value="{StaticResource Accent}"/>
@@ -692,7 +696,13 @@
                             <TextBlock Text="{Binding UpdateText}" FontSize="12" Foreground="{StaticResource AccentText}"/>
                             <Button Style="{StaticResource Bare}" Command="{Binding RunUpdateCommand}" Height="40" Margin="0,8,0,0"
                                     BorderBrush="{StaticResource Accent}">
-                                <TextBlock Text="{local:Tr '지금 업데이트'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"/>
+                                <Grid>
+                                    <TextBlock Text="{local:Tr '지금 업데이트'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
+                                               Visibility="{Binding IsTrained, Converter={StaticResource BoolVis}}"/>
+                                    <!-- 처음 설치: 라이브러리 소리를 아직 분석하지 않았다 -->
+                                    <TextBlock Text="{local:Tr '분석 시작'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
+                                               Visibility="{Binding IsTrained, Converter={StaticResource NotBoolVis}}"/>
+                                </Grid>
                             </Button>
                         </StackPanel>
                         <StackPanel Margin="0,12,0,0" Visibility="{Binding IsUpdating, Converter={StaticResource BoolVis}}">
@@ -870,9 +880,9 @@
                             <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
                                 <Rectangle Height="2" Width="16" RadiusX="1" RadiusY="1" Fill="{StaticResource Text2}" Opacity="0.55" HorizontalAlignment="Left"/>
                             </Grid>
-                            <TextBlock Text="{local:Tr '분석한 기간'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{local:Tr '계산한 기간'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
-                        <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr '웹진·AI·정밀 분석이 찾아 두었지만 아직 화면에서 보지 않은 앨범이 있는 날이에요.'}">
+                        <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr '웹진·AI·촘촘한 계산이 찾아 두었지만 아직 화면에서 보지 않은 앨범이 있는 날이에요.'}">
                             <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
                                 <Ellipse Width="7" Height="7" Stroke="{StaticResource Text}" StrokeThickness="1.5" Fill="Transparent" HorizontalAlignment="Left"/>
                             </Grid>
@@ -887,13 +897,13 @@
         </Border>
 
         <!-- ===== 본문 ===== -->
-        <!-- 위: 기간 제목·레시피 칩·탭·AI 줄은 고정 (목록을 내려도 필터·탭을 바로 바꿀 수 있게) -->
+        <!-- 위: 기간 제목·장르 칩·탭·AI 줄은 고정 (목록을 내려도 필터·탭을 바로 바꿀 수 있게) -->
         <DockPanel Grid.Column="1">
             <StackPanel DockPanel.Dock="Top" Margin="40,32,49,0">  <!-- 오른쪽 49 = 아래 목록 32 + 스크롤바 칸 17 (오른쪽 버튼과 카드 끝을 맞춘다) -->
                 <TextBlock Text="{Binding PeriodTitle}" FontSize="34" FontWeight="Bold"/>
                 <TextBlock Text="{Binding PeriodRange}" Foreground="{StaticResource Muted}" Margin="0,6,0,0"/>
 
-                <!-- 레시피 칩: 추천 신보 탭에서만 (저장함·관심 없음은 기간·필터와 상관없다).
+                <!-- 장르 칩: 추천 신보 탭에서만 (저장함·관심 없음은 기간·필터와 상관없다).
                      수록곡 창을 열면 본문이 좁아져 칩이 3줄로 늘어나 고정 헤더가 화면 절반을 먹었다 → 그때는 한 줄 가로 스크롤 -->
                 <ItemsControl ItemsSource="{Binding CrateChips}" Margin="0,22,0,0" Visibility="{Binding IsRecsTab, Converter={StaticResource BoolVis}}" PreviewMouseWheel="Chips_Wheel">
                     <ItemsControl.Style>
@@ -921,11 +931,11 @@
                             <!-- 드래그로 순서 바꾸기: 놓일 자리에 주황 세로선 -->
                             <Rectangle x:Name="dropLeft" Width="3" HorizontalAlignment="Left" Margin="-6,4,0,4" Fill="{StaticResource Accent}" RadiusX="1.5" RadiusY="1.5" Visibility="Collapsed"/>
                             <Rectangle x:Name="dropRight" Width="3" HorizontalAlignment="Right" Margin="0,4,2,4" Fill="{StaticResource Accent}" RadiusX="1.5" RadiusY="1.5" Visibility="Collapsed"/>
-                            <Button x:Name="chip" Style="{StaticResource BigChip}" Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding Label, Converter={StaticResource TrFmt}, ConverterParameter='레시피 {0}'}"
+                            <Button x:Name="chip" Style="{StaticResource BigChip}" Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding Label, Converter={StaticResource TrFmt}, ConverterParameter='{}{0} 보기'}"
                                     AllowDrop="True" PreviewMouseLeftButtonDown="Chip_PreviewMouseLeftButtonDown" PreviewMouseMove="Chip_PreviewMouseMove"
                                     DragOver="Chip_DragOver" DragLeave="Chip_DragLeave" Drop="Chip_Drop">
                                 <Button.ContextMenu>
-                                    <!-- 우클릭: 레시피 순서 바꾸기 (전체·AI 제안 칩은 메뉴 없음) -->
+                                    <!-- 우클릭: 칸 순서 바꾸기 (전체·AI 제안 칩은 메뉴 없음) -->
                                     <ContextMenu>
                                         <MenuItem Header="{local:Tr '맨 앞으로'}" Command="{Binding MoveCommand}" CommandParameter="first"/>
                                         <MenuItem Header="{local:Tr '앞으로 한 칸'}" Command="{Binding MoveCommand}" CommandParameter="left"/>
@@ -968,9 +978,9 @@
                                 </Border>
                             </StackPanel>
                         </RadioButton>
-                        <RadioButton Style="{StaticResource Tab}" GroupName="tab" IsChecked="{Binding IsLibraryTab}" AutomationProperties.Name="{local:Tr '내 라이브러리'}">
+                        <RadioButton Style="{StaticResource Tab}" GroupName="tab" IsChecked="{Binding IsLibraryTab}" AutomationProperties.Name="{local:Tr '내 아카이브'}">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{local:Tr '내 라이브러리'}" Foreground="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=ContentPresenter}}" FontSize="15"/>
+                                <TextBlock Text="{local:Tr '내 아카이브'}" Foreground="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=ContentPresenter}}" FontSize="15"/>
                                 <Border Margin="8,0,0,0" Padding="6,2" CornerRadius="8" Background="{StaticResource Surface3}" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding LibraryCount}" FontFamily="{StaticResource Mono}" FontSize="11" Foreground="{StaticResource Muted}"/>
                                 </Border>
@@ -990,7 +1000,7 @@
                         </RadioButton>
                         <!-- 관심 없음 탭: 카드의 관심 없음 버튼과 같은 아이콘 (예전 이름 '별로'는 문장처럼 읽혀 어색했다. 별 아이콘은 팔로우라 쓰지 않는다) -->
                         <RadioButton Style="{StaticResource Tab}" GroupName="tab" IsChecked="{Binding IsDislikedTab}" AutomationProperties.Name="{local:Tr '관심 없음'}"
-                                     ToolTip="{local:Tr '관심 없는 앨범'}">
+                                     ToolTip="{local:Tr '관심 없음으로 표시한 앨범'}">
                             <StackPanel Orientation="Horizontal">
                                 <Path Data="{StaticResource ThumbDownIcon}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" StrokeThickness="1.6" StrokeLineJoin="Round"
                                       Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=ContentPresenter}}"/>
@@ -1003,7 +1013,7 @@
                     </DockPanel>
                 </Border>
 
-                <!-- AI 찾기 · 다시 분석 · 추천 설정: 오른쪽 버튼은 고정, AI 버튼은 자리가 모자라면 아랫줄로 (한 줄에 넣으면 'AI 다시 찾기'가 밀려 사라졌다) -->
+                <!-- AI 찾기 · 다시 계산 · 추천 설정: 오른쪽 버튼은 고정, AI 버튼은 자리가 모자라면 아랫줄로 (한 줄에 넣으면 'AI 다시 찾기'가 밀려 사라졌다) -->
                 <StackPanel Margin="0,16,0,0" Visibility="{Binding IsRecsTab, Converter={StaticResource BoolVis}}">
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
@@ -1039,30 +1049,27 @@
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
-                                            <TextBlock Text="{local:Tr '지역'}" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="20,0,8,6"/>
-                                            <ItemsControl ItemsSource="{Binding RegionChips}">
-                                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate DataType="{x:Type vm:FilterChip}">
-                                                        <Button Style="{StaticResource Chip}" Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding Label}"/>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
                                         </WrapPanel>
                                     </Border>
                                 </Popup>
                             </Grid>
                             <Button Style="{StaticResource Bare}" Padding="14,7" Command="{Binding ReanalyzeCommand}"
-                                    AutomationProperties.Name="{local:Tr '다시 분석'}" ToolTip="{local:Tr '저장된 추천 대신 지금 다시 계산해요 (AI 비용 없음)'}">
-                                <TextBlock Text="{local:Tr '다시 분석'}" Foreground="{StaticResource Text2}"/>
+                                    AutomationProperties.Name="{local:Tr '다시 계산'}" ToolTip="{local:Tr '저장된 추천 대신 지금 다시 계산해요 (AI 비용 없음)'}">
+                                <TextBlock Text="{local:Tr '다시 계산'}" Foreground="{StaticResource Text2}"/>
                             </Button>
                             <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,0,0" Command="{Binding PreciseCommand}"
                                     AutomationProperties.Name="{Binding PreciseLabel}" Visibility="{Binding CanPrecise, Converter={StaticResource BoolVis}}"
-                                    ToolTip="{local:Tr '연은 월 단위, 월은 주 단위로 하나씩 분석해 저장해요. 주 단위만큼 촘촘해져요. 다시 누르면 멈춰요 (AI 비용 없음)'}">
+                                    ToolTip="{local:Tr '월·연을 주 단위로 하나씩 계산해 저장해요. 이미 계산한 주는 건너뛰어요. 다시 누르면 멈춰요 (AI 비용 없음)'}">
                                 <Grid>
                                     <TextBlock Text="{Binding PreciseLabel}" Foreground="{StaticResource Text2}" Visibility="{Binding IsPrecise, Converter={StaticResource NotBoolVis}}"/>
-                                    <TextBlock Text="{local:Tr '정밀 분석 멈추기'}" Foreground="{StaticResource AccentText}" Visibility="{Binding IsPrecise, Converter={StaticResource BoolVis}}"/>
+                                    <TextBlock Text="{local:Tr '촘촘한 계산 멈추기'}" Foreground="{StaticResource AccentText}" Visibility="{Binding IsPrecise, Converter={StaticResource BoolVis}}"/>
                                 </Grid>
+                            </Button>
+                            <!-- 디버그 옵션이 켜져 있을 때만: 순서도 창 열기·닫기 -->
+                            <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,0,0" Command="{Binding OpenPipelineCommand}"
+                                    Visibility="{Binding DebugPipeline, Converter={StaticResource BoolVis}}"
+                                    AutomationProperties.Name="{local:Tr '순서도 보기'}" ToolTip="{local:Tr '디버그: 추천 계산 단계를 순서도 창으로 봐요. 다시 누르면 닫혀요'}">
+                                <TextBlock Text="{local:Tr '순서도'}" Foreground="{StaticResource Text2}"/>
                             </Button>
                             <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,16,0" Command="{Binding OpenRecommendSettingsCommand}"
                                     AutomationProperties.Name="{local:Tr '추천 설정 열기'}" ToolTip="{local:Tr '추천 양 · 모험 정도 · 아는 아티스트 빼기'}">
@@ -1088,7 +1095,7 @@
                                 </Grid>
                             </Button>
                             <!-- 옵션: 주별로(월) · 지우고 다시 (저장된 AI 결과가 있을 때) -->
-                            <CheckBox Content="{local:Tr '주별로'}" IsChecked="{Binding AiWeekly}" Margin="14,0,0,6" VerticalAlignment="Center"
+                            <CheckBox Content="{local:Tr '주마다 나눠 찾기'}" IsChecked="{Binding AiWeekly}" Margin="14,0,0,6" VerticalAlignment="Center"
                                       Foreground="{StaticResource Text2}" FontSize="13" Visibility="{Binding CanAiWeekly, Converter={StaticResource BoolVis}}"
                                       ToolTip="{local:Tr '한 달(1년)을 주마다 나눠 찾아요. 한 번에 찾을 때보다 촘촘하지만 비용이 주 수만큼 들어요'}"/>
                             <!-- 결과를 지우는 드문 옵션이라 AI 버튼보다 한 단계 낮게 -->
@@ -1132,7 +1139,7 @@
                     </DockPanel>
                 </Border>
 
-                <!-- 연 정밀 분석 진행 -->
+                <!-- 촘촘한 계산(월·주별) 진행 -->
                 <StackPanel Margin="0,12,0,0" Orientation="Horizontal" Visibility="{Binding PreciseText, Converter={StaticResource EmptyCollapsed}}">
                     <ProgressBar Style="{StaticResource Progress}" IsIndeterminate="True" Width="80" VerticalAlignment="Center" Margin="0,0,10,0"
                                  Visibility="{Binding IsPrecise, Converter={StaticResource BoolVis}}"/>
@@ -1152,7 +1159,7 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- 추천 신보: 레시피별 -->
+                <!-- 추천 신보: 장르 칸별 -->
                 <StackPanel Margin="0,24,0,0" Visibility="{Binding IsRecsTab, Converter={StaticResource BoolVis}}">
                     <Border Padding="24,48" CornerRadius="14" BorderBrush="{StaticResource Line2}" BorderThickness="1"
                             Visibility="{Binding EmptyText, Converter={StaticResource EmptyCollapsed}}">
@@ -1175,12 +1182,12 @@
                                     <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource ReleaseCard}">
                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     </ItemsControl>
-                                    <!-- 전체 보기: 레시피마다 6장만 그린다는 걸 카드 바로 아래에서 알린다 (위 버튼만으로는 몰랐다) -->
+                                    <!-- 전체 보기: 칸마다 6장만 그린다는 걸 카드 바로 아래에서 알린다 (위 버튼만으로는 몰랐다) -->
                                     <Button Style="{StaticResource Bare}" Padding="16,8" HorizontalAlignment="Left" Command="{Binding MoreCommand}"
                                             Visibility="{Binding CanMore, Converter={StaticResource BoolVis}}">
                                         <TextBlock Text="{Binding MoreBelowText}" Foreground="{StaticResource Text2}"/>
                                     </Button>
-                                    <!-- 한 레시피만 볼 때: 나머지는 눌러서 이어 그린다 -->
+                                    <!-- 한 칸만 볼 때: 나머지는 눌러서 이어 그린다 -->
                                     <Button Style="{StaticResource Bare}" Padding="16,8" HorizontalAlignment="Left" Command="{Binding ShowMoreCommand}"
                                             Visibility="{Binding CanShowMore, Converter={StaticResource BoolVis}}">
                                         <TextBlock Text="{Binding ShowMoreText}" Foreground="{StaticResource Text2}"/>
@@ -1232,7 +1239,7 @@
                     <TextBlock Text="{local:Tr '이 기간에 발매된, 내가 가진 앨범'}" Style="{StaticResource MutedText}" FontSize="13" Margin="0,0,0,18"/>
                     <Border Padding="24,48" CornerRadius="14" BorderBrush="{StaticResource Line2}" BorderThickness="1"
                             Visibility="{Binding HasItems, ElementName=LibraryList, Converter={StaticResource NotBoolVis}}">
-                        <TextBlock Text="{local:Tr '이 기간에 나온 앨범 중 내 iTunes 라이브러리에 있는 것이 없어요. 월·연으로 넓혀 보세요.'}" Foreground="{StaticResource Muted}"
+                        <TextBlock Text="{local:Tr '이 기간에 나온 앨범 중 내 아카이브에 있는 것이 없어요. 월·연으로 넓혀 보세요.'}" Foreground="{StaticResource Muted}"
                                    HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
                     </Border>
                     <ItemsControl x:Name="LibraryList" ItemsSource="{Binding LibraryGroups}">

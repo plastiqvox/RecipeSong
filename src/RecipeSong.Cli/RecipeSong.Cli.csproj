@@ -11,4 +11,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Windows 전용 (iTunes 라이브러리 · 키를 Windows 계정으로 암호화하는 DPAPI). 대상은 net9.0 이라 어셈블리에 표시해 CA1416 을 정리한다 -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+      <_Parameter1>windows</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

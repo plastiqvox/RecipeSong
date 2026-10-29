@@ -1,6 +1,6 @@
 """RecipeSong 소리 분석 서비스. WPF 앱이 실행해 두고 표준 입출력으로 JSON을 한 줄씩 주고받는다.
 
-요청:  {"id": 1, "cmd": "status" | "score_albums" | "update", "args": {...}}
+요청:  {"id": 1, "cmd": "status" | "score_albums" | "update" | "genre_neighbors" | ..., "args": {...}}
 응답:  {"id": 1, "ok": true, "result": {...}}  /  {"id": 1, "ok": false, "error": "..."}
 진행:  {"id": 1, "event": "progress", "message": "...", "done": 3, "total": 10}
 
@@ -30,7 +30,6 @@ import numpy as np  # noqa: E402
 import requests  # noqa: E402
 import torch  # noqa: E402
 
-import covers  # noqa: E402
 import effnet  # noqa: E402
 import embed  # noqa: E402
 import library  # noqa: E402
@@ -43,16 +42,15 @@ PROTO.reconfigure(encoding="utf-8", line_buffering=True)
 DATA = Path(__file__).parent / "data"
 ALBUM_CACHE = DATA / "album_emb.npz"  # CLAP. EffNet은 album_emb_discogs_effnet.npz
 ALBUM_INFO = DATA / "album_info.json"  # 레이블·장르 (바뀌지 않으므로 영구 캐시)
-ALBUM_COVER = DATA / "album_cover.npz"
 TRACK_STYLES = DATA / "track_styles.npz"  # 신보 곡마다 Discogs 스타일 400개 확률 (EffNet 장르판, 장르 태그용)
-TRACK_EFFNET = DATA / "track_effnet.npz"  # 신보 곡마다 EffNet 장르판 임베딩 (레시피 보조)
+TRACK_EFFNET = DATA / "track_effnet.npz"  # 신보 곡마다 EffNet 장르판 임베딩
 ALBUM_EFFNET = DATA / "album_effnet.npz"  # 앨범 EffNet 임베딩 (곡 평균)
-GENRE_MIN = 0.04  # 태그: 가장 높은 스타일의 40% 이상이면서 이 확률 이상 (최대 3개). 400개에 확률이 나뉘어 값이 낮다  # 신보 커버 CLIP 임베딩 (앨범 id)
+GENRE_MIN = 0.04  # 태그: 가장 높은 스타일의 40% 이상이면서 이 확률 이상 (최대 3개). 400개에 확률이 나뉘어 값이 낮다
 FAILED = DATA / "failed_tracks.json"  # 디코딩 실패한 곡 → '새 곡'으로 다시 세지 않음
 KNN = 20
 MAX_TRACKS = 20      # 전곡 모드에서 미리듣기를 들을 최대 곡 수
 HIT_TRACKS = 3       # 인기곡 모드: Deezer 인기(rank) 상위 곡 수
-ACCEPT_MARGIN = 0.02  # 재학습 모델이 이보다 더 나빠지면 이전 모델 유지
+GROUP_KNN = 15  # 장르를 모르는 앨범: 장르를 아는 앨범 중 소리가 가장 닮은 이만큼의 칸을 본다
 
 
 def send(obj: dict) -> None:
@@ -63,11 +61,6 @@ def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
-def softmax(z: np.ndarray) -> np.ndarray:
-    e = np.exp(z - z.max())
-    return e / e.sum()
-
-
 class Service:
     def __init__(self, xml: str):
         self.xml = xml
@@ -75,15 +68,10 @@ class Service:
         self._clap = None
         self._effnet = None
         self.track_mode = "all"  # 앨범에서 들을 곡: "all" 전곡 / "top" 인기곡 (score_albums 요청마다 앱 설정을 따른다)
-        self._covers = None
         self._genre = None
         self.track_styles = load_npz(TRACK_STYLES)
         self.track_effnet = load_npz(TRACK_EFFNET)
         self.album_effnet = load_npz(ALBUM_EFFNET)
-        self.cover_cache: dict[str, np.ndarray] = {}
-        if ALBUM_COVER.exists():
-            d = np.load(ALBUM_COVER, allow_pickle=False)
-            self.cover_cache = dict(zip(d["keys"].tolist(), d["emb"].astype(np.float32)))
         self._cache_file: Path | None = None
         self._http = requests.Session()
         self._http.mount("https://", requests.adapters.HTTPAdapter(pool_connections=32, pool_maxsize=32))
@@ -103,7 +91,23 @@ class Service:
     # ---- 상태 -------------------------------------------------------------
     def reload(self) -> None:
         self.tracks, self.playlists = library.load(self.xml)
+        if not train.MODEL_PATH.exists():
+            # 학습 전 (다른 사람이 처음 설치): 소리 판정 없이 뜨고, update 가 라이브러리를 분석해 처음 학습한다.
+            # 분석은 오래 걸려 중간에 꺼질 수 있다 → 이미 저장한 조각은 다시 듣지 않는다
+            self.model = None
+            self.out = train.DATA / train.DEFAULT_EMB
+            self.is_effnet = False
+            self.sr = embed.SR
+            self.keys = train.load_embeddings(train.DEFAULT_EMB)[0] if any(self.out.glob("shard_*.npz")) else []
+            self.keyset = set(self.keys)
+            self.xml_mtime = os.path.getmtime(self.xml)
+            log(f"[service] 라이브러리 {len(self.tracks)}곡, 학습 전 (분석해 둔 곡 {len(self.keys)})")
+            return
         self.model = json.loads(train.MODEL_PATH.read_text(encoding="utf-8"))
+        if self.model.get("version") != train.VERSION:
+            # 예전(레시피 분류기) 모델: 임베딩은 그대로 쓰고 기준(평균)만 라이브러리 전체로 다시 낸다 (몇 초)
+            self.model = train.run(self.xml, self.model.get("embeddings", train.DEFAULT_EMB), log=log)
+            train.save(self.model)
         # 소리 모델은 학습한 임베딩 폴더를 따른다: emb_discogs_effnet → EffNet (16kHz), 그 밖 → CLAP (48kHz)
         self.out = train.DATA / self.model["embeddings"]
         self.is_effnet = self.model["embeddings"] == f"emb_{effnet.NAME}"
@@ -121,21 +125,12 @@ class Service:
         self.keyset = set(keys)
         self.lib = train.preprocess(emb, self.mean).astype(np.float32)
         self.meta = [(self.tracks[k].artist, self.tracks[k].title) if k in self.tracks else ("?", "?") for k in keys]
-        # 곡 가중치: 취향 유사도에서 많이 듣고 좋아한 곡과 닮을수록 더 쳐준다 (0.6~1.0배)
-        self.lib_w = np.array([0.6 + 0.4 * self.tracks[k].weight if k in self.tracks else 0.8 for k in keys], np.float32)
-        self.heads = {name: (np.array(self.model[name]["coef"], np.float32),
-                             np.array(self.model[name]["intercept"], np.float32),
-                             self.model[name]["classes"]) for name in ("style", "region")}
-        # 소리 + 커버 지역 판정 (커버를 아는 신보만)
-        # 레시피: 소리 + 장르(EffNet) — EffNet 임베딩을 아는 앨범만
-        se = self.model.get("style_effnet")
-        self.style_effnet = (np.array(se["coef"], np.float32), np.array(se["intercept"], np.float32), se["classes"],
-                             np.array(se["effnet_mean"], np.float32), float(se["effnet_scale"])) if se else None
-        rc = self.model.get("region_cover")
-        self.region_cover = (np.array(rc["coef"], np.float32), np.array(rc["intercept"], np.float32), rc["classes"],
-                             np.array(rc["cover_mean"], np.float32), float(rc["cover_scale"])) if rc else None
+        # 곡 가중치: 많이 듣고 좋아한 곡과 닮을수록 더 쳐준다 (0.3~1배, 하트는 1). 오래 안 들은 곡은 0 → 비교에서 빠진다.
+        # 라이브러리에서 지운 곡도 0
+        self.lib_w = np.array([self.tracks[k].taste_weight() if k in self.tracks else 0.0 for k in keys], np.float32)
         self.xml_mtime = os.path.getmtime(self.xml)
-        log(f"[service] 라이브러리 {len(self.tracks)}곡, 임베딩 {len(keys)}곡 ({self.model['embeddings']}), 모델 {self.model['trained_at']}")
+        log(f"[service] 라이브러리 {len(self.tracks)}곡, 임베딩 {len(keys)}곡 ({self.model['embeddings']}), "
+            f"닮음 비교 {int((self.lib_w > 0).sum())}곡, 기준 {self.model['trained_at']}")
 
     def failed(self) -> set[str]:
         return set(json.loads(FAILED.read_text(encoding="utf-8"))) if FAILED.exists() else set()
@@ -146,9 +141,14 @@ class Service:
 
     def status(self, _args: dict, _rid) -> dict:
         if os.path.getmtime(self.xml) != self.xml_mtime:
-            self.tracks, self.playlists = library.load(self.xml)
-            self.xml_mtime = os.path.getmtime(self.xml)
+            # 하트·재생 수가 바뀌면 곡 가중치도 다시 (임베딩은 그대로)
+            self.reload()
+        if self.model is None:
+            return {"trained": False, "device": self.device, "sound_model": "CLAP",
+                    "gpu": torch.cuda.get_device_name(0) if self.device == "cuda" else None,
+                    "embedded": len(self.keys), "new_tracks": len(self.new_tracks()), "library": len(self.tracks)}
         return {
+            "trained": True,
             "device": self.device,
             "sound_model": "Discogs-EffNet" if self.is_effnet else "CLAP",
             "gpu": torch.cuda.get_device_name(0) if self.device == "cuda" else None,
@@ -156,11 +156,7 @@ class Service:
             "tracks": self.model["tracks"],
             "embedded": len(self.keys),
             "new_tracks": len(self.new_tracks()),
-            "styles": self.model["style"]["classes"],
-            "style_accuracy": self.model["style"]["cv_accuracy"],
-            "regions": self.model["region"]["classes"],
-            "region_accuracy": self.model["region"]["cv_accuracy"],
-            "region_cover_accuracy": (self.model.get("region_cover") or {}).get("cv_accuracy"),
+            "compared": int((self.lib_w > 0).sum()),
         }
 
     # ---- 임베딩 -----------------------------------------------------------
@@ -189,7 +185,7 @@ class Service:
             return out
         feats = []
         for s in range(0, len(flat), 72):
-            inp = proc(audios=flat[s:s + 72], sampling_rate=embed.SR, return_tensors="pt").to(self.device)
+            inp = proc(audio=flat[s:s + 72], sampling_rate=embed.SR, return_tensors="pt").to(self.device)
             if self.device == "cuda":
                 inp = {k: (v.half() if v.is_floating_point() else v) for k, v in inp.items()}
             with torch.no_grad():
@@ -211,35 +207,6 @@ class Service:
                 log(traceback.format_exc())
                 self._genre = False
         return self._genre or None
-
-    def covers(self) -> covers.CoverModel:
-        if self._covers is None:
-            self._covers = covers.CoverModel(self.device)
-        return self._covers
-
-    def ensure_covers(self, albums: list) -> None:
-        """신보 커버(C#이 보낸 Deezer 주소)를 받아 CLIP으로. 지역 판정에만 쓴다."""
-        if self.region_cover is None:
-            return
-        todo = [(str(a["id"]), a["cover"]) for a in albums
-                if a.get("cover") and str(a["id"]) not in self.cover_cache and not str(a["id"]).startswith("t")]
-        if not todo:
-            return
-
-        def get(url: str):
-            try:
-                return covers.open_image(self._http.get(url, timeout=20).content)
-            except requests.RequestException:
-                return None
-        with ThreadPoolExecutor(16) as pool:
-            imgs = list(pool.map(lambda kv: get(kv[1]), todo))
-        ok = [(k, im) for (k, _), im in zip(todo, imgs) if im is not None]
-        if not ok:
-            return
-        for (k, _), e in zip(ok, self.covers().embed([im for _, im in ok])):
-            self.cover_cache[k] = e
-        ks = list(self.cover_cache)
-        np.savez(ALBUM_COVER, keys=np.array(ks), emb=np.stack([self.cover_cache[k] for k in ks]).astype(np.float16))
 
     def deezer(self, path: str) -> dict:
         """Deezer API (5초당 50회 제한 → 요청 간격 110ms 이상)."""
@@ -399,13 +366,11 @@ class Service:
             ALBUM_INFO.write_text(json.dumps(self.album_info, ensure_ascii=False), encoding="utf-8")
 
     def score_albums(self, args: dict, rid) -> dict:
+        if self.model is None:
+            return {"albums": []}
         albums = args["albums"]
         self.track_mode = "top" if args.get("tracks") == "top" else "all"
         self.ensure_embedded(albums, rid)
-        try:
-            self.ensure_covers(albums)
-        except Exception:  # 커버는 보조라 실패해도 소리 점수는 낸다
-            log(traceback.format_exc())
         results = []
         for a in albums:
             key = str(a["id"])
@@ -422,6 +387,8 @@ class Service:
     # ---- 즐겨찾기 (저장함) --------------------------------------------------
     def favorites(self, args: dict, rid) -> dict:
         """좋아요 목록을 받는다: [{id, name}] — 앨범 하트는 앨범 id, 곡 하트는 "t곡id". 소리를 모르면 미리듣기로 분석한다."""
+        if self.model is None:
+            return {"count": 0, "dislikes": 0}
         items = args.get("albums") or []
         self.ensure_embedded(items, rid, "저장한 앨범 소리 분석 중")
         self.fav_names = {str(a["id"]): a.get("name", "") for a in items}
@@ -437,6 +404,8 @@ class Service:
 
     # ---- 카드의 곡 짝 (이 앨범 곡 ≈ 내 곡) — 짝 기능 전에 분석한 앨범을 뒤에서 채운다 ----
     def album_pairs(self, args: dict, rid) -> dict:
+        if self.model is None:
+            return {"albums": []}
         ids = [str(i) for i in args.get("ids") or []]
         need = [i for i in ids if "pairs" not in self.album_info.get(i, {})]
         if need:
@@ -448,6 +417,8 @@ class Service:
 
     # ---- 별로·차단한 앨범과 아주 닮은 추천 (그 자리에서 같이 숨길지 묻는다) ----
     def similar_albums(self, args: dict, rid) -> dict:
+        if self.model is None:
+            return {"albums": []}
         """target 앨범과 ids 앨범들의 소리 유사도 (평균을 뺀 코사인). min 이상만 높은 순으로.
         저장된 앨범 약 1만 장끼리 0.85 이상은 상위 0.3% 정도라 '아주 닮음' 기준으로 쓴다."""
         t = self.album_cache.get(str(args["target"]))
@@ -463,6 +434,8 @@ class Service:
         return {"albums": out}
 
     def dislike_matches(self, args: dict, rid) -> dict:
+        if self.model is None:
+            return {"albums": []}
         """ids 중 refs(직접 별로·'소리 때문' 차단한 앨범)의 어느 앨범과 min 이상 닮은 것. 다시 분석한 뒤 뺄지 묻는 데 쓴다.
         바로 넘긴 앨범까지 넣으면 기준이 93장이 되어 '어느 하나와는 닮은' 앨범이 1만 장 중 1천 장 넘게 걸렸다 →
         직접 고른 앨범만, 0.92 (직접 별로 30장 기준 1만 장 중 31장, 한 주 250장이면 1장 안팎)."""
@@ -480,6 +453,8 @@ class Service:
 
     # ---- 수록곡마다 비슷한 내 곡 (수록곡을 펼쳤을 때) ----------------------
     def track_near(self, args: dict, rid) -> dict:
+        if self.model is None:
+            return {"tracks": []}
         """[{id, preview}] → 곡마다 미리듣기를 들어 가장 닮은 내 곡 하나. 곡 임베딩은 "t곡id" 로 앨범 캐시에 같이 둔다 (곡 하트와 같은 키)."""
         items = [(f"t{t['id']}", t.get("preview")) for t in args.get("tracks") or []]
         todo = [(k, url) for k, url in items if url and k not in self.album_cache]
@@ -503,6 +478,30 @@ class Service:
                 out.append({"id": int(k[1:]), "near": near, "sim": sim})
         return {"tracks": out}
 
+    # ---- 장르 칸을 모르는 앨범 (장르 DB 에 없거나 Pop·Asian Music 처럼 넓은 장르) --------------
+    def genre_neighbors(self, args: dict, rid) -> dict:
+        """known {앨범 id: 칸} 중 소리가 가장 닮은 GROUP_KNN 장의 칸을 유사도로 가중 투표한다.
+        ids 마다 {"id", "group", "share"} — share 는 이긴 칸의 몫 (낮으면 애매한 앨범)"""
+        if self.model is None:
+            return {"albums": []}
+        known = [(str(k), g) for k, g in (args.get("known") or {}).items() if str(k) in self.album_cache]
+        ids = [str(i) for i in args.get("ids") or [] if str(i) in self.album_cache]
+        if len(known) < 3 or not ids:
+            return {"albums": []}
+        K = train.preprocess(np.stack([self.album_cache[k] for k, _ in known]), self.mean)
+        groups = np.array([g for _, g in known])
+        sims = train.preprocess(np.stack([self.album_cache[i] for i in ids]), self.mean) @ K.T
+        out = []
+        for row, i in zip(sims, ids):
+            top = np.argsort(-row)[:GROUP_KNN]
+            w = np.maximum(row[top], 0) + 1e-6
+            votes: dict[str, float] = {}
+            for g, v in zip(groups[top], w):
+                votes[g] = votes.get(g, 0.0) + float(v)
+            best = max(votes, key=votes.get)
+            out.append({"id": int(i), "group": best, "share": round(votes[best] / sum(votes.values()), 3)})
+        return {"albums": out}
+
     def stack(self, keys: list[str]) -> np.ndarray | None:
         return (train.preprocess(np.stack([self.album_cache[k] for k in keys]).astype(np.float32), self.mean).astype(np.float32)
                 if keys else None)
@@ -510,16 +509,6 @@ class Service:
     def describe(self, e: np.ndarray, key: str | None = None) -> dict:
         x = train.preprocess(e[None, :], self.mean)[0]
         res = {}
-        for name, (coef, icpt, classes) in self.heads.items():
-            res[name] = {c: round(float(p), 4) for c, p in zip(classes, softmax(coef @ x + icpt))}
-        if self.style_effnet is not None and key is not None and (ef := self.album_effnet.get(key)) is not None:
-            coef, icpt, classes, emean, scale = self.style_effnet
-            xs = np.concatenate([x, scale * train.preprocess(ef[None, :], emean)[0]])
-            res["style"] = {c: round(float(p), 4) for c, p in zip(classes, softmax(coef @ xs + icpt))}
-        if self.region_cover is not None and key is not None and (cv := self.cover_cache.get(key)) is not None:
-            coef, icpt, classes, cmean, scale = self.region_cover
-            xc = np.concatenate([x, scale * train.preprocess(cv[None, :], cmean)[0]])
-            res["region"] = {c: round(float(p), 4) for c, p in zip(classes, softmax(coef @ xc + icpt))}
         sims = (self.lib @ x) * self.lib_w
         near = np.argpartition(-sims, KNN)[:KNN]
         near = near[np.argsort(-sims[near])]
@@ -549,7 +538,7 @@ class Service:
     def update(self, args: dict, rid) -> dict:
         self.tracks, self.playlists = library.load(self.xml)
         todo = self.new_tracks()
-        keys, embs = [], []
+        keys, embs, done = [], [], set()
         with ThreadPoolExecutor(10) as pool:
             for s in range(0, len(todo), 24):
                 batch = todo[s:s + 24]
@@ -558,27 +547,21 @@ class Service:
                     if e is not None:
                         keys.append(t.pid)
                         embs.append(e)
+                        done.add(t.pid)
+                if len(keys) >= 500:  # 처음 분석은 한 시간 안팎 → 중간에 꺼져도 이어서 하게 조각으로 저장
+                    embed.save_shard(self.out, keys, embs)
+                    keys, embs = [], []
                 send({"id": rid, "event": "progress", "message": f"새 곡 분석 중 {min(s + 24, len(todo))}/{len(todo)}",
                       "done": min(s + 24, len(todo)), "total": len(todo)})
         if keys:
             embed.save_shard(self.out, keys, embs)
-        failed = self.failed() | ({t.pid for t in todo} - set(keys))
+        failed = self.failed() | ({t.pid for t in todo} - done)
         FAILED.write_text(json.dumps(sorted(failed)), encoding="utf-8")
 
-        try:  # 새 앨범 커버도 (지역 판정용)
-            covers.update_library(self.tracks, self.covers, log=log)
-        except Exception:
-            log(traceback.format_exc())
-        send({"id": rid, "event": "progress", "message": "재학습 중…", "done": 0, "total": 0})
         old = self.model
-        new = train.run(self.xml, self.model["embeddings"], log=log)
-        accepted = (new["style"]["cv_accuracy"] >= old["style"]["cv_accuracy"] - ACCEPT_MARGIN
-                    and new["region"]["cv_accuracy"] >= old["region"]["cv_accuracy"] - ACCEPT_MARGIN)
-        if accepted:
-            train.save(new)
+        train.save(train.run(self.xml, old["embeddings"] if old else train.DEFAULT_EMB, log=log))
         self.reload()
-        return {"added": len(keys), "accepted": accepted,
-                "old_style_accuracy": old["style"]["cv_accuracy"], "new_style_accuracy": new["style"]["cv_accuracy"]}
+        return {"added": len(done), "compared": int((self.lib_w > 0).sum())}
 
 
 FEAT = re.compile(r"[\(\[](?:feat\.?|ft\.?|featuring|with)\s+([^\)\]]+)[\)\]]", re.IGNORECASE)
@@ -640,7 +623,7 @@ def main() -> None:
     send({"event": "ready", "seconds": round(time.time() - t0, 1)})
     handlers = {"status": svc.status, "score_albums": svc.score_albums, "update": svc.update, "favorites": svc.favorites,
                 "track_near": svc.track_near, "album_pairs": svc.album_pairs, "similar_albums": svc.similar_albums,
-                "dislike_matches": svc.dislike_matches}
+                "dislike_matches": svc.dislike_matches, "genre_neighbors": svc.genre_neighbors}
 
     for line in sys.stdin:
         line = line.strip().lstrip("﻿")

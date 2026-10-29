@@ -27,7 +27,7 @@ public partial class RecommendSettingsWindow : Window
 
     private static readonly (string Label, string Hint)[] DropModes =
     [
-        ("물어보기", "다시 분석한 뒤 관심 없음·차단한 앨범과 아주 닮은 추천이 있으면 목록 위에서 뺄지 물어요."),
+        ("물어보기", "다시 계산한 뒤 관심 없음·차단한 앨범과 아주 닮은 추천이 있으면 목록 위에서 뺄지 물어요."),
         ("자동으로 빼기", "묻지 않고 빼고, 뺀 앨범을 알려 줘요."),
         ("그대로", "빼지 않고 점수만 깎아 아래로 내려요."),
     ];

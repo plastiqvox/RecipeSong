@@ -20,7 +20,27 @@ public sealed class SoundService : IAsyncDisposable
     private Process? _proc;
     private int _nextId;
 
-    private sealed record Pending(TaskCompletionSource<JsonElement> Done, IProgress<string>? Progress);
+    private sealed record Pending(TaskCompletionSource<JsonElement> Done, IProgress<string>? Progress, QueueEntry Entry);
+
+    /// <summary>
+    /// 요청 줄 (디버그 순서도의 '소리 서비스' 칸): 차례를 기다리는 것 · 처리 중인 것 · 앱에서 멈췄지만 서비스가 아직 끝내는 중인 것.
+    /// 서비스는 요청을 하나씩 처리하므로 이 줄이 미리듣기·분석이 기다리는 이유다
+    /// </summary>
+    private sealed class QueueEntry(long ticket, string cmd)
+    {
+        public long Ticket { get; } = ticket;
+        public string Cmd { get; } = cmd;
+        public volatile SoundJobState State = SoundJobState.Waiting;
+        public volatile string Message = "";
+    }
+    private readonly ConcurrentDictionary<long, QueueEntry> _queue = new();
+    private long _ticket;
+
+    /// <summary>지금 줄 (먼저 온 것부터)</summary>
+    public IReadOnlyList<SoundJob> Queue => [.. _queue.Values.OrderBy(e => e.Ticket).Select(e => new SoundJob(e.Cmd, e.State, e.Message))];
+
+    /// <summary>서비스를 처음 띄우는 중일 때 진행 문구</summary>
+    public static string StartingText => L.T("소리 서비스 시작 중 (처음 한 번 모델을 읽어요)");
 
     public static string LogPath => Path.Combine(CacheLocation.Directory, "sound-service.log");
 
@@ -33,8 +53,8 @@ public sealed class SoundService : IAsyncDisposable
     {
         var ml = settings.MlDirectory ?? FindMlDirectory();
         var uv = settings.UvPath ?? FindUv();
+        // 분석한 곡이 없어도 띄운다 (처음 설치): 서비스가 분석 전 상태로 뜨고 '분석 시작'으로 라이브러리를 처음 듣는다
         if (ml == null || uv == null || settings.ITunesLibraryPath == null) return null;
-        if (!File.Exists(Path.Combine(ml, "data", "crate_model.json"))) return null;
         return new SoundService(ml, uv, settings.ITunesLibraryPath);
     }
 
@@ -52,9 +72,11 @@ public sealed class SoundService : IAsyncDisposable
     {
         var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "uv.exe");
         if (File.Exists(local)) return local;
+        // 따로 설치한 uv 가 없으면 인스톨러가 앱 옆에 둔 uv.exe
         return (Environment.GetEnvironmentVariable("PATH") ?? "")
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
             .Select(p => Path.Combine(p.Trim(), "uv.exe"))
+            .Append(Path.Combine(AppContext.BaseDirectory, "uv.exe"))
             .FirstOrDefault(File.Exists);
     }
 
@@ -73,7 +95,8 @@ public sealed class SoundService : IAsyncDisposable
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var a in new[] { "run", "--quiet", "python", "service.py", "--xml", _xml }) psi.ArgumentList.Add(a);
+        // --no-dev: 시험 도구(pywinauto)는 서비스에 필요 없다 (설치한 PC 에서 처음 띄울 때 받지 않게)
+        foreach (var a in new[] { "run", "--quiet", "--no-dev", "python", "service.py", "--xml", _xml }) psi.ArgumentList.Add(a);
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONUNBUFFERED"] = "1";
 
@@ -90,6 +113,10 @@ public sealed class SoundService : IAsyncDisposable
     public async Task<SoundStatus> StatusAsync(CancellationToken ct = default)
     {
         var r = await CallAsync("status", null, null, ct);
+        if (r.TryGetProperty("trained", out var tr) && !tr.GetBoolean())
+            return new SoundStatus(r.GetProperty("device").GetString()!, r.GetProperty("gpu").GetString(), default, 0,
+                r.GetProperty("embedded").GetInt32(), r.GetProperty("new_tracks").GetInt32(),
+                Trained: false, Library: r.GetProperty("library").GetInt32());
         return new SoundStatus(
             r.GetProperty("device").GetString()!,
             r.GetProperty("gpu").GetString(),
@@ -97,27 +124,21 @@ public sealed class SoundService : IAsyncDisposable
             r.GetProperty("tracks").GetInt32(),
             r.GetProperty("embedded").GetInt32(),
             r.GetProperty("new_tracks").GetInt32(),
-            [.. r.GetProperty("styles").EnumerateArray().Select(e => e.GetString()!)],
-            r.GetProperty("style_accuracy").GetDouble(),
-            [.. r.GetProperty("regions").EnumerateArray().Select(e => e.GetString()!)],
-            r.GetProperty("region_accuracy").GetDouble());
+            Compared: r.GetProperty("compared").GetInt32());
     }
 
     /// <summary>Deezer 앨범 ID들의 미리듣기를 분석한다. 이미 분석한 앨범은 서비스 쪽 캐시에서 바로 나온다.</summary>
     public async Task<IReadOnlyDictionary<long, AlbumSound>> ScoreAlbumsAsync(
-        IEnumerable<long> albumIds, IProgress<string>? progress = null, CancellationToken ct = default,
-        IReadOnlyDictionary<long, string?>? covers = null, bool hitsOnly = false)
+        IEnumerable<long> albumIds, IProgress<string>? progress = null, CancellationToken ct = default, bool hitsOnly = false)
     {
-        // 커버 주소: 소리 + 커버로 지역을 판정한다 (없으면 소리만). tracks: 앨범에서 들을 곡 (전곡 / 인기곡)
-        var args = new { albums = albumIds.Select(id => new { id, cover = covers?.GetValueOrDefault(id) }).ToList(), tracks = hitsOnly ? "top" : "all" };
+        // tracks: 앨범에서 들을 곡 (전곡 / 인기곡)
+        var args = new { albums = albumIds.Select(id => new { id }).ToList(), tracks = hitsOnly ? "top" : "all" };
         var r = await CallAsync("score_albums", args, progress, ct);
         var map = new Dictionary<long, AlbumSound>();
         foreach (var a in r.GetProperty("albums").EnumerateArray())
         {
             bool ok = a.GetProperty("ok").GetBoolean();
             map[a.GetProperty("id").GetInt64()] = new AlbumSound(
-                ok ? ToDict(a.GetProperty("style")) : null,
-                ok ? ToDict(a.GetProperty("region")) : null,
                 ok ? a.GetProperty("taste").GetDouble() : null,
                 ok ? [.. a.GetProperty("near").EnumerateArray().Select(e => e.GetString()!)] : [],
                 Str(a, "label"), Str(a, "genre"),
@@ -160,13 +181,20 @@ public sealed class SoundService : IAsyncDisposable
             t => t.GetProperty("id").GetInt64(), t => (t.GetProperty("near").GetString()!, t.GetProperty("sim").GetDouble()));
     }
 
-    /// <summary>iTunes에 새로 들어온 곡만 분석하고 재학습한다. 성능이 떨어지면 이전 모델을 유지한다.</summary>
+    /// <summary>iTunes에 새로 들어온 곡만 분석하고 취향 기준(임베딩 평균)을 다시 낸다.</summary>
     public async Task<SoundUpdateResult> UpdateAsync(IProgress<string>? progress = null, CancellationToken ct = default)
     {
         var r = await CallAsync("update", null, progress, ct);
-        return new SoundUpdateResult(
-            r.GetProperty("added").GetInt32(), r.GetProperty("accepted").GetBoolean(),
-            r.GetProperty("old_style_accuracy").GetDouble(), r.GetProperty("new_style_accuracy").GetDouble());
+        return new SoundUpdateResult(r.GetProperty("added").GetInt32(), r.GetProperty("compared").GetInt32());
+    }
+
+    /// <summary>칸을 모르는 앨범(ids) → 칸을 아는 앨범(known) 중 소리가 가장 닮은 것들의 칸. 소리를 모르는 앨범은 빠진다</summary>
+    public async Task<Dictionary<long, string>> GenreNeighborsAsync(IEnumerable<long> ids, IReadOnlyDictionary<long, string> known,
+        CancellationToken ct = default)
+    {
+        var args = new { ids = ids.ToList(), known = known.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value) };
+        var r = await CallAsync("genre_neighbors", args, null, ct);
+        return r.GetProperty("albums").EnumerateArray().ToDictionary(a => a.GetProperty("id").GetInt64(), a => a.GetProperty("group").GetString()!);
     }
 
     private static IReadOnlyList<TrackPair>? Pairs(JsonElement a) =>
@@ -184,9 +212,6 @@ public sealed class SoundService : IAsyncDisposable
     private static string? Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
-    private static Dictionary<string, double> ToDict(JsonElement e) =>
-        e.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetDouble());
-
     /// <summary>target 앨범과 소리가 min 이상 닮은 앨범 (높은 순)</summary>
     public async Task<List<(long Id, double Sim)>> SimilarAlbumsAsync(long target, IEnumerable<long> ids, double min = 0.85, CancellationToken ct = default)
     {
@@ -203,24 +228,42 @@ public sealed class SoundService : IAsyncDisposable
             .Select(a => (a.GetProperty("id").GetInt64(), a.GetProperty("sim").GetDouble(), a.GetProperty("like").GetInt64()))];
     }
 
-    /// <summary>다른 요청을 처리하는 중 (요청은 한 번에 하나씩 — 새 요청은 줄을 선다)</summary>
-    public bool IsBusy => _serial.CurrentCount == 0;
+    /// <summary>
+    /// 다른 요청을 처리하는 중 (요청은 한 번에 하나씩 — 새 요청은 줄을 선다).
+    /// 앱에서 취소한 요청도 서비스는 끝까지 처리하므로(답이 올 때까지 _pending 에 남는다) 그것도 바쁜 것으로 본다
+    /// </summary>
+    public bool IsBusy => _serial.CurrentCount == 0 || _pending.Values.Any(p => p.Done.Task.IsCanceled);
+
+    /// <summary>앞 요청 때문에 차례를 기다릴 때 진행 문구 (디버그 순서도 창이 이 문구로 '차례 기다림'을 표시한다)</summary>
+    public static string WaitingText => L.T("소리 서비스가 앞 요청을 처리하는 중 · 차례를 기다려요");
 
     private async Task<JsonElement> CallAsync(string cmd, object? args, IProgress<string>? progress, CancellationToken ct)
     {
-        await StartAsync(ct);
-        await _serial.WaitAsync(ct);
+        var entry = new QueueEntry(Interlocked.Increment(ref _ticket), cmd);
+        _queue[entry.Ticket] = entry;
+        bool acquired = false;
         try
         {
+            if (_proc == null || !_ready.Task.IsCompleted) progress?.Report(StartingText);
+            await StartAsync(ct);
+            if (IsBusy) progress?.Report(WaitingText);
+            await _serial.WaitAsync(ct);
+            acquired = true;
+            entry.State = SoundJobState.Running;
             int id = Interlocked.Increment(ref _nextId);
-            var pending = new Pending(new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously), progress);
+            var pending = new Pending(new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously), progress, entry);
             _pending[id] = pending;
             var line = JsonSerializer.Serialize(new { id, cmd, args });
             await _proc!.StandardInput.WriteLineAsync(line.AsMemory(), ct);
-            using var reg = ct.Register(() => pending.Done.TrySetCanceled(ct));
+            // 앱에서 멈춰도 서비스는 이 요청을 끝까지 처리한다 → 답이 올 때까지 줄에 '멈춘 요청 마무리'로 남긴다
+            using var reg = ct.Register(() => { if (pending.Done.TrySetCanceled(ct)) entry.State = SoundJobState.Orphan; });
             return await pending.Done.Task;
         }
-        finally { _serial.Release(); }
+        finally
+        {
+            if (acquired) _serial.Release();
+            if (entry.State != SoundJobState.Orphan) _queue.TryRemove(entry.Ticket, out _);
+        }
     }
 
     private async Task ReadStdoutAsync()
@@ -237,11 +280,16 @@ public sealed class SoundService : IAsyncDisposable
                 if (ev.GetString() == "ready") _ready.TrySetResult();
                 else if (msg.TryGetProperty("id", out var pid) && pid.ValueKind == JsonValueKind.Number
                          && _pending.TryGetValue(pid.GetInt32(), out var p))
-                    p.Progress?.Report(msg.GetProperty("message").GetString() ?? "");
+                {
+                    var text = msg.GetProperty("message").GetString() ?? "";
+                    p.Entry.Message = text;
+                    p.Progress?.Report(text);
+                }
                 continue;
             }
             if (!msg.TryGetProperty("id", out var idEl) || idEl.ValueKind != JsonValueKind.Number) continue;
             if (!_pending.TryRemove(idEl.GetInt32(), out var done)) continue;
+            _queue.TryRemove(done.Entry.Ticket, out _);
             if (msg.GetProperty("ok").GetBoolean()) done.Done.TrySetResult(msg.GetProperty("result"));
             else done.Done.TrySetException(new InvalidOperationException(msg.GetProperty("error").GetString()));
         }
@@ -250,6 +298,7 @@ public sealed class SoundService : IAsyncDisposable
         _ready.TrySetException(err);
         foreach (var p in _pending.Values) p.Done.TrySetException(err);
         _pending.Clear();
+        _queue.Clear();
     }
 
     private async Task ReadStderrAsync()

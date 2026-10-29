@@ -19,7 +19,6 @@ public sealed class LibraryTools(LibraryService library, ReleaseRecommender reco
         [Description(PeriodHelp)] string period,
         [Description("날짜를 넘길 때의 단위: Year, Month, Week")] PeriodKind? kind = null,
         [Description("형식 필터: album, ep, single 중 선택 (비우면 전부)")] string[]? recordTypes = null,
-        [Description("지역 필터: Korea, Japan, International, SoutheastAsia (비우면 전부)")] Region[]? regions = null,
         [Description("추천 개수")] int count = 24,
         CancellationToken ct = default)
     {
@@ -33,12 +32,11 @@ public sealed class LibraryTools(LibraryService library, ReleaseRecommender reco
             end = p.End.AddDays(-1).ToString("yyyy-MM-dd"),
             releases = r.Releases
                 .Where(x => recordTypes is not { Length: > 0 } || recordTypes.Contains(x.RecordType))
-                .Where(x => regions is not { Length: > 0 } || regions.Contains(x.Region))
                 .Take(count)
                 .Select(x => new
                 {
                     x.Artist, x.Album, type = x.RecordType, releaseDate = x.ReleaseDate.ToString("yyyy-MM-dd"), x.Label,
-                    genre = x.GenreName, region = x.Region.ToString(), x.Crate, x.CrateFit, nearTracks = x.NearTracks,
+                    genre = x.GenreName, group = x.Crate, taste = x.Taste, nearTracks = x.NearTracks,
                     x.CoverUrl, x.Link, becauseOf = x.BecauseOf, x.IsKnownArtist, x.Score
                 }),
             warnings = library.Warnings
@@ -46,17 +44,11 @@ public sealed class LibraryTools(LibraryService library, ReleaseRecommender reco
     }
 
     [McpServerTool(Name = "get_taste_profile", ReadOnly = true)]
-    [Description("추천 시드로 쓰는 취향 아티스트: 크레이트 플레이리스트마다 많이 들은 아티스트와 가중치.")]
+    [Description("추천 시드로 쓰는 취향 아티스트: 라이브러리에서 많이 듣고 좋아한 아티스트와 가중치.")]
     public async Task<object> GetTasteProfile(CancellationToken ct = default) => await SeedsAsync(ct);
 
-    private async Task<IReadOnlyList<TasteArtist>> SeedsAsync(CancellationToken ct)
-    {
-        var tracks = await library.GetTracksAsync(ct);
-        var playlists = await library.GetPlaylistsAsync(ct);
-        var ml = library.Settings.MlDirectory ?? RecipeSong.Core.Sound.SoundService.FindMlDirectory();
-        var seeds = ml == null ? [] : TasteProfile.FromCrates(playlists, CrateConfig.Load(ml));
-        return seeds.Count > 0 ? seeds : TasteProfile.Build(tracks);
-    }
+    private async Task<IReadOnlyList<TasteArtist>> SeedsAsync(CancellationToken ct) =>
+        TasteProfile.FromLibrary(await library.GetTracksAsync(ct));
 
     [McpServerTool(Name = "get_library_releases", ReadOnly = true, OpenWorld = true)]
     [Description("선택한 기간에 '발매된' 내 라이브러리 앨범을 아티스트 → 앨범 단위로 보여줍니다. " +

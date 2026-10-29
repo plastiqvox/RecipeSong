@@ -1,6 +1,6 @@
 <Project>
   <!-- 앱 버전: src 아래 모든 프로젝트가 같이 쓴다. 설정 창 제목 옆에 Major.Minor 로 보인다 -->
   <PropertyGroup>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
   </PropertyGroup>
 </Project>

@@ -5,7 +5,7 @@ using RecipeSong.Core;
 
 namespace RecipeSong.Wpf;
 
-/// <summary>앱 설정 (톱니 버튼): 언어 · iTunes 라이브러리 · 자동 재학습 · 저장 위치와 용량. 추천 방식은 '추천 설정' 창에 따로.</summary>
+/// <summary>앱 설정 (톱니 버튼): 언어 · iTunes 라이브러리 · 자동 분석 · 장르 정보 키 · 디버그 · 저장 위치와 용량. 추천 방식은 '추천 설정' 창에 따로.</summary>
 public partial class SettingsWindow : Window
 {
     private readonly AppSettings _app;
@@ -26,9 +26,56 @@ public partial class SettingsWindow : Window
         AutoRetrainBox.IsChecked = vm.AutoUpdate;
         AutoRetrainBox.Checked += (_, _) => vm.AutoUpdate = true;
         AutoRetrainBox.Unchecked += (_, _) => vm.AutoUpdate = false;
+        DebugPipelineBox.IsChecked = vm.DebugPipeline;
+        DebugPipelineBox.Checked += (_, _) => vm.DebugPipeline = true;
+        DebugPipelineBox.Unchecked += (_, _) => vm.DebugPipeline = false;
         ShowLanguages();
         ShowLibrary();
+        ShowGenreKeys();
         ShowStorage();
+    }
+
+    // ---- 장르 정보 (Last.fm · Discogs 키): 저장하면 다음 추천 계산부터 쓴다 ----
+    private void ShowGenreKeys()
+    {
+        var s = _vm.GenreSettings;
+        LastFmStored.Visibility = s.HasStoredLastFmKey && LastFmBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        DiscogsStored.Visibility = s.HasStoredDiscogsToken && DiscogsBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        GenreKeyStatus.Text = s.LastFmKey == null && s.DiscogsToken == null
+            ? L.T("키가 없으면 Deezer 장르와 소리로만 나눠요.")
+            : s.HasStoredLastFmKey || s.DiscogsToken != null ? "" : L.T("앱에 들어 있는 Last.fm 키를 써요.");
+        LastFmBox.PasswordChanged -= GenreBox_Changed;
+        LastFmBox.PasswordChanged += GenreBox_Changed;
+        DiscogsBox.PasswordChanged -= GenreBox_Changed;
+        DiscogsBox.PasswordChanged += GenreBox_Changed;
+    }
+
+    private void GenreBox_Changed(object sender, RoutedEventArgs e)
+    {
+        LastFmStored.Visibility = _vm.GenreSettings.HasStoredLastFmKey && LastFmBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        DiscogsStored.Visibility = _vm.GenreSettings.HasStoredDiscogsToken && DiscogsBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>칸에 입력한 것만 바꾼다 (빈 칸은 저장한 키를 그대로)</summary>
+    private void SaveGenreKeys_Click(object sender, RoutedEventArgs e)
+    {
+        var s = _vm.GenreSettings;
+        if (LastFmBox.Password.Trim().Length > 0) s.SetLastFmKey(LastFmBox.Password);
+        if (DiscogsBox.Password.Trim().Length > 0) s.SetDiscogsToken(DiscogsBox.Password);
+        _vm.SaveGenreSettings();
+        LastFmBox.Password = DiscogsBox.Password = "";
+        ShowGenreKeys();
+        GenreKeyStatus.Text = L.T("저장했어요. 다음 추천 계산부터 써요.");
+    }
+
+    private void ClearGenreKeys_Click(object sender, RoutedEventArgs e)
+    {
+        var s = _vm.GenreSettings;
+        s.SetLastFmKey(null);
+        s.SetDiscogsToken(null);
+        _vm.SaveGenreSettings();
+        LastFmBox.Password = DiscogsBox.Password = "";
+        ShowGenreKeys();
     }
 
     // ---- 언어: 다시 시작하면 바뀐다 ----
@@ -98,7 +145,7 @@ public partial class SettingsWindow : Window
             long model = data.EnumerateFiles("crate_model.json").Sum(f => f.Length);
             MlSizes.Text = L.F("소리 분석 데이터 ({0})", data.FullName) + Environment.NewLine +
                 L.F("· 발매작 미리듣기 분석 {0}", CacheLocation.Format(albums)) + Environment.NewLine +
-                L.F("· 내 곡 학습 데이터 {0} · 취향 모델 {1}", CacheLocation.Format(library), CacheLocation.Format(model));
+                L.F("· 내 곡 소리 분석 {0} · 취향 기준 {1}", CacheLocation.Format(library), CacheLocation.Format(model));
         }
     }
 
