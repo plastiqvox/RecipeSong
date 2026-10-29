@@ -1,5 +1,4 @@
 using System.Net.Http.Json;
-using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -55,7 +54,6 @@ public static class GenreGroups
 /// Last.fm 은 앱에 넣어 배포하는 키(BuiltInLastFmKey)가 있으면 그걸 쓰고, 사용자가 넣은 키가 있으면 그게 먼저다.
 /// Discogs 는 개인 토큰을 넣었을 때만 쓴다 (앱 비밀 키를 배포 파일에 넣지 않는다).
 /// </summary>
-[SupportedOSPlatform("windows")]
 public sealed class GenreSourceSettings
 {
     /// <summary>배포용 Last.fm API 키 (읽기 전용 조회라 비밀 키는 필요 없다). 비어 있으면 사용자가 넣은 키만</summary>
@@ -110,7 +108,6 @@ public sealed class GenreSourceSettings
 /// 태그는 잘 바뀌지 않아 오래 캐시한다. 못 찾은 것(빈 목록)도 캐시해 다시 묻지 않는다 (네트워크 실패는 캐시하지 않음).
 /// 한도: Last.fm 은 IP 마다 초당 5회 안팎으로 알려져 있어 250ms, Discogs 는 분당 60회라 1.1초 간격.
 /// </summary>
-[SupportedOSPlatform("windows")]
 public sealed class GenreSources
 {
     private readonly HttpClient _http;

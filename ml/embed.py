@@ -142,7 +142,7 @@ def main() -> None:
                 flat.extend(clips)
                 owner.extend([j] * len(clips))
             if flat:
-                inputs = processor(audios=flat, sampling_rate=SR, return_tensors="pt").to(device)
+                inputs = processor(audio=flat, sampling_rate=SR, return_tensors="pt").to(device)
                 if device == "cuda":
                     inputs = {k: (v.half() if v.is_floating_point() else v) for k, v in inputs.items()}
                 with torch.no_grad():

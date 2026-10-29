@@ -185,7 +185,7 @@ class Service:
             return out
         feats = []
         for s in range(0, len(flat), 72):
-            inp = proc(audios=flat[s:s + 72], sampling_rate=embed.SR, return_tensors="pt").to(self.device)
+            inp = proc(audio=flat[s:s + 72], sampling_rate=embed.SR, return_tensors="pt").to(self.device)
             if self.device == "cuda":
                 inp = {k: (v.half() if v.is_floating_point() else v) for k, v in inp.items()}
             with torch.no_grad():
