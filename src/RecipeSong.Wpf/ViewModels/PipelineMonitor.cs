@@ -113,7 +113,7 @@ public sealed partial class RunInfo(int id, string title, RunKind kind) : Observ
 }
 
 /// <summary>
-/// 디버그 순서도 창이 보는 계산 상태. 동시에 도는 계산(보통 계산 · 정밀 분석 · 뒤 계산 · AI·웹진 · 내 곡 분석)을 모두 Runs 에 둔다.
+/// 작업 현황 창이 보는 계산 상태. 동시에 도는 계산(보통 계산 · 정밀 분석 · 뒤 계산 · AI·웹진 · 내 곡 분석)을 모두 Runs 에 둔다.
 /// 칸의 완료·대기·안 거침은 '주 계산'(가장 나중에 시작한 추천 계산) 하나로 그리고, 나머지 계산은 지금 있는 칸에 자기 색으로 표시한다.
 /// 내 곡 소리 분석은 '내 곡 소리 기준' 칸에만 표시한다 (추천 칸은 건드리지 않는다).
 /// </summary>
@@ -191,7 +191,7 @@ public sealed partial class PipelineMonitor : ObservableObject
     {
         _tick.Tick += (_, _) => Refresh();
         // 이번 실행에서 아직 계산이 없을 때 (순서도 버튼으로 먼저 열면 '끝'이 아니라 이렇게)
-        _title = L.T("추천 단계");
+        _title = L.T("작업 현황");
         _status = L.T("아직 계산 없음 · 계산이 시작되면 여기에 보여요");
     }
 

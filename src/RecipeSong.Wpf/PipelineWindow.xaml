@@ -2,10 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:RecipeSong.Wpf"
-        Title="{local:Tr '추천 단계 (디버그)'}" Width="900" Height="1000" MinWidth="480" MinHeight="560"
+        Title="{local:Tr '작업 현황'}" Width="900" Height="1000" MinWidth="480" MinHeight="560"
         ShowActivated="False" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
         FontFamily="{StaticResource Sans}">
-    <!-- 디버그 옵션(설정 → 디버그)을 켜면 계산이 시작될 때 뜬다. 칸 배치는 docs/images/recommendation.mjs 흐름도와 같다 (그림은 코드에서 그린다) -->
+    <!-- 작업 현황 옵션(설정 → 고급)을 켜면 계산이 시작될 때 뜬다. 칸 배치는 docs/images/recommendation.mjs 흐름도와 같다 (그림은 코드에서 그린다) -->
     <Grid Margin="20,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>

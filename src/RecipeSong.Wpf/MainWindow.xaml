@@ -1077,11 +1077,11 @@
                                     <TextBlock Text="{local:Tr '촘촘한 계산 멈추기'}" Foreground="{StaticResource AccentText}" Visibility="{Binding IsPrecise, Converter={StaticResource BoolVis}}"/>
                                 </Grid>
                             </Button>
-                            <!-- 디버그 옵션이 켜져 있을 때만: 순서도 창 열기·닫기 -->
+                            <!-- 작업 현황 옵션이 켜져 있을 때만: 작업 현황 창 열기·닫기 -->
                             <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,0,0" Command="{Binding OpenPipelineCommand}"
                                     Visibility="{Binding DebugPipeline, Converter={StaticResource BoolVis}}"
-                                    AutomationProperties.Name="{local:Tr '순서도 보기'}" ToolTip="{local:Tr '디버그: 추천 계산 단계를 순서도 창으로 봐요. 다시 누르면 닫혀요'}">
-                                <TextBlock Text="{local:Tr '순서도'}" Foreground="{StaticResource Text2}"/>
+                                    AutomationProperties.Name="{local:Tr '작업 현황 열기·닫기'}" ToolTip="{local:Tr '작업 현황: 추천 계산 · 내 곡 분석 · 소리 서비스가 지금 무엇을 하는지 순서도로 봐요. 다시 누르면 닫혀요'}">
+                                <TextBlock Text="{local:Tr '현황'}" Foreground="{StaticResource Text2}"/>
                             </Button>
                             <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,16,0" Command="{Binding OpenRecommendSettingsCommand}"
                                     AutomationProperties.Name="{local:Tr '추천 설정 열기'}" ToolTip="{local:Tr '추천 양 · 모험 정도 · 아는 아티스트 빼기'}">
