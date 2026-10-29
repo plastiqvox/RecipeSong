@@ -56,8 +56,13 @@ public static class GenreGroups
 /// </summary>
 public sealed class GenreSourceSettings
 {
-    /// <summary>배포용 Last.fm API 키 (읽기 전용 조회라 비밀 키는 필요 없다). 비어 있으면 사용자가 넣은 키만</summary>
-    public const string BuiltInLastFmKey = "";
+    /// <summary>
+    /// 배포용 Last.fm API 키 (읽기 전용 조회라 비밀 키는 필요 없다). 빌드할 때 secrets/lastfm.key 에서 어셈블리 메타데이터로 들어온다
+    /// (RecipeSong.Core.csproj). 비어 있으면 사용자가 넣은 키만
+    /// </summary>
+    public static readonly string BuiltInLastFmKey =
+        typeof(GenreSourceSettings).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+            .OfType<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "LastFmApiKey")?.Value ?? "";
 
     public string? LastFmEncryptedKey { get; set; }
     public string? DiscogsEncryptedToken { get; set; }

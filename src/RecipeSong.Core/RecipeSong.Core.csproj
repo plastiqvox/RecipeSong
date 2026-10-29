@@ -13,6 +13,18 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <!--
+    앱에 넣어 배포하는 Last.fm API 키 (GenreSourceSettings.BuiltInLastFmKey). 공개 저장소라 소스에 쓰지 않고
+    git 에 안 올라가는 secrets/lastfm.key 를 빌드할 때 읽어 어셈블리 메타데이터로 넣는다. 파일이 없으면 빈 키 (설정 창에 넣은 키만 쓴다).
+    -p:LastFmApiKey=... 로 직접 줄 수도 있다
+  -->
+  <PropertyGroup Condition="'$(LastFmApiKey)' == '' And Exists('$(MSBuildThisFileDirectory)..\..\secrets\lastfm.key')">
+    <LastFmApiKey>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\secrets\lastfm.key').Trim())</LastFmApiKey>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(LastFmApiKey)' != ''">
+    <AssemblyMetadata Include="LastFmApiKey" Value="$(LastFmApiKey)" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Anthropic" Version="13.3.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
