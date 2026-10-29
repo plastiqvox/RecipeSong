@@ -1,0 +1,16 @@
+﻿RecipeSong 에 함께 들어 있는 프로그램
+
+uv (uv.exe)
+  Astral Software Inc.
+  https://github.com/astral-sh/uv
+  라이선스: MIT 또는 Apache-2.0 (둘 중 하나를 고를 수 있음)
+  https://github.com/astral-sh/uv/blob/main/LICENSE-MIT
+  https://github.com/astral-sh/uv/blob/main/LICENSE-APACHE
+
+.NET 런타임
+  Microsoft Corporation
+  라이선스: MIT
+  https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
+
+소리 분석 환경(Python, PyTorch, transformers 등)은 설치할 때 uv 가 각 배포처에서 내려받는다.
+CLAP 모델(laion/larger_clap_general)은 처음 분석할 때 Hugging Face 에서 내려받는다.
