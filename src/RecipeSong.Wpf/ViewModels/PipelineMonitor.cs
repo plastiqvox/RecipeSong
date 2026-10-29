@@ -137,7 +137,7 @@ public sealed partial class PipelineMonitor : ObservableObject
         new("listen", 1, 5, L.T("미리듣기 소리 분석"), L.T("CLAP · 내 곡과 비교"), RecStage.Listen),
         new("aicheck", 3, 5, L.T("Deezer에서 확인"), L.T("실제로 있는 앨범만"), RecStage.AiCheck),
         new("score", 1, 6, L.T("점수"), L.T("닮음 + 연결 + 좋아요 − 별로"), RecStage.Score),
-        new("ladder", 0, 7, L.T("장르 정하는 순서"), L.T("Last.fm → Discogs → Deezer → 소리")),
+        new("ladder", 0, 7, L.T("장르 정하는 순서"), L.T("Last.fm → Deezer → 소리가 닮은 앨범")),
         new("crate", 1, 7, L.T("장르 칸"), L.T("국적과 상관없이 6칸"), RecStage.Genre),
         new("screen", 1, 8, L.T("화면"), L.T("저장하고 칸마다 묶어 보여 줌"), RecStage.Done),
         new("gate", 2, 8, L.T("AI·웹진 거르기"), L.T("일반 추천 하위 25% 선 미만 숨김")),

@@ -88,7 +88,7 @@
  "GPT가 결과를 돌려주지 않았어요 (거절됐거나 출력 한도에 걸렸어요)": "GPT returned no results (refused or hit the output limit)",
  "GPT가 웹에서 발매작 찾는 중… (1~2분)": "GPT is searching the web for releases… (1–2 min)",
  "Last.fm API 키": "Last.fm API key",
- "Last.fm → Discogs → Deezer → 소리": "Last.fm → Discogs → Deezer → sound",
+ "Last.fm → Deezer → 소리가 닮은 앨범": "Last.fm → Deezer → similar-sounding albums",
  "Last.fm 비슷한 아티스트 {0}/{1}": "Last.fm similar artists {0}/{1}",
  "Last.fm 사용자들이 붙인 장르 태그": "Genre tags from Last.fm listeners",
  "M월": "MMM",
