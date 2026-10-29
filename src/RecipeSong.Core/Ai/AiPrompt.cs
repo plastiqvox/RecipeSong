@@ -13,7 +13,7 @@ public interface IAiScout
     /// <summary>키가 아직 유효한지만 확인한다 (모델 목록 조회 — 요금 없음). 유효하면 null, 아니면 이유.</summary>
     Task<string?> CheckKeyAsync(CancellationToken ct = default);
     /// <param name="taste">많이 듣는 뮤지션·앱 신호 요약 (프롬프트에 그대로 들어간다)</param>
-    /// <param name="exclude">이미 화면에 있는 "아티스트 – 앨범" (다시 제안하지 않게)</param>
+    /// <param name="exclude">AI 커넥터가 이 기간에 이미 제안한 "아티스트 – 앨범" (다시 제안하지 않게). 일반 추천과 겹치는 앨범은 넣지 않는다</param>
     /// <param name="focusRegion">일본/한국/해외/동남아 중 하나면 그 지역만 (앱은 지역을 나누지 않아 null 로 부른다)</param>
     Task<IReadOnlyList<AiPick>> FindAsync(Period period, string taste, IReadOnlyCollection<string> exclude, string? focusRegion,
         IProgress<string>? progress = null, CancellationToken ct = default);
@@ -44,7 +44,7 @@ internal static class AiPrompt
 
         {taste}
 
-        Already known releases (do not suggest these):
+        Already suggested before (do not suggest these again):
         {(exclude.Count == 0 ? "(none)" : string.Join("\n", exclude.Take(120)))}
 
         Task: search the web for albums and EPs actually released in this period that fit my taste.

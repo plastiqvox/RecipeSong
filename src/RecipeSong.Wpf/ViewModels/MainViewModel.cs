@@ -272,9 +272,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (win.ShowDialog() != true || win.Result == _recPrefs) return;
         RefreshBlocked();  // 창에서 차단을 해제했을 수 있다
         bool poolChanged = win.Result.Amount != _recPrefs.Amount;
+        // 라이브판·리믹스 빼기만 바뀌었으면 다시 불러오지 않고 화면에서만 다시 거른다
+        bool filterOnly = win.Result with { ExcludeLive = _recPrefs.ExcludeLive, ExcludeRemix = _recPrefs.ExcludeRemix } == _recPrefs;
         _recPrefs = win.Result;
         _recPrefsStore.Set("prefs", _recPrefs);
         _recPrefsStore.Save();
+        if (filterOnly) { ApplyFilters(); return; }
         // 추천 양이 바뀌면 후보 아티스트부터 다시 모은다
         if (poolChanged)
         {
@@ -906,8 +909,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var tracks = await _library.GetTracksAsync(_life.Token);
             _mine ??= TasteProfile.LibraryArtists(tracks);
             var taste = AiTaste();
-            // 다시 찾기면 지난 AI 결과도 다시 나올 수 있게 제외 목록에서 뺀다
-            var exclude = _all.Where(i => !(replace && i.IsAi)).Select(i => $"{i.Artist} – {i.Album}").ToList();
+            // 제외 목록은 AI 커넥터가 이미 제안한 것만 (같은 걸 또 찾느라 비용을 쓰지 않게). 일반 추천·웹진과 겹치는 앨범은 골라도 된다 —
+            // 고르면 그 카드에 AI 배지와 이유가 붙는다 (MergeAi). 다시 찾기면 지난 AI 결과도 다시 나올 수 있게 비운다
+            var exclude = replace ? [] : _all.Where(i => i.IsAiConnector).Select(i => $"{i.Artist} – {i.Album}").ToList();
 
             // 커넥터마다 따로 돌리고, 하나가 실패해도 나머지 결과는 쓴다
             var runs = await Task.WhenAll(scouts.Select(async s =>
@@ -1342,7 +1346,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         bool RedundantInstrumental(ReleaseItem i) => titles != null && AlbumVariants.InstrumentalBase(i.Album) is { } original
             && (titles.Contains(ListeningAnalyzer.NormalizeArtist(i.Artist) + "|" + ListeningAnalyzer.NormalizeArtist(original))
                 || _owned?.HasAlbum(i.Artist, original) == true);
+        // 라이브판 · 리믹스: 제목으로 거른다 (추천 설정, 저장된 결과에도 바로)
+        bool live = _recPrefs.ExcludeLive, remix = _recPrefs.ExcludeRemix;
         return _all.Where(i => !_blocked.IsBlocked(i.Rec) && !RedundantInstrumental(i))
+            .Where(i => !(live && AlbumVariants.IsLive(i.Album)) && !(remix && AlbumVariants.IsRemix(i.Album)))
             .Where(i => !i.IsDisliked
             && !(i.Rec.FromPlaylist == null && dislikedArtists.Contains(ListeningAnalyzer.NormalizeArtist(i.Rec.Artist))))
             // AI·웹진이 찾은 앨범도 내 곡과 닮지 않았으면 숨긴다 (내 라이브러리·팔로우 뮤지션 것은 그대로)
