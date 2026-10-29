@@ -55,6 +55,10 @@ public sealed partial class ReleaseItem : ObservableObject
     public bool HasLikedLabel => !string.IsNullOrEmpty(Rec.LikedLabel);
     public bool HasFavNear => !string.IsNullOrEmpty(Rec.FavNear);
     public bool IsAi => Rec.AiReason != null;
+    /// <summary>Deezer 연관에는 없고 Last.fm 비슷한 아티스트로 이어진 아티스트 (카드 배지 · 달력 붉은 점)</summary>
+    public bool ViaLastFm => Rec.ViaLastFm;
+    public string LastFmTip => L.F("Deezer 연관에는 없고 Last.fm이 이어 준 아티스트예요 · 비슷한: {0}",
+        string.Join(", ", Rec.BecauseOf.Take(3)));
     /// <summary>웹진 RSS에서 온 추천</summary>
     public bool IsWebzine => Rec.AiBy?.Any(b => b.StartsWith("웹진", StringComparison.Ordinal)) == true;
     /// <summary>AI 커넥터(Claude·GPT)가 찾은 추천</summary>

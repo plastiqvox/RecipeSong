@@ -81,8 +81,9 @@ public sealed record RecommendOptions
 public sealed record CandidatePool(IReadOnlyList<PoolArtist> Artists, DateTime BuiltAt, int MinePending = 0);
 
 /// <param name="Mine">라이브러리 뮤지션이면 그 정보 (신보를 항상 보여준다)</param>
+/// <param name="ViaLastFm">Deezer 연관으로는 안 들어오고 Last.fm 비슷한 아티스트로만 이어졌다 (카드의 Last.fm 배지)</param>
 public sealed record PoolArtist(long Id, string Name, double Score, IReadOnlyList<string> Because, IReadOnlyList<DzAlbum> Albums,
-    PlaylistArtist? Mine = null, int Fans = 0);
+    PlaylistArtist? Mine = null, int Fans = 0, bool ViaLastFm = false);
 
 /// <summary>
 /// 발매일 기준 추천: 선택한 기간(달력의 주/월/연)에 발매된 앨범·EP·싱글 중 내 라이브러리와 소리가 닮은 것.
@@ -244,7 +245,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                     if (a == null) continue;
                     // 순위와 Last.fm 닮음 점수를 같이 본다 (Deezer 연관은 순위만: 1 → 0.3)
                     double sc = s.Weight * (1 - 0.7 * i / sim.Count) * (0.5 + 0.5 * Math.Clamp(sim[i].Match, 0, 1));
-                    Add(cands, a.Id, a.Name, sc, s.Artist, a.Fans);
+                    Add(cands, a.Id, a.Name, sc, s.Artist, a.Fans, lastFm: true);
                     hop1.Add((a, sc, s.Artist));
                 }
             }
@@ -272,7 +273,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             return (c, albums);
         }));
         SaveCaches();
-        return [.. discos.Select(x => new PoolArtist(x.c.Id, x.c.Name, x.c.Score, [.. x.c.Because.Distinct().Take(3)], x.albums, Fans: x.c.Fans))];
+        return [.. discos.Select(x => new PoolArtist(x.c.Id, x.c.Name, x.c.Score, [.. x.c.Because.Distinct().Take(3)], x.albums, Fans: x.c.Fans,
+            ViaLastFm: x.c.LastFm && !x.c.Deezer))];
     }
 
     /// <summary>
@@ -582,7 +584,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                 WithLiked: withLikeds[i],
                 Fans: c.Fans,
                 Pairs: snd?.Pairs,
-                Genres: snd?.Genres));
+                Genres: snd?.Genres,
+                ViaLastFm: c.ViaLastFm && c.Mine == null));
         }
         return (recs, heard.Any(s => s != null));
     }
@@ -726,9 +729,11 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         _lastFmArtists.Save();
     }
 
-    private static void Add(Dictionary<long, Candidate> map, long id, string name, double score, string because, int fans = 0)
+    private static void Add(Dictionary<long, Candidate> map, long id, string name, double score, string because, int fans = 0, bool lastFm = false)
     {
         if (!map.TryGetValue(id, out var c)) map[id] = c = new Candidate(id, name);
+        // 어디서 이어졌나: 시드·Deezer 연관(1·2단계)이면 Deezer, Last.fm 비슷한 아티스트면 LastFm
+        if (lastFm) c.LastFm = true; else c.Deezer = true;
         c.Score += score;
         c.Because.Add(because);
         if (fans > 0) c.Fans = fans;
@@ -740,6 +745,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         public string Name { get; } = name;
         public double Score { get; set; }
         public int Fans { get; set; }
+        public bool Deezer { get; set; }
+        public bool LastFm { get; set; }
         public List<string> Because { get; } = [];
     }
 }

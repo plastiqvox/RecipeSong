@@ -573,16 +573,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // 같은 앨범이 여러 기간 키에 있으면 배지를 합친다
         var recs = _aiPicks.FreshValues.SelectMany(l => l).Concat(AllWebzinePicks()).GroupBy(r => r.DeezerAlbumId)
             .Select(g => g.Aggregate(MergeAi)).ToList();
-        (IReadOnlyList<AiBadge> Dots, string? Tip) Marks(IEnumerable<ReleaseRecommendation> rs)
+        // Last.fm 으로만 이어진 아티스트의 추천 (저장된 기간 결과에서) — 달력에 붉은 점
+        var lastFm = _recResults.FreshValues.SelectMany(l => l).Where(r => r.ViaLastFm).DistinctBy(r => r.DeezerAlbumId).ToList();
+        var lastFmByDay = lastFm.ToLookup(r => r.ReleaseDate);
+        (IReadOnlyList<AiBadge> Dots, string? Tip) Marks(IEnumerable<ReleaseRecommendation> rs, IEnumerable<ReleaseRecommendation> lf)
         {
-            var labels = rs.SelectMany(r => (r.AiBy ?? []).Select(b => (b, r))).ToList();
+            var labels = rs.SelectMany(r => (r.AiBy ?? []).Select(b => (b, r))).Concat(lf.Select(r => (b: "Last.fm", r))).ToList();
             // 모델 기록 전의 "Claude"는 그날 같은 커넥터의 모델 배지가 있으면 그쪽으로 합친다 (점 하나 = 모델 하나)
             labels = [.. labels.Select(x => !x.b.Contains(' ')
                 && labels.FirstOrDefault(o => o.b.StartsWith(x.b + " ", StringComparison.Ordinal)).b is { } full ? (full, x.r) : x)];
             if (labels.Count == 0) return ([], null);
             var groups = labels.GroupBy(x => x.b).OrderBy(g => AiColors.Rank(g.Key)).ToList();
-            return ([.. groups.Select(g => new AiBadge(g.Key))],
-                L.T("AI가 찾은 앨범") + "\n" + string.Join("\n", groups.Select(g =>
+            // 점: 웹진은 몇 곳이든 보라 점 하나 (어느 웹진인지는 툴팁에)
+            return ([.. groups.Select(g => g.Key.StartsWith("웹진", StringComparison.Ordinal) ? "웹진" : g.Key).Distinct().Select(k => new AiBadge(k))],
+                L.T("AI·웹진·Last.fm으로 찾은 앨범") + "\n" + string.Join("\n", groups.Select(g =>
                     $"{g.Key}: " + string.Join(", ", g.Select(x => $"{x.r.Artist} – {x.r.Album}").Distinct().Take(4)) + (g.Count() > 4 ? " …" : ""))));
         }
         var byDay = recs.ToLookup(r => r.ReleaseDate);
@@ -603,7 +607,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 ? L.T("팔로우한 아티스트 발매작") + "\n" + string.Join("\n", l.Take(4)) + (l.Count > 4 ? " …" : "") : null;
         foreach (var d in Days)
         {
-            (d.AiDots, d.AiTip) = Marks(byDay[DateOnly.FromDateTime(d.Date)]);
+            (d.AiDots, d.AiTip) = Marks(byDay[DateOnly.FromDateTime(d.Date)], lastFmByDay[DateOnly.FromDateTime(d.Date)]);
             var h = history.Where(x => x.Kind == PeriodKind.Week && x.Start.Date <= d.Date && d.Date <= x.End.Date).MaxBy(x => x.At);
             d.Analyzed = h != null;
             d.NewCount = newByDay[DateOnly.FromDateTime(d.Date)].Count();
@@ -615,7 +619,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var byMonth = recs.Where(r => r.ReleaseDate.Year == SelectedDate.Year).ToLookup(r => r.ReleaseDate.Month);
         foreach (var m in Months)
         {
-            (m.AiDots, m.AiTip) = Marks(byMonth[m.Month]);
+            (m.AiDots, m.AiTip) = Marks(byMonth[m.Month], lastFm.Where(r => r.ReleaseDate.Year == SelectedDate.Year && r.ReleaseDate.Month == m.Month));
             var h = history.Where(x => x.Kind == PeriodKind.Month && x.Start.Year == SelectedDate.Year && x.Start.Month == m.Month).MaxBy(x => x.At);
             m.Analyzed = h != null;
             m.NewCount = unseen.Count(r => r.ReleaseDate.Year == SelectedDate.Year && r.ReleaseDate.Month == m.Month);

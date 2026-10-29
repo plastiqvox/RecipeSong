@@ -475,6 +475,11 @@
                                     <TextBlock Text="{Binding Badge}" FontSize="11" FontWeight="Medium" Foreground="{StaticResource Text2}"/>
                                 </StackPanel>
                             </Border>
+                            <!-- Last.fm 배지: Deezer 연관으로는 안 들어오고 Last.fm 비슷한 아티스트로 이어진 아티스트 -->
+                            <Border Margin="6,0,0,0" Padding="7,1" CornerRadius="10" BorderThickness="1" BorderBrush="#F0565A" Background="#2EF0565A" VerticalAlignment="Center"
+                                    Visibility="{Binding ViaLastFm, Converter={StaticResource BoolVis}}" ToolTip="{Binding LastFmTip}">
+                                <TextBlock Text="Last.fm" FontSize="11" FontWeight="Medium" Foreground="#F0565A"/>
+                            </Border>
                             <Border Margin="6,0,0,0" Padding="6,1" CornerRadius="9" BorderThickness="1" BorderBrush="{StaticResource Accent}" VerticalAlignment="Center"
                                     Visibility="{Binding IsNew, Converter={StaticResource BoolVis}}" ToolTip="{local:Tr '이번에 처음 나온 앨범'}">
                                 <TextBlock Text="NEW" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentText}"/>
@@ -848,10 +853,10 @@
                         </ItemsControl>
                     </StackPanel>
                     <TextBlock Text="{local:Tr '날짜를 누르면 그 주 발매작 · 진한 날일수록 취향 발매작이 많음'}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                    <!-- 달력 범례: 2열. 칸 아래 점 = AI·웹진이 찾은 앨범의 발매일, 위 회색 선 = 분석해 둔 기간, 오른쪽 위 흰 고리 = 처음 보는 앨범 (AI 점과 헷갈리지 않게 속이 빈 모양), 왼쪽 위 ★ = 팔로우 신보 -->
+                    <!-- 달력 범례: 2열. 칸 아래 점 = AI·웹진·Last.fm 으로 찾은 앨범의 발매일 (웹진은 몇 곳이든 점 하나), 위 회색 선 = 분석해 둔 기간, 오른쪽 위 흰 고리 = 처음 보는 앨범 (AI 점과 헷갈리지 않게 속이 빈 모양), 왼쪽 위 ★ = 팔로우 신보 -->
                     <Grid Margin="0,8,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
                         <DockPanel Grid.Row="0" Grid.Column="0" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr 'Claude 가 찾은 앨범의 발매일. 진할수록 비싼 모델'}">
                             <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center"><Ellipse Width="5" Height="5" Fill="#FFC98E" Margin="0,0,1.5,0"/><Ellipse Width="5" Height="5" Fill="#FF9838" Margin="0,0,1.5,0"/><Ellipse Width="5" Height="5" Fill="#F26B0A" Margin="0,0,1.5,0"/></StackPanel>
@@ -869,6 +874,13 @@
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center"><Ellipse Width="5" Height="5" Fill="#A88BFF" Margin="0,0,1.5,0"/></StackPanel>
                             </Grid>
                             <TextBlock Text="{local:Tr '웹진'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                        <DockPanel Grid.Row="3" Grid.Column="0" Margin="0,3,8,3" Background="Transparent"
+                                   ToolTip="{local:Tr 'Deezer 연관에는 없고 Last.fm 비슷한 아티스트로 이어진 아티스트의 발매일'}">
+                            <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center"><Ellipse Width="5" Height="5" Fill="#F0565A" Margin="0,0,1.5,0"/></StackPanel>
+                            </Grid>
+                            <TextBlock Text="Last.fm" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
                         <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,3,8,3" Background="Transparent" ToolTip="{local:Tr '팔로우한 아티스트의 발매일'}">
                             <Grid DockPanel.Dock="Left" Width="24" Margin="0,0,6,0" VerticalAlignment="Center">

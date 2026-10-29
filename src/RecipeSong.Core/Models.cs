@@ -118,7 +118,8 @@ public sealed record ReleaseRecommendation(
     IReadOnlyList<string> BecauseOf, bool IsKnownArtist, double Score,
     string? FromPlaylist = null, string? AiReason = null, IReadOnlyList<string>? AiBy = null,
     string? FavNear = null, string? LikedLabel = null, string? WithLiked = null, int Fans = 0,
-    string? SourceUrl = null, long ArtistId = 0, IReadOnlyList<TrackPair>? Pairs = null, IReadOnlyList<string>? Genres = null);
+    string? SourceUrl = null, long ArtistId = 0, IReadOnlyList<TrackPair>? Pairs = null, IReadOnlyList<string>? Genres = null,
+    bool ViaLastFm = false);
 
 /// <summary>이 앨범의 곡 ≈ 가장 닮은 내 곡 ("아티스트 – 곡명"), 소리 서비스가 미리듣기 곡마다 매긴다</summary>
 public sealed record TrackPair(string Track, string Near, double Sim);
