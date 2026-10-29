@@ -81,15 +81,26 @@ public partial class PipelineWindow : Window
 
     private static Brush Res(string key) => (Brush)Application.Current.Resources[key];
 
-    private static Rect Box(StageItem s) =>
-        new(ColX[s.Col] - ColW[s.Col] / 2, RowTop + s.Row * RowStep, ColW[s.Col], NodeH);
+    // 아이콘 칸(데이터·규칙)은 상자가 없어 좁게 잡는다 — 옆으로 닿는 화살표가 글자 가까이에서 끝나게
+    private const double IconW = 200;
+
+    private static Rect Box(StageItem s)
+    {
+        double w = s.Kind == NodeKind.Step ? ColW[s.Col] : Math.Min(ColW[s.Col], IconW);
+        return new(ColX[s.Col] - w / 2, RowTop + s.Row * RowStep, w, NodeH);
+    }
 
     /// <summary>
     /// 칸 하나에 그리는 것: 테두리(점선이 되므로 Rectangle) · 바탕 · 제목 · 상태 알약 · 설명 · 진행 문구,
-    /// 그리고 주 계산이 아닌 계산이 이 칸에 있을 때의 바깥 고리(Ring)와 위쪽 알약 줄(Markers)
+    /// 그리고 주 계산이 아닌 계산이 이 칸에 있을 때의 바깥 고리(Ring)와 위쪽 알약 줄(Markers).
+    /// 단계가 아닌 칸(데이터·규칙)은 테두리 없이 순서도 기호 아이콘(Icon) + 이름
     /// </summary>
     private sealed record Node(StageItem Item, Rectangle Frame, Border Body, TextBlock Title, Border Chip, TextBlock ChipText, TextBlock Detail,
-        Rectangle Ring, StackPanel Markers, Rectangle Bar);
+        Rectangle Ring, StackPanel Markers, Rectangle Bar, Path? Icon);
+
+    // 순서도 기호 (PipelineWindow.xaml 범례와 같은 경로): 데이터 = 원통, 규칙 = 저울
+    private static readonly Geometry DataIcon = Geometry.Parse("M1,3 A6,2.2 0 0 1 13,3 L13,13 A6,2.2 0 0 1 1,13 Z M1,3 A6,2.2 0 0 0 13,3");
+    private static readonly Geometry RuleIcon = Geometry.Parse("M8,1.5 L8,14 M5,14.5 L11,14.5 M2,4 L14,4 M2,4 L0.5,9 M2,4 L3.5,9 M0.5,9 Q2,11.5 3.5,9 M14,4 L12.5,9 M14,4 L15.5,9 M12.5,9 Q14,11.5 15.5,9");
 
     private void DrawNode(StageItem s)
     {
@@ -97,16 +108,37 @@ public partial class PipelineWindow : Window
         var title = new TextBlock { FontSize = 14, FontWeight = FontWeights.Bold, TextTrimming = TextTrimming.CharacterEllipsis };
         var chipText = new TextBlock { FontSize = 10, FontWeight = FontWeights.Bold };
         var chip = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(7, 1, 7, 2), Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top, Child = chipText };
-        var head = new DockPanel();
-        DockPanel.SetDock(chip, Dock.Right);
-        head.Children.Add(chip);
-        head.Children.Add(title);
         var sub = new TextBlock { Text = s.Sub, FontSize = 11, Foreground = Res("Muted"), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0) };
         var detail = new TextBlock { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 2, 0, 0) };
+        Path? icon = null;
+        StackPanel content;
+        if (s.Kind == NodeKind.Step)
+        {
+            var head = new DockPanel();
+            DockPanel.SetDock(chip, Dock.Right);
+            head.Children.Add(chip);
+            head.Children.Add(title);
+            content = new StackPanel { Children = { head, sub, detail } };
+        }
+        else
+        {
+            // 단계가 아닌 칸: 상자 없이 아이콘 위, 이름 · 설명 아래 (가운데 맞춤)
+            icon = new Path
+            {
+                Data = s.Kind == NodeKind.Data ? DataIcon : RuleIcon, Width = 24, Height = 22, Stretch = Stretch.Uniform, StrokeThickness = 1.8,
+                StrokeLineJoin = PenLineJoin.Round, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 3),
+                ToolTip = s.Kind == NodeKind.Data ? L.T("추천 계산이 가져다 쓰는 저장된 것 (내 아카이브 · 내 곡 분석이 만든 소리 기준). 계산 단계가 아니라 색이 바뀌지 않아요") : L.T("계산 단계가 아니라 단계가 따르는 규칙 (장르 정하는 순서 · AI·웹진 거르기). 색이 바뀌지 않아요"),
+            };
+            chip.VerticalAlignment = VerticalAlignment.Center;
+            sub.HorizontalAlignment = detail.HorizontalAlignment = HorizontalAlignment.Center;
+            var name = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Children = { title, chip } };
+            content = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { icon, name, sub, detail } };
+        }
         var body = new Border
         {
-            Width = r.Width, Height = r.Height, CornerRadius = new CornerRadius(10), Padding = new Thickness(13, 8, 10, 6),
-            Child = new StackPanel { Children = { head, sub, detail } }, ToolTip = s.Sub,
+            Width = r.Width, Height = r.Height, CornerRadius = new CornerRadius(10),
+            Padding = s.Kind == NodeKind.Step ? new Thickness(13, 8, 10, 6) : new Thickness(4, 0, 4, 0),
+            Child = content, ToolTip = s.Sub,
         };
         var frame = new Rectangle { Width = r.Width, Height = r.Height, RadiusX = 10, RadiusY = 10, IsHitTestVisible = false };
         var ring = new Rectangle { Width = r.Width + 12, Height = r.Height + 12, RadiusX = 14, RadiusY = 14, StrokeThickness = 2.5, StrokeDashArray = [3, 2], IsHitTestVisible = false };
@@ -130,7 +162,7 @@ public partial class PipelineWindow : Window
         Canvas.SetLeft(bar, r.Left + 3);
         Canvas.SetTop(bar, r.Bottom - 6);
         Chart.Children.Add(bar);
-        _nodes[s.Key] = new Node(s, frame, body, title, chip, chipText, detail, ring, markers, bar);
+        _nodes[s.Key] = new Node(s, frame, body, title, chip, chipText, detail, ring, markers, bar, icon);
         s.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(StageItem.State) or nameof(StageItem.Time) or nameof(StageItem.Detail)) Paint();
@@ -275,6 +307,13 @@ public partial class PipelineWindow : Window
                 _ => Res("Text"),
             };
             n.Title.Text = st switch { StageState.Done => "✓ ", StageState.Current => "▶ ", StageState.Reused => "↺ ", _ => "" } + n.Item.Label;
+            if (n.Icon is { } icon)
+            {
+                // 아이콘 칸: 테두리·바탕 없이 아이콘 색만 (내 곡 분석이 돌면 '내 곡 소리 기준' 아이콘이 분석 색)
+                n.Frame.Visibility = Visibility.Collapsed;
+                n.Body.Background = Brushes.Transparent;
+                icon.Stroke = st switch { StageState.Current => line, StageState.Done => Res("Ok"), _ => Res("Text2") };
+            }
             n.Detail.Visibility = st == StageState.Current ? Visibility.Visible : Visibility.Collapsed;
             // 진행 상태: 오래 조용하면(멈춘 건지 느린 건지) 문구 끝에 '소식 없음 n초'를 붙이고 노랗게
             var quiet = st == StageState.Current && n.Item.LastNews != default ? (DateTime.Now - n.Item.LastNews).TotalSeconds : 0;
