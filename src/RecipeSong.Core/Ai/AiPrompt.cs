@@ -12,9 +12,9 @@ public interface IAiScout
     Task<string?> TestAsync(CancellationToken ct = default);
     /// <summary>키가 아직 유효한지만 확인한다 (모델 목록 조회 — 요금 없음). 유효하면 null, 아니면 이유.</summary>
     Task<string?> CheckKeyAsync(CancellationToken ct = default);
-    /// <param name="taste">크레이트별 대표 뮤지션 요약 (프롬프트에 그대로 들어간다)</param>
+    /// <param name="taste">많이 듣는 뮤지션·앱 신호 요약 (프롬프트에 그대로 들어간다)</param>
     /// <param name="exclude">이미 화면에 있는 "아티스트 – 앨범" (다시 제안하지 않게)</param>
-    /// <param name="focusRegion">일본/한국/해외/동남아 중 하나면 그 지역만</param>
+    /// <param name="focusRegion">일본/한국/해외/동남아 중 하나면 그 지역만 (앱은 지역을 나누지 않아 null 로 부른다)</param>
     Task<IReadOnlyList<AiPick>> FindAsync(Period period, string taste, IReadOnlyCollection<string> exclude, string? focusRegion,
         IProgress<string>? progress = null, CancellationToken ct = default);
 }
@@ -37,7 +37,7 @@ internal static class AiPrompt
 
     private static string ReasonLanguage => L.Lang == "en" ? "English" : "Korean";
 
-    /// <param name="taste">앱이 만든 취향 요약: 레시피별 대표 뮤지션 + 좋아요·별로·차단·팔로우·좋아하는 레이블 (영어 머리글)</param>
+    /// <param name="taste">앱이 만든 취향 요약: 라이브러리에서 많이 듣는 뮤지션 + 좋아요·별로·차단·팔로우·좋아하는 레이블 (영어 머리글)</param>
     public static string Build(Period period, string taste, IReadOnlyCollection<string> exclude, string? focusRegion, string howToSubmit) => $"""
         Period: {period.Start:yyyy-MM-dd} to {period.End:yyyy-MM-dd}
         Regions: {RegionName(focusRegion)}
@@ -47,7 +47,7 @@ internal static class AiPrompt
         Already known releases (do not suggest these):
         {(exclude.Count == 0 ? "(none)" : string.Join("\n", exclude.Take(120)))}
 
-        Task: search the web for albums and EPs actually released in this period that fit my crates.
+        Task: search the web for albums and EPs actually released in this period that fit my taste.
         - Prefer other artists from the same scenes, labels and sound as the listed artists over those artists themselves — especially small labels and indie releases.
         - Lean toward what I liked and the artists I follow; avoid anything that sounds like the "not for me" list; never suggest blocked artists or labels.
         - Search in each scene's own language: Japanese releases in Japanese (e.g. 新譜, リリース, レーベル 新作, タワーレコード), Korean releases in Korean (e.g. 신보, 발매, 앨범), other releases in English.
@@ -56,7 +56,7 @@ internal static class AiPrompt
         - Keep artist and album titles in their original script.
         - If there are not enough albums, add EPs and singles to reach at least 8. Do not stop at 2–3.
         - region must be one of: 일본 (Japan), 한국 (Korea), 해외 (International), 동남아 (Southeast Asia).
-        - Write each "reason" in {ReasonLanguage}: one sentence saying which crate or artists it is close to.
+        - Write each "reason" in {ReasonLanguage}: one sentence saying which of my artists or scenes it is close to.
         {howToSubmit} (8–15 releases)
         """;
 

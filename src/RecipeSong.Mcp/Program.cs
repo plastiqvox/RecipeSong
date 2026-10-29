@@ -14,11 +14,10 @@ var settings = AppSettings.Load();
 builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<LibraryService>();
 builder.Services.AddHttpClient<DeezerClient>();
-builder.Services.AddHttpClient<RegionResolver>();
 builder.Services.AddHttpClient<ITunesSearchClient>()
     .AddTypedClient((http, _) => new ITunesSearchClient(http, settings.Country));
 builder.Services.AddSingleton(sp => new ReleaseRecommender(
-    sp.GetRequiredService<DeezerClient>(), sp.GetRequiredService<RegionResolver>()));
+    sp.GetRequiredService<DeezerClient>(), new GenreSources(new HttpClient(), GenreSourceSettings.Load())));
 builder.Services.AddSingleton<LibraryReleases>();
 
 builder.Services

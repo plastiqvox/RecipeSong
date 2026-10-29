@@ -122,7 +122,7 @@ class EffNet:
         return [s for s, _ in self.styles_and_embeddings(groups)]
 
     def styles_and_embeddings(self, groups: list[list[np.ndarray]]) -> list[tuple[np.ndarray | None, np.ndarray | None]]:
-        """한 번 돌려 스타일 확률(장르 태그)과 임베딩(레시피 보조, L2 정규화)을 같이"""
+        """한 번 돌려 스타일 확률(장르 태그)과 임베딩(L2 정규화, 지금은 저장만)을 같이"""
         out: list[tuple[np.ndarray | None, np.ndarray | None]] = [(None, None)] * len(groups)
         ps, owner = [], []
         for i, clips in enumerate(groups):

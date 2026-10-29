@@ -465,7 +465,7 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <!-- 내 플리 배지: 외곽선만 (주황 칠은 섹션 안 모든 카드에 같은 값이 반복돼 시끄러웠다) -->
+                            <!-- 내 라이브러리 뮤지션 배지: 외곽선만 (주황 칠은 섹션 안 모든 카드에 같은 값이 반복돼 시끄러웠다) -->
                             <Border Margin="{Binding BadgeMargin}" Padding="8,1" CornerRadius="10" BorderThickness="1" BorderBrush="{StaticResource Line3}"
                                     Visibility="{Binding Badge, Converter={StaticResource EmptyCollapsed}}" ToolTip="{Binding BadgeTip}">
                                 <StackPanel Orientation="Horizontal">
@@ -609,6 +609,10 @@
                     <Setter TargetName="follow" Property="Fill" Value="#F5C04A"/>
                     <Setter TargetName="follow" Property="Stroke" Value="#F5C04A"/>
                 </DataTrigger>
+                <DataTrigger Binding="{Binding IsMarked}" Value="True">
+                    <!-- 마지막으로 본 카드: 창을 닫거나 카드가 빠진 뒤에도 자리를 잃지 않게 (열린 카드보다 옅게) -->
+                    <Setter TargetName="cardBorder" Property="BorderBrush" Value="#80F0A04B"/>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding ShowTracks}" Value="True">
                     <!-- 오른쪽 수록곡 창에 열린 카드: 카드 테두리로 어느 카드인지 보이게 -->
                     <Setter TargetName="cardBorder" Property="BorderBrush" Value="{StaticResource Accent}"/>
@@ -695,8 +699,8 @@
                                 <Grid>
                                     <TextBlock Text="{local:Tr '지금 업데이트'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
                                                Visibility="{Binding IsTrained, Converter={StaticResource BoolVis}}"/>
-                                    <!-- 처음 설치: 학습한 모델이 없다 -->
-                                    <TextBlock Text="{local:Tr '학습 시작'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
+                                    <!-- 처음 설치: 라이브러리 소리를 아직 분석하지 않았다 -->
+                                    <TextBlock Text="{local:Tr '분석 시작'}" Foreground="{StaticResource AccentText}" FontWeight="Medium"
                                                Visibility="{Binding IsTrained, Converter={StaticResource NotBoolVis}}"/>
                                 </Grid>
                             </Button>
@@ -1038,15 +1042,6 @@
                                         <WrapPanel MaxWidth="640">
                                             <TextBlock Text="{local:Tr '형식'}" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="0,0,8,6"/>
                                             <ItemsControl ItemsSource="{Binding TypeChips}">
-                                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate DataType="{x:Type vm:FilterChip}">
-                                                        <Button Style="{StaticResource Chip}" Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding Label}"/>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                            <TextBlock Text="{local:Tr '지역'}" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="20,0,8,6"/>
-                                            <ItemsControl ItemsSource="{Binding RegionChips}">
                                                 <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate DataType="{x:Type vm:FilterChip}">

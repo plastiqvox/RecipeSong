@@ -33,7 +33,7 @@ public sealed class SoundService : IAsyncDisposable
     {
         var ml = settings.MlDirectory ?? FindMlDirectory();
         var uv = settings.UvPath ?? FindUv();
-        // 학습한 모델이 없어도 띄운다 (처음 설치): 서비스가 학습 전 상태로 뜨고 '학습 시작'으로 처음 학습한다
+        // 분석한 곡이 없어도 띄운다 (처음 설치): 서비스가 분석 전 상태로 뜨고 '분석 시작'으로 라이브러리를 처음 듣는다
         if (ml == null || uv == null || settings.ITunesLibraryPath == null) return null;
         return new SoundService(ml, uv, settings.ITunesLibraryPath);
     }
@@ -52,9 +52,11 @@ public sealed class SoundService : IAsyncDisposable
     {
         var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "uv.exe");
         if (File.Exists(local)) return local;
+        // 따로 설치한 uv 가 없으면 인스톨러가 앱 옆에 둔 uv.exe
         return (Environment.GetEnvironmentVariable("PATH") ?? "")
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
             .Select(p => Path.Combine(p.Trim(), "uv.exe"))
+            .Append(Path.Combine(AppContext.BaseDirectory, "uv.exe"))
             .FirstOrDefault(File.Exists);
     }
 
@@ -73,7 +75,8 @@ public sealed class SoundService : IAsyncDisposable
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var a in new[] { "run", "--quiet", "python", "service.py", "--xml", _xml }) psi.ArgumentList.Add(a);
+        // --no-dev: 시험 도구(pywinauto)는 서비스에 필요 없다 (설치한 PC 에서 처음 띄울 때 받지 않게)
+        foreach (var a in new[] { "run", "--quiet", "--no-dev", "python", "service.py", "--xml", _xml }) psi.ArgumentList.Add(a);
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONUNBUFFERED"] = "1";
 
@@ -92,7 +95,7 @@ public sealed class SoundService : IAsyncDisposable
         var r = await CallAsync("status", null, null, ct);
         if (r.TryGetProperty("trained", out var tr) && !tr.GetBoolean())
             return new SoundStatus(r.GetProperty("device").GetString()!, r.GetProperty("gpu").GetString(), default, 0,
-                r.GetProperty("embedded").GetInt32(), r.GetProperty("new_tracks").GetInt32(), [], 0, [], 0,
+                r.GetProperty("embedded").GetInt32(), r.GetProperty("new_tracks").GetInt32(),
                 Trained: false, Library: r.GetProperty("library").GetInt32());
         return new SoundStatus(
             r.GetProperty("device").GetString()!,
@@ -101,27 +104,21 @@ public sealed class SoundService : IAsyncDisposable
             r.GetProperty("tracks").GetInt32(),
             r.GetProperty("embedded").GetInt32(),
             r.GetProperty("new_tracks").GetInt32(),
-            [.. r.GetProperty("styles").EnumerateArray().Select(e => e.GetString()!)],
-            r.GetProperty("style_accuracy").GetDouble(),
-            [.. r.GetProperty("regions").EnumerateArray().Select(e => e.GetString()!)],
-            r.GetProperty("region_accuracy").GetDouble());
+            Compared: r.GetProperty("compared").GetInt32());
     }
 
     /// <summary>Deezer 앨범 ID들의 미리듣기를 분석한다. 이미 분석한 앨범은 서비스 쪽 캐시에서 바로 나온다.</summary>
     public async Task<IReadOnlyDictionary<long, AlbumSound>> ScoreAlbumsAsync(
-        IEnumerable<long> albumIds, IProgress<string>? progress = null, CancellationToken ct = default,
-        IReadOnlyDictionary<long, string?>? covers = null, bool hitsOnly = false)
+        IEnumerable<long> albumIds, IProgress<string>? progress = null, CancellationToken ct = default, bool hitsOnly = false)
     {
-        // 커버 주소: 소리 + 커버로 지역을 판정한다 (없으면 소리만). tracks: 앨범에서 들을 곡 (전곡 / 인기곡)
-        var args = new { albums = albumIds.Select(id => new { id, cover = covers?.GetValueOrDefault(id) }).ToList(), tracks = hitsOnly ? "top" : "all" };
+        // tracks: 앨범에서 들을 곡 (전곡 / 인기곡)
+        var args = new { albums = albumIds.Select(id => new { id }).ToList(), tracks = hitsOnly ? "top" : "all" };
         var r = await CallAsync("score_albums", args, progress, ct);
         var map = new Dictionary<long, AlbumSound>();
         foreach (var a in r.GetProperty("albums").EnumerateArray())
         {
             bool ok = a.GetProperty("ok").GetBoolean();
             map[a.GetProperty("id").GetInt64()] = new AlbumSound(
-                ok ? ToDict(a.GetProperty("style")) : null,
-                ok ? ToDict(a.GetProperty("region")) : null,
                 ok ? a.GetProperty("taste").GetDouble() : null,
                 ok ? [.. a.GetProperty("near").EnumerateArray().Select(e => e.GetString()!)] : [],
                 Str(a, "label"), Str(a, "genre"),
@@ -164,13 +161,20 @@ public sealed class SoundService : IAsyncDisposable
             t => t.GetProperty("id").GetInt64(), t => (t.GetProperty("near").GetString()!, t.GetProperty("sim").GetDouble()));
     }
 
-    /// <summary>iTunes에 새로 들어온 곡만 분석하고 재학습한다. 성능이 떨어지면 이전 모델을 유지한다.</summary>
+    /// <summary>iTunes에 새로 들어온 곡만 분석하고 취향 기준(임베딩 평균)을 다시 낸다.</summary>
     public async Task<SoundUpdateResult> UpdateAsync(IProgress<string>? progress = null, CancellationToken ct = default)
     {
         var r = await CallAsync("update", null, progress, ct);
-        return new SoundUpdateResult(
-            r.GetProperty("added").GetInt32(), r.GetProperty("accepted").GetBoolean(),
-            r.GetProperty("old_style_accuracy").GetDouble(), r.GetProperty("new_style_accuracy").GetDouble());
+        return new SoundUpdateResult(r.GetProperty("added").GetInt32(), r.GetProperty("compared").GetInt32());
+    }
+
+    /// <summary>칸을 모르는 앨범(ids) → 칸을 아는 앨범(known) 중 소리가 가장 닮은 것들의 칸. 소리를 모르는 앨범은 빠진다</summary>
+    public async Task<Dictionary<long, string>> GenreNeighborsAsync(IEnumerable<long> ids, IReadOnlyDictionary<long, string> known,
+        CancellationToken ct = default)
+    {
+        var args = new { ids = ids.ToList(), known = known.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value) };
+        var r = await CallAsync("genre_neighbors", args, null, ct);
+        return r.GetProperty("albums").EnumerateArray().ToDictionary(a => a.GetProperty("id").GetInt64(), a => a.GetProperty("group").GetString()!);
     }
 
     private static IReadOnlyList<TrackPair>? Pairs(JsonElement a) =>
@@ -187,9 +191,6 @@ public sealed class SoundService : IAsyncDisposable
 
     private static string? Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-
-    private static Dictionary<string, double> ToDict(JsonElement e) =>
-        e.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetDouble());
 
     /// <summary>target 앨범과 소리가 min 이상 닮은 앨범 (높은 순)</summary>
     public async Task<List<(long Id, double Sim)>> SimilarAlbumsAsync(long target, IEnumerable<long> ids, double min = 0.85, CancellationToken ct = default)

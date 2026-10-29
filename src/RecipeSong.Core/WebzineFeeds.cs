@@ -4,7 +4,7 @@ using System.Xml.Linq;
 
 namespace RecipeSong.Core;
 
-/// <summary>웹진 RSS 하나. Parser는 제목 형식 (사이트마다 다르다). Region은 crates.json 지역 이름.</summary>
+/// <summary>웹진 RSS 하나. Parser는 제목 형식 (사이트마다 다르다). Region은 웹진이 다루는 지역 (표시용, 추천에는 쓰지 않는다).</summary>
 public sealed record FeedSource(string Name, string Url, string Region, string Parser);
 
 /// <summary>

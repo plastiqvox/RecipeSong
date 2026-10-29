@@ -30,13 +30,26 @@ class Track:
     disliked: bool = False
     skip_count: int = 0
     last_touched: datetime | None = None  # 마지막 재생과 추가 중 늦은 쪽
+    added: datetime | None = None
 
     @property
     def weight(self) -> float:
         """취향 학습 가중치 0.1~1.0: 하트·별 4개 이상은 최대, 낮은 별점·'좋아하지 않음'은 낮게, 그 외는 재생 수·스킵·최근성."""
         return track_weight(self.play_count, self.loved, self.rating, self.disliked, self.skip_count, self.last_touched)
 
+    def taste_weight(self, now: datetime | None = None) -> float:
+        """신보와 닮음을 잴 때 이 곡을 얼마나 쳐줄지 0~1. 하트·별 4개 이상은 1.
+        한 번도 안 듣고 하트·별점도 없이 석 달 넘게 둔 곡은 뺀다(0): 받아만 두고 듣지 않는 곡이 취향을 흐리지 않게.
+        최근에 넣은 곡은 아직 들을 틈이 없었을 수 있어 낮게만 친다. 나머지는 가중치를 넓게 펴서(0.3~1) 많이 들은 곡이 더 크게."""
+        if self.loved or self.rating >= 80:
+            return 1.0
+        if self.play_count == 0 and self.rating == 0 and self.added is not None \
+                and ((now or datetime.now(timezone.utc)) - self.added).days > UNPLAYED_DAYS:
+            return 0.0
+        return round(0.3 + 0.7 * self.weight, 3)
 
+
+UNPLAYED_DAYS = 90  # 안 들은 곡을 닮음 비교에서 빼기까지 (넣은 날부터)
 PLAYS_FULL = 12  # 이만큼 들으면 재생 수만으로 최대 (라이브러리 상위 5% 수준)
 
 
@@ -101,6 +114,7 @@ def load(xml_path: str | Path, min_playlist_size: int = 15) -> tuple[dict[str, T
             disliked=bool(t.get("Disliked")),
             skip_count=int(t.get("Skip Count", 0)),
             last_touched=_latest(t.get("Play Date UTC"), t.get("Date Added")),
+            added=_latest(t.get("Date Added")),
         )
         by_id[t["Track ID"]] = pid
 

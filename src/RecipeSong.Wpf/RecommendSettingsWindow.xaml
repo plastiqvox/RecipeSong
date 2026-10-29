@@ -22,7 +22,7 @@
             <StackPanel Margin="28,24">
                 <TextBlock Text="{local:Tr '추천 설정'}" FontSize="22" FontWeight="Bold"/>
                 <TextBlock Style="{StaticResource MutedText}" Margin="0,6,0,0" TextWrapping="Wrap"
-                           Text="{local:Tr '추가 제안은 Deezer의 비슷한 아티스트 연결망으로 후보를 모으고, 내 PC의 소리 모델이 내 곡과 닮은 정도로 고릅니다. 내 플리 뮤지션의 발매작은 이 설정과 상관없이 항상 나와요.'}"/>
+                           Text="{local:Tr '추가 제안은 Deezer의 비슷한 아티스트 연결망으로 후보를 모으고, 내 PC의 소리 모델이 내 곡과 닮은 정도로 고릅니다. 내 라이브러리에서 많이 듣는 뮤지션의 발매작은 이 설정과 상관없이 항상 나와요.'}"/>
 
                 <!-- 두 칸: 한 줄로 이어 두면 창이 화면만큼 길쭉해서 폭을 넓히고 나눴다 -->
                 <Grid>
@@ -58,7 +58,7 @@
                 <CheckBox x:Name="ExcludeKnownBox" Margin="0,24,0,0" Foreground="{StaticResource Text}" FontSize="14"
                           Content="{local:Tr '추가 제안에서 아는 아티스트 빼기 (처음 듣는 사람만)'}"/>
                 <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
-                           Text="{local:Tr '내 라이브러리에 곡이 있는 아티스트는 추가 제안에 나오지 않아요. 내 플리 뮤지션과 AI 제안은 그대로 나와요.'}"/>
+                           Text="{local:Tr '내 라이브러리에 곡이 있는 아티스트는 추가 제안에 나오지 않아요. 내 라이브러리 뮤지션과 AI 제안은 그대로 나와요.'}"/>
 
                 <CheckBox x:Name="ExcludeInstrumentalBox" Margin="0,16,0,0" Foreground="{StaticResource Text}" FontSize="14"
                           Content="{local:Tr '원래 앨범이 있으면 인스트루멘털 버전 빼기'}"/>

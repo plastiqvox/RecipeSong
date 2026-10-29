@@ -17,6 +17,8 @@ public partial class MainWindow : Window
         Loaded += async (_, _) => await _vm.InitializeAsync();
         _vm.ScrollToRequested += item => Dispatcher.BeginInvoke(() => ScrollTo(item), System.Windows.Threading.DispatcherPriority.Loaded);
         _vm.ScrollTopRequested += () => listScroll.ScrollToTop();
+        // 창이 닫히면 카드 폭이 다시 계산되니(레이아웃 두 번) 그 뒤에 본다
+        _vm.RevealRequested += item => Dispatcher.BeginInvoke(() => Reveal(item), System.Windows.Threading.DispatcherPriority.ContextIdle);
         // 형식·지역 필터 팝업: 버튼이 오른쪽 끝에 있어서 오른쪽 끝을 맞춰 연다 (왼쪽 맞춤이면 창 밖으로 나갔다)
         filterPop.CustomPopupPlacementCallback = (popup, target, _) =>
             [new CustomPopupPlacement(new Point(target.Width - popup.Width, target.Height + 6),
@@ -78,6 +80,16 @@ public partial class MainWindow : Window
         if (sv == null) { card.BringIntoView(); return; }
         var top = card.TransformToAncestor(sv).Transform(new Point(0, 0)).Y;
         sv.ScrollToVerticalOffset(sv.VerticalOffset + top - 24);
+    }
+
+    /// <summary>그 카드가 다 보이면 그대로, 화면 밖이거나 걸쳐 있으면 위쪽으로 스크롤</summary>
+    private void Reveal(ReleaseItem item)
+    {
+        var card = Find(this, e => e is System.Windows.Controls.Border { Tag: "card" } b && b.DataContext == item);
+        if (card == null || FindAncestor<System.Windows.Controls.ScrollViewer>(card) is not { } sv) return;
+        var top = card.TransformToAncestor(sv).Transform(new Point(0, 0)).Y;
+        if (top >= 0 && top + card.ActualHeight <= sv.ViewportHeight) return;
+        ScrollTo(item);
     }
 
     private static FrameworkElement? Find(DependencyObject root, Func<FrameworkElement, bool> match)
