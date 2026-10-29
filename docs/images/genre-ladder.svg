@@ -1,49 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 132" role="img" aria-label="장르 칸은 Last.fm 태그, Discogs, Deezer 장르, 소리 장르 태그, 소리가 닮은 앨범 순서로 보고, 앞에서 정해지지 않을 때만 다음으로 넘어간다. 끝까지 모르면 인디·록." width="820" height="132">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 270" width="1600" height="270" role="img" aria-label="장르 칸은 Last.fm 태그, Discogs, Deezer 장르, 소리 장르 태그, 소리가 닮은 앨범 순서로 보고, 앞에서 정해지지 않을 때만 다음으로 넘어간다. 끝까지 모르면 인디·록.">
 <style>
-  svg { color: #1c2230; --surface: #ffffff; --line: #c3c9d4; --muted: #5b6474; --accent: #2456c9; --accent-soft: #e6edfb; }
-  @media (prefers-color-scheme: dark) {
-    svg { color: #e6e9ef; --surface: #1b2029; --line: #3a4252; --muted: #9aa3b2; --accent: #7ea4ff; --accent-soft: #1f2b47; }
-  }
-  .bg { fill: var(--surface); }
-  .n { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
-  .n.chg { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
-  .t { fill: currentColor; font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; font-size: 13.5px; font-weight: 700; }
-  .s { fill: var(--muted); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; font-size: 11.5px; }
-  .l { fill: var(--muted); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; font-size: 11px; }
-  .e { fill: none; stroke: currentColor; stroke-width: 1.3; }
-  .e.dash { stroke-dasharray: 5 4; }
-  .ah { fill: currentColor; }
+svg { --bg:#F1EAE1;--bgEdge:#E6DDD2;--ink:#23272D;--sub:#6E6A64;--faint:#A39C93;--line:#CFC5B8;--boxFill:#F6F1EB;--focus:#2F7FC1;--alert:#D9573F;--band:rgba(255,255,255,0.35);--ok:#3E9A63;--warn:#C9822B }
+@media (prefers-color-scheme: dark) { svg { --bg:#191D23;--bgEdge:#21252B;--ink:#ECEEF1;--sub:#9AA1AB;--faint:#5C636D;--line:#3A414B;--boxFill:#1E2228;--focus:#50A6B7;--alert:#EB6F5C;--band:rgba(0,0,0,0.22);--ok:#6CC08B;--warn:#E3A857 } }
+[data-theme="light"] svg, svg[data-theme="light"] { --bg:#F1EAE1;--bgEdge:#E6DDD2;--ink:#23272D;--sub:#6E6A64;--faint:#A39C93;--line:#CFC5B8;--boxFill:#F6F1EB;--focus:#2F7FC1;--alert:#D9573F;--band:rgba(255,255,255,0.35);--ok:#3E9A63;--warn:#C9822B }
+[data-theme="dark"] svg, svg[data-theme="dark"] { --bg:#191D23;--bgEdge:#21252B;--ink:#ECEEF1;--sub:#9AA1AB;--faint:#5C636D;--line:#3A414B;--boxFill:#1E2228;--focus:#50A6B7;--alert:#EB6F5C;--band:rgba(0,0,0,0.22);--ok:#6CC08B;--warn:#E3A857 }
+text { font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
+.display { font-family: 'Black Han Sans', 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; font-weight: 400; }
+.mono { font-family: 'JetBrains Mono', Consolas, monospace; font-weight: 500; }
 </style>
-<rect class="bg" x="0" y="0" width="820" height="132" rx="10"/>
-        <defs>
-          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M0,0 L10,5 L0,10 z" class="ah"/>
-          </marker>
-        </defs>
-        <rect class="n chg" x="10" y="30" width="138" height="64" rx="8"/>
-        <text class="t" x="79" y="56" text-anchor="middle">Last.fm</text>
-        <text class="s" x="79" y="75" text-anchor="middle">앨범 → 아티스트 태그</text>
-
-        <rect class="n chg" x="172" y="30" width="138" height="64" rx="8"/>
-        <text class="t" x="241" y="56" text-anchor="middle">Discogs</text>
-        <text class="s" x="241" y="75" text-anchor="middle">스타일 · 토큰 있을 때</text>
-
-        <rect class="n" x="334" y="30" width="138" height="64" rx="8"/>
-        <text class="t" x="403" y="56" text-anchor="middle">Deezer 장르</text>
-        <text class="s" x="403" y="75" text-anchor="middle">Pop·Asian Music 제외</text>
-
-        <rect class="n" x="496" y="30" width="138" height="64" rx="8"/>
-        <text class="t" x="565" y="56" text-anchor="middle">소리 장르 태그</text>
-        <text class="s" x="565" y="75" text-anchor="middle">EffNet 모델이 있을 때</text>
-
-        <rect class="n chg" x="658" y="30" width="152" height="64" rx="8"/>
-        <text class="t" x="734" y="56" text-anchor="middle">닮은 앨범 15장</text>
-        <text class="s" x="734" y="75" text-anchor="middle">칸 아는 앨범끼리 투표</text>
-
-        <line class="e" x1="148" y1="62" x2="170" y2="62" marker-end="url(#ar2)"/>
-        <line class="e" x1="310" y1="62" x2="332" y2="62" marker-end="url(#ar2)"/>
-        <line class="e" x1="472" y1="62" x2="494" y2="62" marker-end="url(#ar2)"/>
-        <line class="e" x1="634" y1="62" x2="656" y2="62" marker-end="url(#ar2)"/>
-        <text class="l" x="410" y="18" text-anchor="middle">앞에서 칸이 정해지지 않으면 다음으로 →</text>
-        <text class="l" x="734" y="116" text-anchor="middle">끝까지 모르면 인디·록</text>
-      </svg>
+<defs><radialGradient id="bgGrad" cx="50%" cy="45%" r="75%"><stop offset="0" stop-color="var(--bg)"/><stop offset="0.45" stop-color="var(--bg)"/><stop offset="1" stop-color="var(--bgEdge)"/></radialGradient></defs><rect width="1600" height="270" rx="14" fill="url(#bgGrad)"/>
+<text x="800" y="50" text-anchor="middle" dominant-baseline="central" font-size="19" font-weight="500" fill="var(--sub)">앞에서 칸이 정해지지 않으면 다음으로</text>
+<polyline points="311,150 344,150" fill="none" stroke="var(--sub)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M 333 157 L 344 150 L 333 143" fill="none" stroke="var(--sub)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="626,150 659,150" fill="none" stroke="var(--sub)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M 648 157 L 659 150 L 648 143" fill="none" stroke="var(--sub)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="941,150 974,150" fill="none" stroke="var(--sub)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M 963 157 L 974 150 L 963 143" fill="none" stroke="var(--sub)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="1256,150 1289,150" fill="none" stroke="var(--sub)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M 1278 157 L 1289 150 L 1278 143" fill="none" stroke="var(--sub)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<g><rect x="35" y="109" width="270" height="82" rx="11" fill="var(--boxFill)" stroke="var(--focus)" stroke-width="2"/><text x="170" y="136.2" text-anchor="middle" dominant-baseline="central" font-size="22" font-weight="700" fill="var(--focus)">Last.fm</text><text x="170" y="166.39999999999998" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400" fill="var(--sub)">앨범 → 아티스트 태그</text></g>
+<g><rect x="350" y="109" width="270" height="82" rx="11" fill="var(--boxFill)" stroke="var(--focus)" stroke-width="2"/><text x="485" y="136.2" text-anchor="middle" dominant-baseline="central" font-size="22" font-weight="700" fill="var(--focus)">Discogs</text><text x="485" y="166.39999999999998" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400" fill="var(--sub)">스타일 · 토큰 있을 때</text></g>
+<g><rect x="665" y="109" width="270" height="82" rx="11" fill="var(--boxFill)" stroke="var(--line)" stroke-width="2"/><text x="800" y="136.2" text-anchor="middle" dominant-baseline="central" font-size="22" font-weight="700" fill="var(--ink)">Deezer 장르</text><text x="800" y="166.39999999999998" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400" fill="var(--sub)">Pop·Asian Music 제외</text></g>
+<g><rect x="980" y="109" width="270" height="82" rx="11" fill="var(--boxFill)" stroke="var(--line)" stroke-width="2"/><text x="1115" y="136.2" text-anchor="middle" dominant-baseline="central" font-size="22" font-weight="700" fill="var(--ink)">소리 장르 태그</text><text x="1115" y="166.39999999999998" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400" fill="var(--sub)">EffNet 모델이 있을 때</text></g>
+<g><rect x="1295" y="109" width="270" height="82" rx="11" fill="var(--boxFill)" stroke="var(--focus)" stroke-width="2"/><text x="1430" y="136.2" text-anchor="middle" dominant-baseline="central" font-size="22" font-weight="700" fill="var(--focus)">닮은 앨범 15장</text><text x="1430" y="166.39999999999998" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400" fill="var(--sub)">칸 아는 앨범끼리 투표</text></g>
+<text x="1565" y="232" text-anchor="end" dominant-baseline="central" font-size="18" font-weight="500" fill="var(--sub)">끝까지 모르면 인디·록</text>
+</svg>
