@@ -725,7 +725,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>
     /// 레시피·지역으로 나누던 때 저장한 결과를 장르 칸으로 옮긴다 (지난 기간은 다시 계산하지 않고 저장 결과를 쓴다).
-    /// Deezer 장르 → 소리 장르 태그(EffNet) → 예전 칸 이름 순. 점수 전(칸·취향 없음) AI 결과는 그대로 둔다 (다시 점수를 매길 표시).
+    /// Deezer 장르 → 장르 태그 → 예전 칸 이름 순. 점수 전(칸·취향 없음) AI 결과는 그대로 둔다 (다시 점수를 매길 표시).
     /// 예전 플레이리스트 뮤지션 표시도 '내 라이브러리'로 바꾼다
     /// </summary>
     private static ReleaseRecommendation Regroup(ReleaseRecommendation r)
@@ -1021,7 +1021,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NoSaved))] private int _savedCount;
     public bool NoSaved => SavedCount == 0;
 
-    private ReleaseItem MakeItem(ReleaseRecommendation r, string? savedNote = null) => MakeItemCore(Regroup(r), savedNote);
+    // 장르 배지는 보일 때마다 Last.fm 태그 캐시에서 채운다 (저장된 예전 결과의 EffNet 태그는 쓰지 않고, 뒤에서 받은 태그도 바로 보이게)
+    private ReleaseItem MakeItem(ReleaseRecommendation r, string? savedNote = null) =>
+        MakeItemCore(Regroup(r) with { Genres = _genres.CachedTags(r.Artist, r.Album) }, savedNote);
 
     private ReleaseItem MakeItemCore(ReleaseRecommendation r, string? savedNote) =>
         new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
@@ -1273,11 +1275,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var list = g.ToList();
             SavedSections.Add(new CrateSection(g.Key, list, list.Count, list.Count(i => i.IsMine), false, _ => { }));
         }
-        // 별로 표시한 앨범은 별로 탭에 (👎를 다시 누르면 되돌린다)
+        // 관심 없음 표시한 앨범은 관심 없음 탭의 표에 (줄 끝 되돌리기). 표라 커버는 받지 않는다 (수천 장이 쌓여도 가볍게)
         DislikedItems.Clear();
-        foreach (var d in _disliked.All.OrderByDescending(d => d.SavedAt)) DislikedItems.Add(MakeItem(d.Rec, L.F("{0:M.d} 관심 없음", d.SavedAt)));
+        foreach (var d in _disliked.All.OrderByDescending(d => d.SavedAt)) DislikedItems.Add(MakeItem(d.Rec, d.SavedAt.ToString("yyyy.M.d")));
         DislikedCount = DislikedItems.Count;
-        _ = FillCoversAsync(items.Concat(DislikedItems));
+        _ = FillCoversAsync(items);
     }
 
     public ObservableCollection<ReleaseItem> DislikedItems { get; } = [];
@@ -1570,7 +1572,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (_pools.TryGetValue(key, out var p) && DateTime.Now - p.BuiltAt < TimeSpan.FromHours(12)
                 && _poolFavVersion.GetValueOrDefault(key) == FavoritesVersion)
             {
-                // 디버그 순서도: 시드·비슷한 아티스트·라이브러리 뮤지션 칸은 앞 계산이 만든 후보를 그대로 쓴다
+                // 작업 현황 창: 시드·비슷한 아티스트·라이브러리 뮤지션 칸은 앞 계산이 만든 후보를 그대로 쓴다
                 (progress as StageProgress)?.Reused(p.BuiltAt);
                 return p;
             }
@@ -1941,7 +1943,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var ct = cts.Token;
         var period = CurrentPeriod;
         var progress = Tracked(period.Display, m => { if (!ct.IsCancellationRequested) BusyText = m; });
-        // 디버그 순서도 창이 떠 있으면 기간을 바꾸자마자 새 기간으로 (멈추면 '멈춤', 저장 결과면 계산 없음으로 끝낸다)
+        // 작업 현황 창이 떠 있으면 기간을 바꾸자마자 새 기간으로 (멈추면 '멈춤', 저장 결과면 계산 없음으로 끝낸다)
         var stages = progress as StageProgress;
         if (PipelineWindow.IsOpen) stages?.Start();
         using var stopped = ct.Register(() => stages?.Finish(L.T("멈춤")));
@@ -2400,7 +2402,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>순서도: 오류·멈춤으로 끝까지 못 간 계산을 '멈춤'으로 끝낸다 (끝까지 간 계산이면 무시된다)</summary>
     private static void Stopped(IProgress<string>? progress) => (progress as StageProgress)?.Finish(L.T("멈춤"));
 
-    /// <summary>디버그 순서도 창을 열고 닫는다 (닫은 뒤에도 지금 도는 계산을 다시 열어 볼 수 있게)</summary>
+    /// <summary>작업 현황 창을 열고 닫는다 (닫은 뒤에도 지금 도는 계산을 다시 열어 볼 수 있게)</summary>
     [RelayCommand]
     private void OpenPipeline() => PipelineWindow.Toggle();
 

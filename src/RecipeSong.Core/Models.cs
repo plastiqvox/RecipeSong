@@ -147,7 +147,7 @@ public sealed record RecommendationResult(
 public sealed record AlbumSound(
     double? Taste, IReadOnlyList<string> Near, string? Label, string? Genre,
     double? Fav = null, string? FavNear = null, double? Dis = null, IReadOnlyList<string>? With = null,
-    IReadOnlyList<TrackPair>? Pairs = null, IReadOnlyList<string>? Genres = null)
+    IReadOnlyList<TrackPair>? Pairs = null)
 {
     /// <summary>Fav: 저장함 앨범과 닮은 정도, FavNear: 가장 닮은 저장 앨범 ("아티스트 – 앨범")</summary>
     public bool Heard => Taste != null;

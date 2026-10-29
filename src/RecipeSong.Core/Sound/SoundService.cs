@@ -23,7 +23,7 @@ public sealed class SoundService : IAsyncDisposable
     private sealed record Pending(TaskCompletionSource<JsonElement> Done, IProgress<string>? Progress, QueueEntry Entry);
 
     /// <summary>
-    /// 요청 줄 (디버그 순서도의 '소리 서비스' 칸): 차례를 기다리는 것 · 처리 중인 것 · 앱에서 멈췄지만 서비스가 아직 끝내는 중인 것.
+    /// 요청 줄 (작업 현황 창의 '소리 서비스' 칸): 차례를 기다리는 것 · 처리 중인 것 · 앱에서 멈췄지만 서비스가 아직 끝내는 중인 것.
     /// 서비스는 요청을 하나씩 처리하므로 이 줄이 미리듣기·분석이 기다리는 이유다
     /// </summary>
     private sealed class QueueEntry(long ticket, string cmd)
@@ -147,9 +147,7 @@ public sealed class SoundService : IAsyncDisposable
                 a.TryGetProperty("dis", out var dis) ? dis.GetDouble() : null,
                 a.TryGetProperty("with", out var with) && with.ValueKind == JsonValueKind.Array
                     ? [.. with.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null,
-                Pairs(a),
-                a.TryGetProperty("genres", out var gs) && gs.ValueKind == JsonValueKind.Array
-                    ? [.. gs.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null);
+                Pairs(a));
         }
         return map;
     }
@@ -234,7 +232,7 @@ public sealed class SoundService : IAsyncDisposable
     /// </summary>
     public bool IsBusy => _serial.CurrentCount == 0 || _pending.Values.Any(p => p.Done.Task.IsCanceled);
 
-    /// <summary>앞 요청 때문에 차례를 기다릴 때 진행 문구 (디버그 순서도 창이 이 문구로 '차례 기다림'을 표시한다)</summary>
+    /// <summary>앞 요청 때문에 차례를 기다릴 때 진행 문구 (작업 현황 창이 이 문구로 '차례 기다림'을 표시한다)</summary>
     public static string WaitingText => L.T("소리 서비스가 앞 요청을 처리하는 중 · 차례를 기다려요");
 
     private async Task<JsonElement> CallAsync(string cmd, object? args, IProgress<string>? progress, CancellationToken ct)

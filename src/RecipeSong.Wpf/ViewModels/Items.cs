@@ -92,7 +92,7 @@ public sealed partial class ReleaseItem : ObservableObject
         : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 발매작") : L.T("내 아카이브에 있는 아티스트");
     public System.Windows.Thickness BadgeMargin => HasFit ? new(8, 0, 0, 0) : new(0);
     public bool HasNear => NearItems.Count > 0;
-    /// <summary>장르 태그 (EffNet 이 고른 Discogs 스타일, 최대 3개)</summary>
+    /// <summary>장르 배지 (Last.fm 태그 중 장르로 읽히는 것, 최대 3개 — MainViewModel.MakeItem 이 보일 때마다 캐시에서 채운다)</summary>
     public IReadOnlyList<string> Genres => Rec.Genres ?? [];
     public bool HasGenres => Genres.Count > 0;
 

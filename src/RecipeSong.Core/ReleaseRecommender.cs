@@ -584,7 +584,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                 WithLiked: withLikeds[i],
                 Fans: c.Fans,
                 Pairs: snd?.Pairs,
-                Genres: snd?.Genres,
+                Genres: genres?.CachedTags(c.Name, a.Title),
                 ViaLastFm: c.ViaLastFm && c.Mine == null));
         }
         return (recs, heard.Any(s => s != null));
@@ -592,7 +592,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
 
     /// <summary>
     /// 칸 정하기: 장르 DB(Last.fm → Discogs) 캐시 → 점수 높은 앨범부터 MaxGenreLookups 장까지 새로 묻기 → Deezer 장르
-    /// → 소리 장르 태그(EffNet) → (Pop·Asian Music·장르 없음처럼 아직 모르면) 이 목록에서 칸을 아는 앨범 중 소리가 가장 닮은 것들의 칸 → 그래도 모르면 인디·록 (가장 흔한 칸).
+    /// → (Pop·Asian Music·장르 없음처럼 아직 모르면) 이 목록에서 칸을 아는 앨범 중 소리가 가장 닮은 것들의 칸 → 그래도 모르면 인디·록 (가장 흔한 칸).
+    /// 소리 장르 태그(EffNet)로 정하던 단계는 뺐다: Last.fm 에 물어본 추천 1,109장 중 소리로 칸을 정한 것이 38장(약 3%)뿐이고, 곡마다 모델을 하나 더 돌려야 했다.
     /// 묻지 못한 앨범은 WarmGenresAsync 가 뒤에서 채워 다음 계산부터 쓴다.
     /// </summary>
     private async Task<string[]> GroupsAsync(List<(PoolArtist c, DzAlbum a)> hits, AlbumInfo[] infos, List<AlbumSound?> heard,
@@ -617,9 +618,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             }
             if (ask.Count > 0) genres.Save();
         }
-        // Deezer 장르, 그다음 소리 장르 태그(EffNet Discogs 스타일, 모델을 받아 둔 경우만)
+        // Deezer 장르
         for (int i = 0; i < hits.Count; i++)
-            groups[i] ??= DeezerGroup(infos[i].Genre, hits[i].a.GenreId) ?? GenreGroups.Of(heard[i]?.Genres);
+            groups[i] ??= DeezerGroup(infos[i].Genre, hits[i].a.GenreId);
 
         var unknown = Enumerable.Range(0, hits.Count).Where(i => groups[i] == null && heard[i] != null).Select(i => hits[i].a.Id).ToList();
         if (sound != null && unknown.Count > 0)
@@ -709,7 +710,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         return [.. xs.Select(x => sd < 1e-9 ? 0 : (x - mean) / sd)];
     }
 
-    /// <summary>디버그 순서도 창에 지금 단계를 알린다 (progress 가 IStageProgress 일 때만)</summary>
+    /// <summary>작업 현황 창에 지금 단계를 알린다 (progress 가 IStageProgress 일 때만)</summary>
     private static void Step(IProgress<string>? progress, RecStage stage) => (progress as IStageProgress)?.Stage(stage);
 
     private static double TypeWeight(string? type) => type switch

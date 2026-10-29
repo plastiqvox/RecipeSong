@@ -50,18 +50,17 @@ export default (k) => {
     ["Last.fm", "앨범 → 아티스트 태그", "focus"],
     ["Discogs", "스타일 · 토큰 있을 때", "focus"],
     ["Deezer 장르", "Pop·Asian Music 제외"],
-    ["소리 장르 태그", "EffNet 모델이 있을 때"],
     ["닮은 앨범 15장", "칸 아는 앨범끼리 투표", "focus"],
   ];
-  const cards = steps.map(([t, l, tone], i) => k.card(170 + i * 315, 150, t, [l], { w: 270, size: 22, tone }));
+  const cards = steps.map(([t, l, tone], i) => k.card(230 + i * 380, 150, t, [l], { w: 300, size: 22, tone }));
   const ladderFig = {
     kind: "figure", name: "genre-ladder", w: 1600, h: 270,
-    title: "장르 칸은 Last.fm 태그, Discogs, Deezer 장르, 소리 장르 태그, 소리가 닮은 앨범 순서로 보고, 앞에서 정해지지 않을 때만 다음으로 넘어간다. 끝까지 모르면 인디·록.",
+    title: "장르 칸은 Last.fm 태그, Discogs, Deezer 장르, 소리가 닮은 앨범 순서로 보고, 앞에서 정해지지 않을 때만 다음으로 넘어간다. 끝까지 모르면 인디·록.",
     items: [
       k.text(800, 50, "앞에서 칸이 정해지지 않으면 다음으로", { size: 19, weight: 500 }),
       ...cards.slice(1).map((c, i) => k.arrow([k.edge(cards[i], "right", 6), k.edge(c, "left", 6)], { width: 3, head: 13 })),
       ...cards,
-      k.text(cards[4].x + cards[4].w / 2, 232, "끝까지 모르면 인디·록", { size: 18, weight: 500, anchor: "end" }),
+      k.text(cards[3].x + cards[3].w / 2, 232, "끝까지 모르면 인디·록", { size: 18, weight: 500, anchor: "end" }),
     ],
   };
   return [flow, ladderFig];

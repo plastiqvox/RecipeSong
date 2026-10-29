@@ -5,7 +5,7 @@ using RecipeSong.Core;
 
 namespace RecipeSong.Wpf;
 
-/// <summary>앱 설정 (톱니 버튼): 언어 · iTunes 라이브러리 · 자동 분석 · 장르 정보 키 · 디버그 · 저장 위치와 용량. 추천 방식은 '추천 설정' 창에 따로.</summary>
+/// <summary>앱 설정 (톱니 버튼): 언어 · iTunes 라이브러리 · 자동 분석 · 장르 정보 키(넣을 게 있을 때만) · 고급 · 저장 위치와 용량. 추천 방식은 '추천 설정' 창에 따로.</summary>
 public partial class SettingsWindow : Window
 {
     private readonly AppSettings _app;
@@ -35,14 +35,17 @@ public partial class SettingsWindow : Window
         ShowStorage();
     }
 
-    // ---- 장르 정보 (Last.fm · Discogs 키): 저장하면 다음 추천 계산부터 쓴다 ----
+    // ---- 장르 정보 (Last.fm 키 · 예전에 넣은 Discogs 토큰): 저장하면 다음 추천 계산부터 쓴다 ----
     private void ShowGenreKeys()
     {
         var s = _vm.GenreSettings;
-        // 앱에 키가 들어 있으면 Last.fm 칸은 숨긴다 (예전에 직접 넣은 키가 있으면 지울 수 있게 칸을 둔다)
+        // 앱에 키가 들어 있으면 Last.fm 은 기본으로 쓰니 칸을 숨긴다 (예전에 직접 넣은 키가 있으면 지울 수 있게 둔다)
         bool builtIn = RecipeSong.Core.Providers.GenreSourceSettings.BuiltInLastFmKey.Length > 0 && !s.HasStoredLastFmKey;
         LastFmField.Visibility = builtIn ? Visibility.Collapsed : Visibility.Visible;
-        LastFmBuiltIn.Visibility = builtIn ? Visibility.Visible : Visibility.Collapsed;
+        // Discogs 는 새로 넣지 않는다 (판본·크레딧은 MusicBrainz 로). 예전에 넣은 토큰은 계속 쓰고, 지울 수 있게 칸을 둔다
+        DiscogsField.Visibility = s.HasStoredDiscogsToken ? Visibility.Visible : Visibility.Collapsed;
+        // 넣을 칸이 하나도 없으면 '장르 정보' 전체를 숨긴다
+        GenreSection.Visibility = builtIn && !s.HasStoredDiscogsToken ? Visibility.Collapsed : Visibility.Visible;
         LastFmStored.Visibility = s.HasStoredLastFmKey && LastFmBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         DiscogsStored.Visibility = s.HasStoredDiscogsToken && DiscogsBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         GenreKeyStatus.Text = s.LastFmKey == null && s.DiscogsToken == null

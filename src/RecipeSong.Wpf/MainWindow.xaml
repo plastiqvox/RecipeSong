@@ -436,9 +436,9 @@
                             <TextBlock Text="{Binding Artist}" FontSize="13" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
                         <TextBlock Text="{Binding Meta}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
-                        <!-- 장르 태그: 소리로 고른 Discogs 스타일 -->
+                        <!-- 장르 배지: Last.fm 태그 중 장르로 읽히는 것 (앨범 태그가 없으면 아티스트 태그) -->
                         <ItemsControl ItemsSource="{Binding Genres}" Margin="0,5,0,0" Visibility="{Binding HasGenres, Converter={StaticResource BoolVis}}"
-                                      ToolTip="{local:Tr '미리듣기 소리로 고른 Discogs 스타일 (EffNet)'}">
+                                      ToolTip="{local:Tr 'Last.fm 사용자들이 붙인 장르 태그'}">
                             <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -1233,17 +1233,59 @@
                     </ItemsControl>
                 </StackPanel>
 
-                <!-- 별로: 👎 한 앨범 (다시 누르면 되돌린다) -->
+                <!-- 관심 없음: 표로 (수천 장이 쌓여도 가볍게 — 커버 없이 한 줄씩, 되돌리기는 줄 끝) -->
                 <StackPanel Margin="0,24,0,0" Visibility="{Binding IsDislikedTab, Converter={StaticResource BoolVis}}">
-                    <TextBlock Text="{local:Tr '관심 없다고 표시한 앨범이에요. 비슷한 소리의 발매작은 덜 추천해요. 카드의 관심 없음 버튼을 다시 누르면 되돌려요.'}" Style="{StaticResource MutedText}"
+                    <TextBlock Text="{local:Tr '관심 없다고 표시한 앨범이에요. 비슷한 소리의 발매작은 덜 추천해요. 줄 끝의 되돌리기를 누르면 다시 추천에 나와요.'}" Style="{StaticResource MutedText}"
                                FontSize="13" Margin="0,0,0,16" TextWrapping="Wrap"/>
                     <Border Padding="24,48" CornerRadius="14" BorderBrush="{StaticResource Line2}" BorderThickness="1"
                             Visibility="{Binding HasItems, ElementName=DislikedList, Converter={StaticResource NotBoolVis}}">
                         <TextBlock Text="{local:Tr '관심 없다고 표시한 앨범이 없어요.'}" Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/>
                     </Border>
-                    <ItemsControl x:Name="DislikedList" ItemsSource="{Binding DislikedItems}" ItemTemplate="{StaticResource ReleaseCard}">
-                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                    </ItemsControl>
+                    <!-- 머리 줄 (줄과 같은 열 너비) -->
+                    <Grid Margin="12,0,12,6" Visibility="{Binding HasItems, ElementName=DislikedList, Converter={StaticResource BoolVis}}">
+                        <!-- 기본 TextBlock 모양이 TextElement 상속을 덮어서 머리 글자를 직접 정한다 -->
+                        <Grid.Resources>
+                            <Style TargetType="TextBlock"><Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="{StaticResource Muted}"/></Style>
+                        </Grid.Resources>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="92"/><ColumnDefinition Width="2*"/><ColumnDefinition Width="3*"/>
+                            <ColumnDefinition Width="70"/><ColumnDefinition Width="92"/><ColumnDefinition Width="100"/><ColumnDefinition Width="100"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{local:Tr '표시한 날'}"/>
+                        <TextBlock Grid.Column="1" Text="{local:Tr '아티스트'}"/>
+                        <TextBlock Grid.Column="2" Text="{local:Tr '앨범'}"/>
+                        <TextBlock Grid.Column="3" Text="{local:Tr '형식'}"/>
+                        <TextBlock Grid.Column="4" Text="{local:Tr '발매일'}"/>
+                        <TextBlock Grid.Column="5" Text="{local:Tr '장르 칸'}"/>
+                    </Grid>
+                    <Border BorderBrush="{StaticResource Line2}" BorderThickness="0,1,0,0"
+                            Visibility="{Binding HasItems, ElementName=DislikedList, Converter={StaticResource BoolVis}}">
+                        <ItemsControl x:Name="DislikedList" ItemsSource="{Binding DislikedItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:ReleaseItem}">
+                                    <Border Padding="12,7" BorderBrush="{StaticResource Line2}" BorderThickness="0,0,0,1" Background="Transparent">
+                                        <Grid TextElement.FontSize="13">
+                                            <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="92"/><ColumnDefinition Width="2*"/><ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition Width="70"/><ColumnDefinition Width="92"/><ColumnDefinition Width="100"/><ColumnDefinition Width="100"/>
+                                </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding SavedNote}" FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Artist}" Foreground="{StaticResource Text2}" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Album}" Foreground="{StaticResource Text}" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" VerticalAlignment="Center"
+                                                       ToolTip="{Binding Meta}"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding TypeLabel}" FontFamily="{StaticResource Mono}" FontSize="11" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="4" Text="{Binding Rec.ReleaseDate, StringFormat='{}{0:yyyy.M.d}'}" FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="5" Text="{Binding CrateLabel}" Foreground="{StaticResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                            <Button Grid.Column="6" Style="{StaticResource Bare}" Padding="10,3" HorizontalAlignment="Right" Command="{Binding ToggleDislikeCommand}"
+                                                    ToolTip="{Binding DislikeTip}" AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='{}{0} 되돌리기'}">
+                                                <TextBlock Text="{local:Tr '되돌리기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
                 </StackPanel>
 
                 <!-- 내 라이브러리 -->

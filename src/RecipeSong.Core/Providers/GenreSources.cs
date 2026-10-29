@@ -47,6 +47,9 @@ public static class GenreGroups
 
     /// <summary>순서대로 본 태그 중 처음 칸이 정해지는 것</summary>
     public static string? Of(IEnumerable<string>? tags) => tags?.Select(Of).FirstOrDefault(g => g != null);
+
+    /// <summary>장르 배지로 보일 만한 태그: 칸이 정해지는 태그, 또는 칸은 못 정해도 장르 이름인 "pop" 계열 (k-pop · city pop)</summary>
+    public static bool IsGenre(string? tag) => Of(tag) != null || (tag?.Contains("pop", StringComparison.OrdinalIgnoreCase) ?? false);
 }
 
 /// <summary>
@@ -194,6 +197,24 @@ public sealed class GenreSources
             if (GenreGroups.Of(tags) is { } g) return (g, false);
         }
         return (null, false);
+    }
+
+    /// <summary>
+    /// 카드 장르 배지: 받아 둔 태그 중 장르로 읽히는 것 최대 max 개. Last.fm 앨범 태그 → 아티스트 태그 → Discogs 중 먼저 나오는 곳 하나에서만 고른다.
+    /// 캐시만 본다 (묻지 않는다 — 못 받은 앨범은 WarmGenresAsync 가 채운 뒤 다음에 보일 때 붙는다). "seen live" · 국적 · 아티스트 이름 같은 태그는 뺀다
+    /// </summary>
+    public IReadOnlyList<string> CachedTags(string artist, string album, int max = 3)
+    {
+        var self = ArtistKey(artist);
+        foreach (var (cache, k) in new[] { (_albumTags, AlbumKey(artist, album)), (_artistTags, self), (_discogs, AlbumKey(artist, album)) })
+        {
+            if (!cache.TryGet(k, out var tags)) continue;
+            var seen = new HashSet<string>();
+            List<string> picked = [.. tags.Where(t => GenreGroups.IsGenre(t) && ListeningAnalyzer.NormalizeArtist(t) is { Length: > 0 } n && n != self && seen.Add(n))
+                .Take(max)];
+            if (picked.Count > 0) return picked;
+        }
+        return [];
     }
 
     public void Save()
