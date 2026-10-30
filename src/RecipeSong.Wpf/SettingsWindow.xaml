@@ -70,23 +70,31 @@
                 <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
                            Text="{local:Tr '새로 들어온 곡의 소리를 분석해 내 곡과 비교할 때 같이 써요. 하트·재생 수가 바뀐 것은 따로 분석하지 않아도 바로 반영돼요. 끄면 사이드바의 \'지금 업데이트\'로 직접 해요.'}"/>
 
-                <!-- 장르 정보: 추천 칸(인디·록, 일렉트로닉 …)을 정할 때 묻는 곳 -->
+                <!-- 장르 정보: 넣을 키가 있을 때만 보인다. 앱에 Last.fm 키가 들어 있으면(secrets/lastfm.key 로 빌드) 숨기고,
+                     키 없이 빌드했거나 예전에 직접 넣은 Last.fm 키 · Discogs 토큰이 있으면 보인다 (지울 수 있게) -->
+                <StackPanel x:Name="GenreSection">
                 <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
                 <TextBlock Text="{local:Tr '장르 정보'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
                 <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"
-                           Text="{local:Tr '추천을 장르 칸으로 나눌 때 Last.fm 태그를 먼저 보고, 없으면 Discogs, 그다음 Deezer 장르, 그래도 모르면 소리가 닮은 앨범을 따라가요. 키는 이 PC의 Windows 계정으로 암호화해 저장해요.'}"/>
-                <TextBlock Text="{local:Tr 'Last.fm API 키'}" FontSize="13" Foreground="{StaticResource Text2}" Margin="0,0,0,4"/>
-                <Grid>
-                    <PasswordBox x:Name="LastFmBox" Style="{StaticResource Field}" AutomationProperties.Name="{local:Tr 'Last.fm API 키'}"/>
-                    <TextBlock x:Name="LastFmStored" Text="{local:Tr '저장한 키 사용 중 ••••••••'}" Style="{StaticResource MutedText}" FontSize="13"
-                               Margin="12,0" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed"/>
-                </Grid>
-                <TextBlock Text="{local:Tr 'Discogs 개인 토큰 (선택)'}" FontSize="13" Foreground="{StaticResource Text2}" Margin="0,10,0,4"/>
-                <Grid>
-                    <PasswordBox x:Name="DiscogsBox" Style="{StaticResource Field}" AutomationProperties.Name="{local:Tr 'Discogs 개인 토큰'}"/>
-                    <TextBlock x:Name="DiscogsStored" Text="{local:Tr '저장한 토큰 사용 중 ••••••••'}" Style="{StaticResource MutedText}" FontSize="13"
-                               Margin="12,0" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed"/>
-                </Grid>
+                           Text="{local:Tr '추천을 장르 칸으로 나눌 때 Last.fm 태그를 먼저 보고, 없으면 Deezer 장르, 그래도 모르면 소리가 닮은 앨범을 따라가요.'}"/>
+                <!-- Last.fm(앱에 키가 없거나 직접 넣은 키가 있을 때) · Discogs(예전에 넣은 토큰이 있을 때만) -->
+                <StackPanel x:Name="LastFmField">
+                    <TextBlock Text="{local:Tr 'Last.fm API 키'}" FontSize="13" Foreground="{StaticResource Text2}" Margin="0,0,0,4"/>
+                    <Grid>
+                        <PasswordBox x:Name="LastFmBox" Style="{StaticResource Field}" AutomationProperties.Name="{local:Tr 'Last.fm API 키'}"/>
+                        <TextBlock x:Name="LastFmStored" Text="{local:Tr '저장한 키 사용 중 ••••••••'}" Style="{StaticResource MutedText}" FontSize="13"
+                                   Margin="12,0" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed"/>
+                    </Grid>
+                </StackPanel>
+                <StackPanel x:Name="DiscogsField" Visibility="Collapsed">
+                    <TextBlock Text="{local:Tr 'Discogs 개인 토큰 (선택)'}" FontSize="13" Foreground="{StaticResource Text2}" Margin="0,10,0,4"/>
+                    <Grid>
+                        <PasswordBox x:Name="DiscogsBox" Style="{StaticResource Field}" AutomationProperties.Name="{local:Tr 'Discogs 개인 토큰'}"/>
+                        <TextBlock x:Name="DiscogsStored" Text="{local:Tr '저장한 토큰 사용 중 ••••••••'}" Style="{StaticResource MutedText}" FontSize="13"
+                                   Margin="12,0" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed"/>
+                    </Grid>
+                </StackPanel>
+                <TextBlock Text="{local:Tr '키는 이 PC의 Windows 계정으로 암호화해 저장해요.'}" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
                 <DockPanel Margin="0,10,0,0">
                     <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Margin="6,0,0,0" Click="ClearGenreKeys_Click">
                         <TextBlock Text="{local:Tr '지우기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
@@ -96,6 +104,7 @@
                     </Button>
                     <TextBlock x:Name="GenreKeyStatus" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"/>
                 </DockPanel>
+                </StackPanel>
 
                 <!-- 다른 설정 창: 톱니부터 여는 사람이 추천·AI 설정을 찾을 수 있게 -->
                 <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
@@ -115,13 +124,13 @@
                                Text="{local:Tr 'Claude·GPT API 키·모델·사용 한도'}"/>
                 </DockPanel>
 
-                <!-- 디버그 -->
+                <!-- 고급: 작업 현황 창 -->
                 <Border Height="1" Background="{StaticResource Line2}" Margin="0,26,0,0"/>
-                <TextBlock Text="{local:Tr '디버그'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
+                <TextBlock Text="{local:Tr '고급'}" Style="{StaticResource Kicker}" Margin="0,20,0,8"/>
                 <CheckBox x:Name="DebugPipelineBox" Foreground="{StaticResource Text}" FontSize="14"
-                          Content="{local:Tr '추천 계산 단계를 순서도로 보기'}"/>
+                          Content="{local:Tr '작업 현황 창 쓰기'}"/>
                 <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
-                           Text="{local:Tr '추천을 새로 계산할 때 순서도 창을 띄워 지금 어느 단계인지, 단계마다 얼마나 걸렸는지 보여 줘요. 저장된 추천만 보여 줄 때는 뜨지 않아요.'}"/>
+                           Text="{local:Tr '추천 계산 · 내 곡 분석 · 소리 서비스가 지금 무엇을 하는지 순서도로 보여 줘요. 계산이 시작되면 창이 뜨고, 메인 화면의 현황 버튼으로 열고 닫아요. 저장된 추천만 보여 줄 때는 뜨지 않아요.'}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
                 <!-- 저장 위치와 용량 -->

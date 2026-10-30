@@ -7,8 +7,9 @@ namespace RecipeSong.Wpf;
 
 /// <summary>추천 설정: 0 기본 / 1 많이 / 2 최대, 모험 0 익숙하게 / 1 보통 / 2 새롭게</summary>
 /// <param name="DropMode">다시 분석한 뒤 별로·차단과 아주 닮은 추천: 0 물어보기 / 1 자동으로 빼기 / 2 그대로(순서만 내림)</param>
+/// <param name="ExcludeLive">라이브판 빼기 · <paramref name="ExcludeRemix"/> 리믹스 빼기: 제목으로 알아보고 화면에서 거른다 (다시 계산하지 않아도 바로)</param>
 public sealed record RecPrefs(int Amount = 0, int Adventure = 1, bool ExcludeKnown = false, bool ExcludeInstrumental = true, int Tracks = 0,
-    int DropMode = 0);
+    int DropMode = 0, bool ExcludeLive = false, bool ExcludeRemix = false);
 
 public partial class RecommendSettingsWindow : Window
 {
@@ -62,6 +63,8 @@ public partial class RecommendSettingsWindow : Window
         Build(DropGrid, DropHint, DropModes, prefs.DropMode);
         ExcludeKnownBox.IsChecked = prefs.ExcludeKnown;
         ExcludeInstrumentalBox.IsChecked = prefs.ExcludeInstrumental;
+        ExcludeLiveBox.IsChecked = prefs.ExcludeLive;
+        ExcludeRemixBox.IsChecked = prefs.ExcludeRemix;
     }
 
     private void Build(UniformGrid grid, TextBlock hint, (string Label, string Hint)[] options, int selected)
@@ -170,7 +173,7 @@ public partial class RecommendSettingsWindow : Window
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         Result = new RecPrefs(Selected(AmountGrid), Selected(AdventureGrid), ExcludeKnownBox.IsChecked == true, ExcludeInstrumentalBox.IsChecked == true,
-            Selected(TracksGrid), Selected(DropGrid));
+            Selected(TracksGrid), Selected(DropGrid), ExcludeLiveBox.IsChecked == true, ExcludeRemixBox.IsChecked == true);
         DialogResult = true;
     }
 }

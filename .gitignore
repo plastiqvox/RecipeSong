@@ -18,3 +18,6 @@ src/Crate.*/
 
 # 인스톨러 빌드 결과
 installer/out/
+
+# 앱에 넣어 빌드하는 키 (secrets/lastfm.key → 빌드할 때 어셈블리에 들어간다). 공개 저장소라 올리지 않는다
+secrets/

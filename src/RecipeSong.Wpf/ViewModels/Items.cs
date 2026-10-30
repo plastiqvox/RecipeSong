@@ -55,6 +55,10 @@ public sealed partial class ReleaseItem : ObservableObject
     public bool HasLikedLabel => !string.IsNullOrEmpty(Rec.LikedLabel);
     public bool HasFavNear => !string.IsNullOrEmpty(Rec.FavNear);
     public bool IsAi => Rec.AiReason != null;
+    /// <summary>Deezer 연관에는 없고 Last.fm 비슷한 아티스트로 이어진 아티스트 (카드 배지 · 달력 붉은 점)</summary>
+    public bool ViaLastFm => Rec.ViaLastFm;
+    public string LastFmTip => L.F("Deezer 연관에는 없고 Last.fm이 이어 준 아티스트예요 · 비슷한: {0}",
+        string.Join(", ", Rec.BecauseOf.Take(3)));
     /// <summary>웹진 RSS에서 온 추천</summary>
     public bool IsWebzine => Rec.AiBy?.Any(b => b.StartsWith("웹진", StringComparison.Ordinal)) == true;
     /// <summary>AI 커넥터(Claude·GPT)가 찾은 추천</summary>
@@ -88,7 +92,7 @@ public sealed partial class ReleaseItem : ObservableObject
         : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 발매작") : L.T("내 아카이브에 있는 아티스트");
     public System.Windows.Thickness BadgeMargin => HasFit ? new(8, 0, 0, 0) : new(0);
     public bool HasNear => NearItems.Count > 0;
-    /// <summary>장르 태그 (EffNet 이 고른 Discogs 스타일, 최대 3개)</summary>
+    /// <summary>장르 배지 (Last.fm 태그 중 장르로 읽히는 것, 최대 3개 — MainViewModel.MakeItem 이 보일 때마다 캐시에서 채운다)</summary>
     public IReadOnlyList<string> Genres => Rec.Genres ?? [];
     public bool HasGenres => Genres.Count > 0;
 

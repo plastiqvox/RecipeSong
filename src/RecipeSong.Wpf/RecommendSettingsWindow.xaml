@@ -65,6 +65,16 @@
                 <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
                            Text="{local:Tr '같은 아티스트의 원래 앨범이 Deezer나 내 아카이브에 있으면 (Instrumental) · (Inst.) 버전은 추천하지 않아요.'}"/>
 
+                <CheckBox x:Name="ExcludeLiveBox" Margin="0,16,0,0" Foreground="{StaticResource Text}" FontSize="14"
+                          Content="{local:Tr '라이브판 빼기'}"/>
+                <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
+                           Text="{local:Tr '제목에 Live · Live at · (Live in …) · ライブ · 라이브가 들어간 공연 녹음은 추천에 보이지 않아요. 다시 계산하지 않아도 바로 숨겨져요.'}"/>
+
+                <CheckBox x:Name="ExcludeRemixBox" Margin="0,16,0,0" Foreground="{StaticResource Text}" FontSize="14"
+                          Content="{local:Tr '리믹스 빼기'}"/>
+                <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
+                           Text="{local:Tr '제목에 Remix · Remixes · Remixed가 들어간 발매작은 추천에 보이지 않아요. 원곡 싱글·앨범은 그대로 나와요.'}"/>
+
                 <Border Height="1" Background="{StaticResource Line2}" Margin="0,22,0,0"/>
                 <!-- 외부 추천: 웹진 -->
                 <DockPanel Margin="0,20,0,8">

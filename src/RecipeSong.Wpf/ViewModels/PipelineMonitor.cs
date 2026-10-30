@@ -20,13 +20,18 @@ public enum StageState { Todo, Current, Done, Reused, Skipped, Fixed }
 /// </summary>
 public enum RunKind { Load, Refresh, Precise, Ai, Analysis, Follow, Mine, Taste, Tracks, Genres, Similar }
 
+/// <summary>칸 종류 (순서도 기호): Step 처리 단계(상자) · Data 저장된 데이터(원통 아이콘) · Rule 단계가 따르는 규칙(저울 아이콘)</summary>
+public enum NodeKind { Step, Data, Rule }
+
 /// <summary>
 /// 순서도 창의 칸 하나. 배치(Col 0 왼쪽 · 1 가운데 · 2 오른쪽, Row)는 docs/images/recommendation.mjs 흐름도와 같다.
-/// Stage 가 없으면 고정 칸, Follows 가 있으면 그 단계 칸의 상태를 따라간다 (장르 정하는 순서 ↔ 장르 칸).
+/// Stage 가 없으면 고정 칸, Follows 가 있으면 그 단계 칸의 상태를 따라간다. Kind 가 Step 이 아니면 상자 대신 아이콘 + 이름으로 그린다.
 /// State·Detail·Time 은 '주 계산'(가장 나중에 시작한 추천 계산) 기준. 다른 계산이 있는 자리는 창이 RunInfo 로 따로 그린다.
 /// </summary>
-public sealed partial class StageItem(string key, int col, int row, string label, string sub, RecStage? stage = null, RecStage? follows = null) : ObservableObject
+public sealed partial class StageItem(string key, int col, int row, string label, string sub, RecStage? stage = null, RecStage? follows = null,
+    NodeKind kind = NodeKind.Step) : ObservableObject
 {
+    public NodeKind Kind { get; } = kind;
     public string Key { get; } = key;
     public int Col { get; } = col;
     public int Row { get; } = row;
@@ -113,7 +118,7 @@ public sealed partial class RunInfo(int id, string title, RunKind kind) : Observ
 }
 
 /// <summary>
-/// 디버그 순서도 창이 보는 계산 상태. 동시에 도는 계산(보통 계산 · 정밀 분석 · 뒤 계산 · AI·웹진 · 내 곡 분석)을 모두 Runs 에 둔다.
+/// 작업 현황 창이 보는 계산 상태. 동시에 도는 계산(보통 계산 · 정밀 분석 · 뒤 계산 · AI·웹진 · 내 곡 분석)을 모두 Runs 에 둔다.
 /// 칸의 완료·대기·안 거침은 '주 계산'(가장 나중에 시작한 추천 계산) 하나로 그리고, 나머지 계산은 지금 있는 칸에 자기 색으로 표시한다.
 /// 내 곡 소리 분석은 '내 곡 소리 기준' 칸에만 표시한다 (추천 칸은 건드리지 않는다).
 /// </summary>
@@ -125,22 +130,22 @@ public sealed partial class PipelineMonitor : ObservableObject
     // 후보 목록(시드 → 비슷한 아티스트 → 디스코그래피, 아카이브·팔로우 뮤지션)은 12시간 재사용, 그 기간 고르기부터는 기간마다
     public IReadOnlyList<StageItem> Stages { get; } =
     [
-        new("lib", 1, 0, L.T("내 아카이브 전체"), L.T("플레이리스트와 상관없이")),
-        new("base", 0, 1, L.T("내 곡 소리 기준"), L.T("새 곡 디코딩 · CLAP · 평균"), RecStage.Analyze),
+        new("lib", 1, 0, L.T("내 아카이브 전체"), L.T("플레이리스트와 상관없이"), kind: NodeKind.Data),
+        new("base", 0, 1, L.T("내 곡 소리 기준"), L.T("새 곡 디코딩 · CLAP · 평균"), RecStage.Analyze, kind: NodeKind.Data),
         new("seed", 1, 1, L.T("시드 아티스트"), L.T("많이 듣고 좋아한 80명 + 하트·팔로우"), RecStage.Seeds),
         new("mine", 2, 1, L.T("내 아카이브 뮤지션"), L.T("상위 500명 · 신보 항상 앞"), RecStage.Mine),
         new("follow", 3, 1, L.T("팔로우 뮤지션"), L.T("☆ 누른 아티스트 · 신보 항상 앞"), RecStage.Follow),
-        new("related", 1, 2, L.T("비슷한 아티스트 2단계"), L.T("Deezer 연관 아티스트"), RecStage.Related),
+        new("related", 1, 2, L.T("비슷한 아티스트 2단계"), L.T("Deezer 연관 + Last.fm 비슷한"), RecStage.Related),
         new("disco", 1, 3, L.T("디스코그래피"), L.T("후보 아티스트의 앨범 목록 · 3일 캐시"), RecStage.Discography),
         new("releases", 1, 4, L.T("그 기간 고르기"), L.T("가진·차단 빼고 · 연결 점수 상위만 듣기"), RecStage.Releases),
         new("aisearch", 3, 4, L.T("AI 웹 검색 · 웹진 글"), L.T("커넥터별 웹 검색 · 웹진 RSS"), RecStage.AiSearch),
         new("listen", 1, 5, L.T("미리듣기 소리 분석"), L.T("CLAP · 내 곡과 비교"), RecStage.Listen),
         new("aicheck", 3, 5, L.T("Deezer에서 확인"), L.T("실제로 있는 앨범만"), RecStage.AiCheck),
         new("score", 1, 6, L.T("점수"), L.T("닮음 + 연결 + 좋아요 − 별로"), RecStage.Score),
-        new("ladder", 0, 7, L.T("장르 정하는 순서"), L.T("Last.fm → Discogs → Deezer → 소리")),
+        new("ladder", 0, 7, L.T("장르 정하는 순서"), L.T("Last.fm → Deezer → 소리가 닮은 앨범"), kind: NodeKind.Rule),
         new("crate", 1, 7, L.T("장르 칸"), L.T("국적과 상관없이 6칸"), RecStage.Genre),
         new("screen", 1, 8, L.T("화면"), L.T("저장하고 칸마다 묶어 보여 줌"), RecStage.Done),
-        new("gate", 2, 8, L.T("AI·웹진 거르기"), L.T("일반 추천 하위 25% 선 미만 숨김")),
+        new("gate", 2, 8, L.T("AI·웹진 거르기"), L.T("일반 추천 하위 25% 선 미만 숨김"), kind: NodeKind.Rule),
     ];
 
     public IReadOnlyList<StageEdge> Edges { get; } =
@@ -191,7 +196,7 @@ public sealed partial class PipelineMonitor : ObservableObject
     {
         _tick.Tick += (_, _) => Refresh();
         // 이번 실행에서 아직 계산이 없을 때 (순서도 버튼으로 먼저 열면 '끝'이 아니라 이렇게)
-        _title = L.T("추천 단계");
+        _title = L.T("작업 현황");
         _status = L.T("아직 계산 없음 · 계산이 시작되면 여기에 보여요");
     }
 

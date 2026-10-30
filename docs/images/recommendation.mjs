@@ -1,7 +1,7 @@
 // 추천 흐름 그림 원본 (shorts-deck 스킬).
 //   node ~/.claude/skills/shorts-deck/build.mjs docs/images/recommendation.mjs
 // → recommendation-flow.svg, genre-ladder.svg. 추천 방식을 바꾸면 이 파일을 고치고 다시 만든다.
-// tone "focus" 는 2026-10-29 레시피·국적 구분을 빼고 바꾼 곳.
+// tone "focus" 는 0.2 에서 바뀐 곳 (레시피·국적 구분을 빼고 장르 칸으로, 비슷한 아티스트에 Last.fm 을 더함).
 export default (k) => {
   const X = { l: 300, c: 800, r: 1300 };
   const Y = (i) => 90 + i * 165;
@@ -10,7 +10,7 @@ export default (k) => {
   const lib = C(X.c, 0, "내 아카이브 전체", "플레이리스트와 상관없이");
   const base = C(X.l, 1, "내 곡 소리 기준", "하트 1 · 90일+ 안 들은 곡 0", "focus");
   const seed = C(X.c, 1, "시드 아티스트", "곡 가중치 합 상위 80명 + 하트·팔로우", "focus");
-  const similar = C(X.c, 2, "비슷한 아티스트 2단계", "Deezer 연관 · 상위 1,000명");
+  const similar = C(X.c, 2, "비슷한 아티스트 2단계", "Deezer 연관 + Last.fm · 상위 1,000명", "focus");
   const mine = C(X.r, 2, "내 아카이브 뮤지션", "가중치 상위 500명 · 신보 항상 앞", "focus");
   const rel = C(X.c, 3, "그 기간 발매작", "가진 앨범·차단 빼고");
   const listen = C(X.c, 4, "미리듣기 소리 분석", "CLAP · 앨범당 최대 20곡");
@@ -50,18 +50,17 @@ export default (k) => {
     ["Last.fm", "앨범 → 아티스트 태그", "focus"],
     ["Discogs", "스타일 · 토큰 있을 때", "focus"],
     ["Deezer 장르", "Pop·Asian Music 제외"],
-    ["소리 장르 태그", "EffNet 모델이 있을 때"],
     ["닮은 앨범 15장", "칸 아는 앨범끼리 투표", "focus"],
   ];
-  const cards = steps.map(([t, l, tone], i) => k.card(170 + i * 315, 150, t, [l], { w: 270, size: 22, tone }));
+  const cards = steps.map(([t, l, tone], i) => k.card(230 + i * 380, 150, t, [l], { w: 300, size: 22, tone }));
   const ladderFig = {
     kind: "figure", name: "genre-ladder", w: 1600, h: 270,
-    title: "장르 칸은 Last.fm 태그, Discogs, Deezer 장르, 소리 장르 태그, 소리가 닮은 앨범 순서로 보고, 앞에서 정해지지 않을 때만 다음으로 넘어간다. 끝까지 모르면 인디·록.",
+    title: "장르 칸은 Last.fm 태그, Discogs, Deezer 장르, 소리가 닮은 앨범 순서로 보고, 앞에서 정해지지 않을 때만 다음으로 넘어간다. 끝까지 모르면 인디·록.",
     items: [
       k.text(800, 50, "앞에서 칸이 정해지지 않으면 다음으로", { size: 19, weight: 500 }),
       ...cards.slice(1).map((c, i) => k.arrow([k.edge(cards[i], "right", 6), k.edge(c, "left", 6)], { width: 3, head: 13 })),
       ...cards,
-      k.text(cards[4].x + cards[4].w / 2, 232, "끝까지 모르면 인디·록", { size: 18, weight: 500, anchor: "end" }),
+      k.text(cards[3].x + cards[3].w / 2, 232, "끝까지 모르면 인디·록", { size: 18, weight: 500, anchor: "end" }),
     ],
   };
   return [flow, ladderFig];

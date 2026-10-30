@@ -2,10 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:RecipeSong.Wpf"
-        Title="{local:Tr '추천 단계 (디버그)'}" Width="900" Height="1000" MinWidth="480" MinHeight="560"
+        Title="{local:Tr '작업 현황'}" Width="900" Height="1000" MinWidth="480" MinHeight="560"
         ShowActivated="False" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
         FontFamily="{StaticResource Sans}">
-    <!-- 디버그 옵션(설정 → 디버그)을 켜면 계산이 시작될 때 뜬다. 칸 배치는 docs/images/recommendation.mjs 흐름도와 같다 (그림은 코드에서 그린다) -->
+    <!-- 작업 현황 옵션(설정 → 고급)을 켜면 계산이 시작될 때 뜬다. 칸 배치는 docs/images/recommendation.mjs 흐름도와 같다 (그림은 코드에서 그린다) -->
     <Grid Margin="20,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -27,6 +27,14 @@
                     <Rectangle Width="16" Height="11" RadiusX="3" RadiusY="3" StrokeThickness="1.5" StrokeDashArray="2,1.5" Stroke="{StaticResource Line3}" Opacity="0.35" Margin="0,0,5,0"/>
                     <TextBlock Text="{local:Tr '안 함'}" FontSize="11" Foreground="{StaticResource Muted}"
                                ToolTip="{local:Tr '이 계산에는 없는 칸(팔로우 신보·AI 계산 등), 또는 저장된 결과를 보여 주거나 멈춰서 하지 않은 칸'}"/>
+                    <!-- 단계가 아닌 칸: 순서도 기호 아이콘 (PipelineWindow.DataIcon · RuleIcon 과 같은 경로) -->
+                    <Border Width="1" Height="12" Background="{StaticResource Line3}" Margin="12,0,12,0" VerticalAlignment="Center"/>
+                    <Path Data="M1,3 A6,2.2 0 0 1 13,3 L13,13 A6,2.2 0 0 1 1,13 Z M1,3 A6,2.2 0 0 0 13,3" Width="11" Height="13" Stretch="Uniform" StrokeThickness="1.4" Stroke="{StaticResource Text2}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{local:Tr '데이터'}" FontSize="11" Foreground="{StaticResource Text2}" Margin="0,0,12,0"
+                               ToolTip="{local:Tr '추천 계산이 가져다 쓰는 저장된 것 (내 아카이브 · 내 곡 분석이 만든 소리 기준). 계산 단계가 아니라 색이 바뀌지 않아요'}"/>
+                    <Path Data="M8,1.5 L8,14 M5,14.5 L11,14.5 M2,4 L14,4 M2,4 L0.5,9 M2,4 L3.5,9 M0.5,9 Q2,11.5 3.5,9 M14,4 L12.5,9 M14,4 L15.5,9 M12.5,9 Q14,11.5 15.5,9" Width="14" Height="13" Stretch="Uniform" StrokeThickness="1.1" Stroke="{StaticResource Text2}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{local:Tr '규칙'}" FontSize="11" Foreground="{StaticResource Text2}"
+                               ToolTip="{local:Tr '계산 단계가 아니라 단계가 따르는 규칙 (장르 정하는 순서 · AI·웹진 거르기). 색이 바뀌지 않아요'}"/>
                 </StackPanel>
                 <StackPanel>
                     <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap"/>

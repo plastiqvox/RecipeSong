@@ -272,9 +272,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (win.ShowDialog() != true || win.Result == _recPrefs) return;
         RefreshBlocked();  // 창에서 차단을 해제했을 수 있다
         bool poolChanged = win.Result.Amount != _recPrefs.Amount;
+        // 라이브판·리믹스 빼기만 바뀌었으면 다시 불러오지 않고 화면에서만 다시 거른다
+        bool filterOnly = win.Result with { ExcludeLive = _recPrefs.ExcludeLive, ExcludeRemix = _recPrefs.ExcludeRemix } == _recPrefs;
         _recPrefs = win.Result;
         _recPrefsStore.Set("prefs", _recPrefs);
         _recPrefsStore.Save();
+        if (filterOnly) { ApplyFilters(); return; }
         // 추천 양이 바뀌면 후보 아티스트부터 다시 모은다
         if (poolChanged)
         {
@@ -573,16 +576,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // 같은 앨범이 여러 기간 키에 있으면 배지를 합친다
         var recs = _aiPicks.FreshValues.SelectMany(l => l).Concat(AllWebzinePicks()).GroupBy(r => r.DeezerAlbumId)
             .Select(g => g.Aggregate(MergeAi)).ToList();
-        (IReadOnlyList<AiBadge> Dots, string? Tip) Marks(IEnumerable<ReleaseRecommendation> rs)
+        // Last.fm 으로만 이어진 아티스트의 추천 (저장된 기간 결과에서) — 달력에 붉은 점
+        var lastFm = _recResults.FreshValues.SelectMany(l => l).Where(r => r.ViaLastFm).DistinctBy(r => r.DeezerAlbumId).ToList();
+        var lastFmByDay = lastFm.ToLookup(r => r.ReleaseDate);
+        (IReadOnlyList<AiBadge> Dots, string? Tip) Marks(IEnumerable<ReleaseRecommendation> rs, IEnumerable<ReleaseRecommendation> lf)
         {
-            var labels = rs.SelectMany(r => (r.AiBy ?? []).Select(b => (b, r))).ToList();
+            var labels = rs.SelectMany(r => (r.AiBy ?? []).Select(b => (b, r))).Concat(lf.Select(r => (b: "Last.fm", r))).ToList();
             // 모델 기록 전의 "Claude"는 그날 같은 커넥터의 모델 배지가 있으면 그쪽으로 합친다 (점 하나 = 모델 하나)
             labels = [.. labels.Select(x => !x.b.Contains(' ')
                 && labels.FirstOrDefault(o => o.b.StartsWith(x.b + " ", StringComparison.Ordinal)).b is { } full ? (full, x.r) : x)];
             if (labels.Count == 0) return ([], null);
             var groups = labels.GroupBy(x => x.b).OrderBy(g => AiColors.Rank(g.Key)).ToList();
-            return ([.. groups.Select(g => new AiBadge(g.Key))],
-                L.T("AI가 찾은 앨범") + "\n" + string.Join("\n", groups.Select(g =>
+            // 점: 웹진은 몇 곳이든 보라 점 하나 (어느 웹진인지는 툴팁에)
+            return ([.. groups.Select(g => g.Key.StartsWith("웹진", StringComparison.Ordinal) ? "웹진" : g.Key).Distinct().Select(k => new AiBadge(k))],
+                L.T("AI·웹진·Last.fm으로 찾은 앨범") + "\n" + string.Join("\n", groups.Select(g =>
                     $"{g.Key}: " + string.Join(", ", g.Select(x => $"{x.r.Artist} – {x.r.Album}").Distinct().Take(4)) + (g.Count() > 4 ? " …" : ""))));
         }
         var byDay = recs.ToLookup(r => r.ReleaseDate);
@@ -603,7 +610,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 ? L.T("팔로우한 아티스트 발매작") + "\n" + string.Join("\n", l.Take(4)) + (l.Count > 4 ? " …" : "") : null;
         foreach (var d in Days)
         {
-            (d.AiDots, d.AiTip) = Marks(byDay[DateOnly.FromDateTime(d.Date)]);
+            (d.AiDots, d.AiTip) = Marks(byDay[DateOnly.FromDateTime(d.Date)], lastFmByDay[DateOnly.FromDateTime(d.Date)]);
             var h = history.Where(x => x.Kind == PeriodKind.Week && x.Start.Date <= d.Date && d.Date <= x.End.Date).MaxBy(x => x.At);
             d.Analyzed = h != null;
             d.NewCount = newByDay[DateOnly.FromDateTime(d.Date)].Count();
@@ -615,7 +622,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var byMonth = recs.Where(r => r.ReleaseDate.Year == SelectedDate.Year).ToLookup(r => r.ReleaseDate.Month);
         foreach (var m in Months)
         {
-            (m.AiDots, m.AiTip) = Marks(byMonth[m.Month]);
+            (m.AiDots, m.AiTip) = Marks(byMonth[m.Month], lastFm.Where(r => r.ReleaseDate.Year == SelectedDate.Year && r.ReleaseDate.Month == m.Month));
             var h = history.Where(x => x.Kind == PeriodKind.Month && x.Start.Year == SelectedDate.Year && x.Start.Month == m.Month).MaxBy(x => x.At);
             m.Analyzed = h != null;
             m.NewCount = unseen.Count(r => r.ReleaseDate.Year == SelectedDate.Year && r.ReleaseDate.Month == m.Month);
@@ -721,7 +728,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>
     /// 레시피·지역으로 나누던 때 저장한 결과를 장르 칸으로 옮긴다 (지난 기간은 다시 계산하지 않고 저장 결과를 쓴다).
-    /// Deezer 장르 → 소리 장르 태그(EffNet) → 예전 칸 이름 순. 점수 전(칸·취향 없음) AI 결과는 그대로 둔다 (다시 점수를 매길 표시).
+    /// Deezer 장르 → 장르 태그 → 예전 칸 이름 순. 점수 전(칸·취향 없음) AI 결과는 그대로 둔다 (다시 점수를 매길 표시).
     /// 예전 플레이리스트 뮤지션 표시도 '내 라이브러리'로 바꾼다
     /// </summary>
     private static ReleaseRecommendation Regroup(ReleaseRecommendation r)
@@ -902,8 +909,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var tracks = await _library.GetTracksAsync(_life.Token);
             _mine ??= TasteProfile.LibraryArtists(tracks);
             var taste = AiTaste();
-            // 다시 찾기면 지난 AI 결과도 다시 나올 수 있게 제외 목록에서 뺀다
-            var exclude = _all.Where(i => !(replace && i.IsAi)).Select(i => $"{i.Artist} – {i.Album}").ToList();
+            // 제외 목록은 AI 커넥터가 이미 제안한 것만 (같은 걸 또 찾느라 비용을 쓰지 않게). 일반 추천·웹진과 겹치는 앨범은 골라도 된다 —
+            // 고르면 그 카드에 AI 배지와 이유가 붙는다 (MergeAi). 다시 찾기면 지난 AI 결과도 다시 나올 수 있게 비운다
+            var exclude = replace ? [] : _all.Where(i => i.IsAiConnector).Select(i => $"{i.Artist} – {i.Album}").ToList();
 
             // 커넥터마다 따로 돌리고, 하나가 실패해도 나머지 결과는 쓴다
             var runs = await Task.WhenAll(scouts.Select(async s =>
@@ -1017,7 +1025,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NoSaved))] private int _savedCount;
     public bool NoSaved => SavedCount == 0;
 
-    private ReleaseItem MakeItem(ReleaseRecommendation r, string? savedNote = null) => MakeItemCore(Regroup(r), savedNote);
+    // 장르 배지는 보일 때마다 Last.fm 태그 캐시에서 채운다 (저장된 예전 결과의 EffNet 태그는 쓰지 않고, 뒤에서 받은 태그도 바로 보이게)
+    private ReleaseItem MakeItem(ReleaseRecommendation r, string? savedNote = null) =>
+        MakeItemCore(Regroup(r) with { Genres = _genres.CachedTags(r.Artist, r.Album) }, savedNote);
 
     private ReleaseItem MakeItemCore(ReleaseRecommendation r, string? savedNote) =>
         new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
@@ -1269,11 +1279,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var list = g.ToList();
             SavedSections.Add(new CrateSection(g.Key, list, list.Count, list.Count(i => i.IsMine), false, _ => { }));
         }
-        // 별로 표시한 앨범은 별로 탭에 (👎를 다시 누르면 되돌린다)
+        // 관심 없음 표시한 앨범은 관심 없음 탭의 표에 (줄 끝 되돌리기). 표라 커버는 받지 않는다 (수천 장이 쌓여도 가볍게)
         DislikedItems.Clear();
-        foreach (var d in _disliked.All.OrderByDescending(d => d.SavedAt)) DislikedItems.Add(MakeItem(d.Rec, L.F("{0:M.d} 관심 없음", d.SavedAt)));
+        foreach (var d in _disliked.All.OrderByDescending(d => d.SavedAt)) DislikedItems.Add(MakeItem(d.Rec, d.SavedAt.ToString("yyyy.M.d")));
         DislikedCount = DislikedItems.Count;
-        _ = FillCoversAsync(items.Concat(DislikedItems));
+        _ = FillCoversAsync(items);
     }
 
     public ObservableCollection<ReleaseItem> DislikedItems { get; } = [];
@@ -1336,7 +1346,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         bool RedundantInstrumental(ReleaseItem i) => titles != null && AlbumVariants.InstrumentalBase(i.Album) is { } original
             && (titles.Contains(ListeningAnalyzer.NormalizeArtist(i.Artist) + "|" + ListeningAnalyzer.NormalizeArtist(original))
                 || _owned?.HasAlbum(i.Artist, original) == true);
+        // 라이브판 · 리믹스: 제목으로 거른다 (추천 설정, 저장된 결과에도 바로)
+        bool live = _recPrefs.ExcludeLive, remix = _recPrefs.ExcludeRemix;
         return _all.Where(i => !_blocked.IsBlocked(i.Rec) && !RedundantInstrumental(i))
+            .Where(i => !(live && AlbumVariants.IsLive(i.Album)) && !(remix && AlbumVariants.IsRemix(i.Album)))
             .Where(i => !i.IsDisliked
             && !(i.Rec.FromPlaylist == null && dislikedArtists.Contains(ListeningAnalyzer.NormalizeArtist(i.Rec.Artist))))
             // AI·웹진이 찾은 앨범도 내 곡과 닮지 않았으면 숨긴다 (내 라이브러리·팔로우 뮤지션 것은 그대로)
@@ -1566,7 +1579,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (_pools.TryGetValue(key, out var p) && DateTime.Now - p.BuiltAt < TimeSpan.FromHours(12)
                 && _poolFavVersion.GetValueOrDefault(key) == FavoritesVersion)
             {
-                // 디버그 순서도: 시드·비슷한 아티스트·라이브러리 뮤지션 칸은 앞 계산이 만든 후보를 그대로 쓴다
+                // 작업 현황 창: 시드·비슷한 아티스트·라이브러리 뮤지션 칸은 앞 계산이 만든 후보를 그대로 쓴다
                 (progress as StageProgress)?.Reused(p.BuiltAt);
                 return p;
             }
@@ -1937,7 +1950,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var ct = cts.Token;
         var period = CurrentPeriod;
         var progress = Tracked(period.Display, m => { if (!ct.IsCancellationRequested) BusyText = m; });
-        // 디버그 순서도 창이 떠 있으면 기간을 바꾸자마자 새 기간으로 (멈추면 '멈춤', 저장 결과면 계산 없음으로 끝낸다)
+        // 작업 현황 창이 떠 있으면 기간을 바꾸자마자 새 기간으로 (멈추면 '멈춤', 저장 결과면 계산 없음으로 끝낸다)
         var stages = progress as StageProgress;
         if (PipelineWindow.IsOpen) stages?.Start();
         using var stopped = ct.Register(() => stages?.Finish(L.T("멈춤")));
@@ -2396,7 +2409,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>순서도: 오류·멈춤으로 끝까지 못 간 계산을 '멈춤'으로 끝낸다 (끝까지 간 계산이면 무시된다)</summary>
     private static void Stopped(IProgress<string>? progress) => (progress as StageProgress)?.Finish(L.T("멈춤"));
 
-    /// <summary>디버그 순서도 창을 열고 닫는다 (닫은 뒤에도 지금 도는 계산을 다시 열어 볼 수 있게)</summary>
+    /// <summary>작업 현황 창을 열고 닫는다 (닫은 뒤에도 지금 도는 계산을 다시 열어 볼 수 있게)</summary>
     [RelayCommand]
     private void OpenPipeline() => PipelineWindow.Toggle();
 
