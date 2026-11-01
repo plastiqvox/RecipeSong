@@ -59,6 +59,14 @@
                         <Button x:Name="FindButton" DockPanel.Dock="Right" Content="{local:Tr '놓친 앨범 찾기'}" Style="{StaticResource Bare}" Click="Find_Click" IsEnabled="False" Padding="12,6" Margin="8,0,0,0"/>
                         <ComboBox x:Name="CandidateBox" Style="{StaticResource SoulseekFormatBox}" DisplayMemberPath="Label" SelectionChanged="Candidate_Changed" ToolTip="{Binding SelectedItem.Label, RelativeSource={RelativeSource Self}}" AutomationProperties.Name="{local:Tr '검색된 아티스트 선택'}"/>
                     </DockPanel>
+                    <StackPanel x:Name="CandidateChoices" Visibility="Collapsed" Margin="0,0,0,8">
+                        <TextBlock Text="{local:Tr '아티스트 ID 후보'}" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                        <ListBox x:Name="CandidateList" MaxHeight="150" SelectionChanged="CandidateList_Changed" AutomationProperties.Name="{local:Tr '아티스트 ID 후보'}">
+                            <ListBox.ItemTemplate><DataTemplate>
+                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap" FontSize="12"/>
+                            </DataTemplate></ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
                 </StackPanel>
                 <WrapPanel Grid.Row="3" Margin="0,0,0,10">
                     <CheckBox x:Name="AlbumBox" Content="{local:Tr '정규'}" IsChecked="True" Checked="Type_Changed" Unchecked="Type_Changed" Margin="0,0,14,6"/>

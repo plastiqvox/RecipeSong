@@ -93,7 +93,16 @@ public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyL
             .ThenBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase)];
     }
 
-    public Task<IReadOnlyList<DzArtist>> CandidatesAsync(string artist, CancellationToken ct) => client.SearchArtistsAsync(artist, ct);
+    private readonly Dictionary<long, IReadOnlyList<DzAlbum>> _identityDiscographies = [];
+    private async Task<IReadOnlyList<DzAlbum>> IdentityDiscographyAsync(long artistId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_identityDiscographies.TryGetValue(artistId, out var cached)) return cached;
+        var albums = await client.ArtistAlbumsAllAsync(artistId, ct);
+        ct.ThrowIfCancellationRequested();
+        _identityDiscographies[artistId] = albums;
+        return albums;
+    }
 
     public CatalogOwnership Ownership(string artist, DzAlbum album, out int ownedTracks)
     {
@@ -107,7 +116,7 @@ public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyL
     public async Task<IReadOnlyList<DiscoveredAlbum>> AlbumsAsync(DzArtist artist, CancellationToken ct, string? libraryArtist = null)
     {
         var result = new List<DiscoveredAlbum>();
-        foreach (var item in await client.ArtistAlbumsAllAsync(artist.Id, ct))
+        foreach (var item in await IdentityDiscographyAsync(artist.Id, ct))
         {
             ct.ThrowIfCancellationRequested();
             if (item.Released is { } date && date > DateOnly.FromDateTime(DateTime.Today)) continue;

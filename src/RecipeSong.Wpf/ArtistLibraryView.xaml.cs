@@ -22,9 +22,10 @@ public partial class ArtistLibraryView : UserControl, IDisposable
     {
         public override string ToString() => Name;
     }
-    private sealed record Candidate(DzArtist Artist)
+    private sealed record Candidate(DzArtist Artist, int AlbumMatches, int? TrackMatches)
     {
-        public string Label => L.F("{0} · 팬 {1:N0}명 · ID {2}", Artist.Name, Artist.Fans, Artist.Id);
+        public string Label => L.F("{0} · ID {1} · 보유 앨범 {2}개 일치", Artist.Name, Artist.Id, AlbumMatches)
+            + (TrackMatches is { } count ? " · " + L.F("수록곡 {0}개 일치", count) : "");
         public override string ToString() => Label;
     }
 
@@ -117,6 +118,8 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         ClearAlbums();
         _updating = true;
         CandidateBox.ItemsSource = null;
+        CandidateList.ItemsSource = null;
+        CandidateChoices.Visibility = Visibility.Collapsed;
         _updating = false;
         FindButton.IsEnabled = false;
         MySongs.ItemsSource = null;
@@ -124,15 +127,20 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         if (_discovery == null || Artists.SelectedItem is not PlaylistMusician musician) return;
         ArtistTitle.Text = musician.Name;
         MySongs.ItemsSource = musician.Tracks.OrderBy(t => t.Album).ThenBy(t => t.Title).ToArray();
-        StatusText.Text = L.T("카탈로그에서 아티스트를 찾는 중…");
+        StatusText.Text = L.T("보유 앨범·수록곡으로 아티스트 ID를 확인하는 중…");
         try
         {
-            var candidates = musician.DeezerId > 0 ? new[] { new DzArtist(musician.DeezerId, musician.Name, null, null) }
-                : await _discovery.CandidatesAsync(musician.Name, token);
+            var identity = await _discovery.ResolveArtistAsync(musician, token);
             if (token.IsCancellationRequested) return;
-            CandidateBox.ItemsSource = candidates.Select(a => new Candidate(a)).ToArray();
-            CandidateBox.SelectedIndex = candidates.Count > 0 ? 0 : -1;
-            StatusText.Text = candidates.Count > 0 ? L.T("아티스트를 확인하고 놓친 앨범 찾기를 누르세요.") : L.T("카탈로그에서 아티스트를 찾지 못했어요.");
+            var candidates = identity.Candidates.Select(a => new Candidate(a.Artist, a.AlbumMatches, a.TrackMatches)).ToArray();
+            CandidateBox.ItemsSource = candidates;
+            CandidateList.ItemsSource = candidates;
+            CandidateChoices.Visibility = identity.SelectedId == null && candidates.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            CandidateBox.SelectedItem = candidates.FirstOrDefault(a => a.Artist.Id == identity.SelectedId);
+            StatusText.Text = identity.SelectedId != null ? musician.DeezerId > 0 && musician.TopAlbums.Count == 0
+                ? L.T("저장된 팔로우 ID를 선택했어요. 확인 후 앨범을 찾아보세요.")
+                : L.T("보유 정보와 일치하는 아티스트 ID를 선택했어요. 확인 후 앨범을 찾아보세요.")
+                : candidates.Length > 0 ? L.T("아티스트 ID를 확정하지 못했어요. 일치 정보를 보고 직접 선택해 주세요.") : L.T("카탈로그에서 아티스트를 찾지 못했어요.");
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (!token.IsCancellationRequested) StatusText.Text = ex.Message; }
@@ -141,9 +149,16 @@ public partial class ArtistLibraryView : UserControl, IDisposable
     private void Candidate_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (Albums == null || _updating) return;
+        _updating = true;
+        CandidateList.SelectedItem = CandidateBox.SelectedItem;
+        _updating = false;
         BeginRequest();
         ClearAlbums();
         FindButton.IsEnabled = CandidateBox.SelectedItem != null;
+    }
+    private void CandidateList_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_updating) CandidateBox.SelectedItem = CandidateList.SelectedItem;
     }
 
     private void ClearAlbums()
