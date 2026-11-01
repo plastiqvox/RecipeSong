@@ -25,6 +25,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public event Action<ReleaseItem>? SoulseekSearchRequested;
     public event Action<string>? SoulseekSectionRequested;
 
+    public async Task<ArtistAlbumDiscovery> CreateArtistDiscoveryAsync(CancellationToken ct)
+    {
+        // 이 탭의 새로고침은 외부에서 편집한 플리·라이브러리 원본도 다시 읽는다.
+        _library.Invalidate();
+        var tracks = await _library.GetTracksAsync(ct);
+        var playlists = await _library.GetPlaylistsAsync(ct);
+        return new(_deezer, tracks, playlists, _follows.All.ToArray(), async (album, token) =>
+        {
+            var cover = await _artwork.GetAsync(album, token);
+            _artwork.Save();
+            return cover.ArtworkUrl;
+        });
+    }
+
     public ReleaseRecommendation DownloadRecommendation(AlbumDownload job)
     {
         var rec = job.Recommendation is { DeezerAlbumId: > 0 } known ? known

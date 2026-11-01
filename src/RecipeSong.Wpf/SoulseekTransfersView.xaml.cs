@@ -14,6 +14,7 @@ public partial class SoulseekTransfersView : UserControl, IDisposable
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool _refreshing;
     private bool _replacingJobs;
+    private bool _favoriteBusy;
     private Guid? _selectedAlbum;
     private readonly Func<AlbumDownload, bool>? _isFavorite;
     private readonly Func<AlbumDownload, Task>? _toggleFavorite;
@@ -118,13 +119,45 @@ public partial class SoulseekTransfersView : UserControl, IDisposable
     }
 
     private async void Favorite_Click(object sender, RoutedEventArgs e) => await ToggleFavoriteAsync();
+    private void JobRow_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ListBoxItem row || row.ContextMenu != null) return;
+        var menu = new ContextMenu();
+        var favorite = new MenuItem { Header = L.T("즐겨찾기 등록") };
+        favorite.Click += JobFavorite_Click;
+        menu.Items.Add(favorite);
+        menu.Opened += JobMenu_Opened;
+        row.ContextMenu = menu;
+    }
+    private void JobMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu { PlacementTarget: ListBoxItem { DataContext: AlbumDownloadStatus row } } menu) return;
+        JobsList.SelectedItem = row;
+        // 자동 갱신으로 목록의 행이 교체되어도 우클릭한 앨범에 작업한다.
+        menu.Tag = row.Job;
+        var item = (MenuItem)menu.Items[0];
+        item.Header = _isFavorite?.Invoke(row.Job) == true ? L.T("즐겨찾기 해제") : L.T("즐겨찾기 등록");
+        item.IsEnabled = _toggleFavorite != null && !_favoriteBusy;
+    }
+    private async void JobFavorite_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Parent: ContextMenu { Tag: AlbumDownload job } } item) return;
+        item.IsEnabled = false;
+        await ToggleFavoriteAsync(job);
+    }
     public async Task ToggleFavoriteAsync()
     {
         if (_toggleFavorite == null || JobsList.SelectedItem is not AlbumDownloadStatus { Job: var job }) return;
+        await ToggleFavoriteAsync(job);
+    }
+    private async Task ToggleFavoriteAsync(AlbumDownload job)
+    {
+        if (_toggleFavorite == null || _favoriteBusy) return;
+        _favoriteBusy = true;
         FavoriteMenu.IsEnabled = false;
         try { await _toggleFavorite(job); await RefreshAsync(); }
         catch (Exception ex) { StatusText.Text = ex.Message; }
-        finally { FavoriteMenu.IsEnabled = JobsList.SelectedItem != null && _toggleFavorite != null; }
+        finally { _favoriteBusy = false; FavoriteMenu.IsEnabled = JobsList.SelectedItem != null && _toggleFavorite != null; }
     }
     public void Dispose() => _timer.Stop();
     public void ShowUploads(bool uploads)

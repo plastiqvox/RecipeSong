@@ -1455,5 +1455,6 @@
     </Grid>
         </TabItem>
         <TabItem Header="{local:Tr 'Soulseek'}" Style="{StaticResource WorkspaceTab}"><ContentControl x:Name="SoulseekHost"/></TabItem>
+        <TabItem Header="{local:Tr '내 플리 아티스트'}" Style="{StaticResource WorkspaceTab}"><ContentControl x:Name="ArtistLibraryHost"/></TabItem>
     </TabControl>
 </Window>

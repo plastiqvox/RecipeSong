@@ -7,7 +7,7 @@ using RecipeSong.Core;
 using RecipeSong.Core.Soulseek;
 using RecipeSong.Wpf;
 
-static class Program
+static partial class Program
 {
     [STAThread]
     static int Main(string[] args)
@@ -76,6 +76,7 @@ static class Program
                 CheckWorkspace(downloads, album, output, language);
                 CheckExtensionFilter(downloads, album, output, language);
                 CheckTrackCountFilter(downloads, album, output, language);
+                CheckArtistLibrary(output, language);
                 CheckSearchOrder(downloads, album, output, language);
                 CheckDownloadProgress(Path.Combine(output, language + "-progress-data"));
             }
@@ -147,11 +148,12 @@ static class Program
         File.WriteAllText(Path.Combine(CacheLocation.Directory, "soulseek-native-downloads.json"), System.Text.Json.JsonSerializer.Serialize(new[] { first, second }));
         var downloads = new AlbumDownloads();
         var saved = new SavedReleases(Path.Combine(CacheLocation.Directory, "saved.json"));
+        Guid? toggledAlbum = null;
         try
         {
             using var workspace = new SoulseekWorkspaceView(downloads, j => j.Recommendation ?? album,
                 j => j.Recommendation is { } rec && saved.Contains(rec.DeezerAlbumId),
-                j => { if (saved.Contains(album.DeezerAlbumId)) saved.Remove(album.DeezerAlbumId); else saved.Add(album); return Task.CompletedTask; });
+                j => { toggledAlbum = j.Id; if (saved.Contains(album.DeezerAlbumId)) saved.Remove(album.DeezerAlbumId); else saved.Add(album); return Task.CompletedTask; });
             workspace.ShowSection("downloads");
             var sections = (TabControl)workspace.FindName("Sections");
             var view = (SoulseekTransfersView)((ContentControl)((TabItem)sections.Items[1]).Content).Content;
@@ -172,6 +174,40 @@ static class Program
             RenderMenu(menu, Path.Combine(output, language + "-album-menu.png"));
             OnUi(view.ToggleFavoriteAsync);
             if (saved.Contains(album.DeezerAlbumId)) throw new Exception("Favorite removal failed.");
+            Render(workspace, Path.Combine(output, language + "-album-context-target.png"), 1040, 680);
+            var firstRow = (ListBoxItem)jobs.ItemContainerGenerator.ContainerFromItem(jobs.Items.Cast<AlbumDownloadStatus>().Single(j => j.Id == first.Id));
+            firstRow.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+            var context = firstRow.ContextMenu;
+            var favorite = (MenuItem)context.Items[0];
+            jobs.SelectedItem = jobs.Items.Cast<AlbumDownloadStatus>().Single(j => j.Id == second.Id);
+            context.PlacementTarget = firstRow;
+            context.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+            if (((AlbumDownloadStatus)jobs.SelectedItem).Id != first.Id || favorite.Header?.ToString() != L.T("즐겨찾기 등록"))
+                throw new Exception("Row context menu did not target the right-clicked album.");
+            OnUi(async () =>
+            {
+                await view.RefreshAsync();
+                jobs.SelectedItem = jobs.Items.Cast<AlbumDownloadStatus>().Single(j => j.Id == second.Id);
+                favorite.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                await WaitFor(() => saved.Contains(album.DeezerAlbumId));
+                await Task.Delay(30);
+            });
+            if (toggledAlbum != first.Id) throw new Exception("Context favorite changed target after list refresh.");
+            Render(workspace, Path.Combine(output, language + "-album-context-target.png"), 1040, 680);
+            firstRow = (ListBoxItem)jobs.ItemContainerGenerator.ContainerFromItem(jobs.Items.Cast<AlbumDownloadStatus>().Single(j => j.Id == first.Id));
+            firstRow.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+            context = firstRow.ContextMenu;
+            context.PlacementTarget = firstRow;
+            context.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+            favorite = (MenuItem)context.Items[0];
+            if (favorite.Header?.ToString() != L.T("즐겨찾기 해제")) throw new Exception("Row context menu favorite header was stale.");
+            RenderMenu(context, Path.Combine(output, language + "-album-context-menu.png"));
+            OnUi(async () =>
+            {
+                favorite.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                await WaitFor(() => !saved.Contains(album.DeezerAlbumId));
+                await Task.Delay(30);
+            });
             jobs.SelectedItem = jobs.Items.Cast<AlbumDownloadStatus>().Single(j => j.Id == second.Id);
             if (tracks.Items.Count != 1 || tracks.Items.Cast<SoulseekTransfer>().Single().State != L.T("ZIP에 저장됨")) throw new Exception("Archived album track manifest is missing.");
             if (((Button)view.FindName("RetryButton")).Visibility != Visibility.Collapsed || Item("StopAlbumMenu").Visibility != Visibility.Collapsed

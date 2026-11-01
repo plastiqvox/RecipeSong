@@ -20,6 +20,11 @@ L.Init("en");
 var root = Path.Combine(Path.GetTempPath(), "RecipeSong-soulseek-checks-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 CacheLocation.Directory = Path.Combine(root, "cache");
+if (args.FirstOrDefault() == "--artist-discovery")
+{
+    await ArtistDiscoveryChecks.RunAsync();
+    return;
+}
 if (args.FirstOrDefault() == "--track-names")
 {
     await TrackNameChecks.RunAsync(root, args[1]);

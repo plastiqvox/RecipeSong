@@ -36,8 +36,57 @@ public sealed class DeezerClient(HttpClient http)
     public async Task<IReadOnlyList<DzAlbum>> ArtistAlbumsAsync(long artistId, CancellationToken ct = default) =>
         (await GetAsync<DzList<DzAlbum>>($"/artist/{artistId}/albums?limit=200", ct))?.Data ?? [];
 
+    /// <summary>과거 앨범 탐색용 전체 페이지. 실패한 페이지를 빈 디스코그래피로 취급하지 않는다.</summary>
+    public async Task<IReadOnlyList<DzAlbum>> ArtistAlbumsAllAsync(long artistId, CancellationToken ct = default)
+    {
+        var albums = new Dictionary<long, DzAlbum>();
+        string? path = $"/artist/{artistId}/albums?limit=100";
+        var pages = new HashSet<string>();
+        while (path != null)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!pages.Add(path)) throw new HttpRequestException(L.T("디스코그래피를 불러오지 못했어요. 다시 시도해 주세요."));
+            var page = await GetAsync<DzList<DzAlbum>>(path, ct);
+            if (page?.Data == null) throw new HttpRequestException(L.T("디스코그래피를 불러오지 못했어요. 다시 시도해 주세요."));
+            foreach (var album in page.Data) albums[album.Id] = album;
+            path = null;
+            if (!string.IsNullOrWhiteSpace(page.Next))
+            {
+                if (!Uri.TryCreate(page.Next, UriKind.Absolute, out var next) || next.Scheme != "https"
+                    || next.Host != "api.deezer.com" || next.AbsolutePath != $"/artist/{artistId}/albums")
+                    throw new HttpRequestException(L.T("디스코그래피를 불러오지 못했어요. 다시 시도해 주세요."));
+                path = next.PathAndQuery;
+            }
+        }
+        return [.. albums.Values];
+    }
+
     public async Task<IReadOnlyList<DzTrack>> AlbumTracksAsync(long albumId, int limit = 3, CancellationToken ct = default) =>
         (await GetAsync<DzList<DzTrack>>($"/album/{albumId}/tracks?limit={limit}", ct))?.Data ?? [];
+
+    public async Task<IReadOnlyList<DzTrack>> AlbumTracksAllAsync(long albumId, CancellationToken ct = default)
+    {
+        var tracks = new List<DzTrack>();
+        string? path = $"/album/{albumId}/tracks?limit=100";
+        var pages = new HashSet<string>();
+        while (path != null)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!pages.Add(path)) throw new HttpRequestException(L.T("수록곡 전체를 불러오지 못했어요. 다시 선택해 주세요."));
+            var page = await GetAsync<DzList<DzTrack>>(path, ct);
+            if (page?.Data == null) throw new HttpRequestException(L.T("수록곡 전체를 불러오지 못했어요. 다시 선택해 주세요."));
+            tracks.AddRange(page.Data);
+            path = null;
+            if (!string.IsNullOrWhiteSpace(page.Next))
+            {
+                if (!Uri.TryCreate(page.Next, UriKind.Absolute, out var next) || next.Scheme != "https"
+                    || next.Host != "api.deezer.com" || next.AbsolutePath != $"/album/{albumId}/tracks")
+                    throw new HttpRequestException(L.T("수록곡 전체를 불러오지 못했어요. 다시 선택해 주세요."));
+                path = next.PathAndQuery;
+            }
+        }
+        return tracks;
+    }
 
     /// <summary>아티스트+곡명으로 곡을 찾는다 (내 파일이 없는 '비슷한 내 곡'을 미리듣기로 들을 때)</summary>
     public async Task<DzTrack?> FindTrackAsync(string artist, string title, CancellationToken ct = default)
@@ -101,7 +150,8 @@ public sealed class DeezerClient(HttpClient http)
     }
 }
 
-public sealed record DzList<T>([property: JsonPropertyName("data")] List<T>? Data);
+public sealed record DzList<T>([property: JsonPropertyName("data")] List<T>? Data,
+    [property: JsonPropertyName("next")] string? Next = null);
 
 public sealed record DzArtist(
     [property: JsonPropertyName("id")] long Id,

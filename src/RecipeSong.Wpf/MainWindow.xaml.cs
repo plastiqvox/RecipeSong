@@ -9,6 +9,7 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;
     private SoulseekWorkspaceView? _soulseekWorkspace;
+    private ArtistLibraryView? _artistLibrary;
     private readonly System.Windows.Threading.DispatcherTimer _transferTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private bool _refreshingTransfers;
 
@@ -19,9 +20,23 @@ public partial class MainWindow : Window
         DataContext = _vm = vm;
         _vm.SoulseekSearchRequested += OpenSoulseekSearch;
         _vm.SoulseekSectionRequested += section => { GetSoulseekWorkspace().ShowSection(section); WorkspaceTabs.SelectedIndex = 1; };
-        WorkspaceTabs.SelectionChanged += (_, e) =>
+        WorkspaceTabs.SelectionChanged += async (_, e) =>
         {
             if (e.Source == WorkspaceTabs && WorkspaceTabs.SelectedIndex == 1) GetSoulseekWorkspace();
+            if (e.Source == WorkspaceTabs && WorkspaceTabs.SelectedIndex == 2)
+            {
+                if (_artistLibrary == null)
+                {
+                    _artistLibrary = new ArtistLibraryView(_vm.CreateArtistDiscoveryAsync);
+                    _artistLibrary.SearchRequested += album =>
+                    {
+                        GetSoulseekWorkspace().ShowAlbum(album);
+                        WorkspaceTabs.SelectedIndex = 1;
+                    };
+                    ArtistLibraryHost.Content = _artistLibrary;
+                }
+                await _artistLibrary.InitializeAsync();
+            }
         };
         _transferTimer.Tick += async (_, _) =>
         {
@@ -32,7 +47,7 @@ public partial class MainWindow : Window
             finally { _refreshingTransfers = false; }
         };
         _transferTimer.Start();
-        Closed += (_, _) => { _transferTimer.Stop(); _soulseekWorkspace?.Dispose(); };
+        Closed += (_, _) => { _transferTimer.Stop(); _soulseekWorkspace?.Dispose(); _artistLibrary?.Dispose(); };
         Loaded += async (_, _) => await _vm.InitializeAsync();
         _vm.ScrollToRequested += item => Dispatcher.BeginInvoke(() => ScrollTo(item), System.Windows.Threading.DispatcherPriority.Loaded);
         _vm.ScrollTopRequested += () => listScroll.ScrollToTop();

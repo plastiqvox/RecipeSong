@@ -35,6 +35,11 @@
                         </Button>
                     </WrapPanel>
                     <ListBox x:Name="JobsList" SelectionChanged="Album_Changed" AutomationProperties.Name="{local:Tr '앨범 다운로드 작업'}">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <EventSetter Event="Loaded" Handler="JobRow_Loaded"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate><DataTemplate><StackPanel>
                             <TextBlock Text="{Binding Display}" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding FavoriteDisplay}" Foreground="{StaticResource AccentText}" FontSize="12" Visibility="{Binding FavoriteDisplay, Converter={StaticResource EmptyCollapsed}}"/>
