@@ -8,12 +8,31 @@ namespace RecipeSong.Wpf;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;
+    private SoulseekWorkspaceView? _soulseekWorkspace;
+    private readonly System.Windows.Threading.DispatcherTimer _transferTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private bool _refreshingTransfers;
 
     public MainWindow(MainViewModel vm)
     {
         InitializeComponent();
         DarkTitleBar.Apply(this);
         DataContext = _vm = vm;
+        _vm.SoulseekSearchRequested += OpenSoulseekSearch;
+        _vm.SoulseekSectionRequested += section => { GetSoulseekWorkspace().ShowSection(section); WorkspaceTabs.SelectedIndex = 1; };
+        WorkspaceTabs.SelectionChanged += (_, e) =>
+        {
+            if (e.Source == WorkspaceTabs && WorkspaceTabs.SelectedIndex == 1) GetSoulseekWorkspace();
+        };
+        _transferTimer.Tick += async (_, _) =>
+        {
+            if (_refreshingTransfers) return;
+            _refreshingTransfers = true;
+            try { await _vm.RefreshTransfersAsync(); }
+            catch (Exception ex) { System.Diagnostics.Trace.WriteLine(ex); }
+            finally { _refreshingTransfers = false; }
+        };
+        _transferTimer.Start();
+        Closed += (_, _) => { _transferTimer.Stop(); _soulseekWorkspace?.Dispose(); };
         Loaded += async (_, _) => await _vm.InitializeAsync();
         _vm.ScrollToRequested += item => Dispatcher.BeginInvoke(() => ScrollTo(item), System.Windows.Threading.DispatcherPriority.Loaded);
         _vm.ScrollTopRequested += () => listScroll.ScrollToTop();
@@ -32,6 +51,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void Shortcut_KeyDown(object sender, KeyEventArgs e)
     {
+        if (WorkspaceTabs.SelectedIndex != 0) return;
         if (Keyboard.Modifiers != ModifierKeys.None) return;
         var focused = Keyboard.FocusedElement;
         if (focused is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox or System.Windows.Controls.ComboBox) return;
@@ -115,6 +135,26 @@ public partial class MainWindow : Window
     private void Block_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: ReleaseItem item, Tag: string tag }) _vm.Block(item, tag == "label");
+    }
+
+    private void Soulseek_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ReleaseItem item }) _vm.OpenSoulseek(item);
+    }
+
+    private SoulseekWorkspaceView GetSoulseekWorkspace()
+    {
+        if (_soulseekWorkspace != null) return _soulseekWorkspace;
+        _soulseekWorkspace = new SoulseekWorkspaceView(_vm.SoulseekDownloads, _vm.DownloadRecommendation, _vm.IsDownloadFavorite, _vm.ToggleDownloadFavoriteAsync);
+        _soulseekWorkspace.RecommendationsRequested += () => WorkspaceTabs.SelectedIndex = 0;
+        SoulseekHost.Content = _soulseekWorkspace;
+        return _soulseekWorkspace;
+    }
+
+    private void OpenSoulseekSearch(ReleaseItem item)
+    {
+        GetSoulseekWorkspace().ShowAlbum(item.Rec with { CoverUrl = item.CoverUrl });
+        WorkspaceTabs.SelectedIndex = 1;
     }
 
     /// <summary>수록곡 창의 ⋯ 버튼: 왼쪽 클릭으로도 메뉴를 버튼 아래에 연다</summary>

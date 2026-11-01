@@ -10,6 +10,7 @@ using RecipeSong.Core.Library;
 using RecipeSong.Core.Providers;
 using RecipeSong.Core.Ai;
 using RecipeSong.Core.Sound;
+using RecipeSong.Core.Soulseek;
 
 namespace RecipeSong.Wpf.ViewModels;
 
@@ -19,6 +20,67 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private static readonly string[] OldRegionKeys = ["all", "jp", "kr", "intl", "sea"];
 
     private readonly AppSettings _settings;
+    private AlbumDownloads? _albumDownloads;
+    public AlbumDownloads SoulseekDownloads => _albumDownloads ??= new AlbumDownloads();
+    public event Action<ReleaseItem>? SoulseekSearchRequested;
+    public event Action<string>? SoulseekSectionRequested;
+
+    public ReleaseRecommendation DownloadRecommendation(AlbumDownload job)
+    {
+        var rec = job.Recommendation is { DeezerAlbumId: > 0 } known ? known
+            : _all.Select(i => i.Rec).Concat(_saved.All.Select(s => s.Rec)).FirstOrDefault(r =>
+                string.Equals(r.Artist, job.Artist, StringComparison.OrdinalIgnoreCase) && string.Equals(r.Album, job.Album, StringComparison.OrdinalIgnoreCase))
+            ?? job.Recommendation
+            ?? new(job.Artist, job.Album, job.RecordType, job.ReleaseDate, null, job.CoverUrl, 0, null, null, Region.International, null, null, null, [], [], false, 0);
+        return rec with { CoverUrl = job.CoverUrl ?? rec.CoverUrl };
+    }
+
+    public bool IsDownloadFavorite(AlbumDownload job) => DownloadRecommendation(job).DeezerAlbumId is > 0 and var id && _saved.Contains(id);
+
+    public async Task ToggleDownloadFavoriteAsync(AlbumDownload job)
+    {
+        var rec = DownloadRecommendation(job);
+        if (rec.DeezerAlbumId <= 0)
+        {
+            var hit = await _deezer.FindAlbumAsync(job.Artist, job.Album, _life.Token);
+            if (hit is not { Id: > 0, Artist: { } artist }
+                || !string.Equals(artist.Name, job.Artist, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(hit.Title, job.Album, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(L.T("앨범 정보를 확인하지 못했어요. 추천 화면에서 해당 앨범을 열어 주세요."));
+            rec = rec with { DeezerAlbumId = hit.Id, CoverUrl = rec.CoverUrl ?? hit.Cover };
+        }
+        await SoulseekDownloads.SetRecommendationAsync(job.Id, rec);
+        ToggleSave(MakeItemCore(rec, null));
+        if (Detail?.Rec.DeezerAlbumId == rec.DeezerAlbumId) Detail.IsSaved = _saved.Contains(rec.DeezerAlbumId);
+    }
+
+    public void OpenSoulseek(ReleaseItem item)
+    {
+        Detail = item;
+        _ = EnsureTracksAsync(item);
+        SoulseekSearchRequested?.Invoke(item);
+    }
+
+    [RelayCommand]
+    private void OpenSoulseekSettings() => SoulseekSectionRequested?.Invoke("settings");
+
+    [RelayCommand]
+    private void OpenTransfers() => SoulseekSectionRequested?.Invoke("downloads");
+
+    [ObservableProperty] private string _transferButton = L.T("전송함");
+    public async Task RefreshTransfersAsync()
+    {
+        if (_albumDownloads == null) return;
+        var jobs = await _albumDownloads.SnapshotAsync();
+        var active = jobs.Count(j => j.State is "waiting" or "downloading" or "packing");
+        TransferButton = active == 0 ? L.T("전송함") : L.F("전송함 · {0}", active);
+        foreach (var item in _all.Concat(SavedSections.SelectMany(s => s.Items)).Append(Detail).OfType<ReleaseItem>())
+        {
+            var job = jobs.LastOrDefault(j => j.Artist == item.Artist && j.Album == item.Album);
+            item.DownloadStatus = job == null ? "" : job.State == "done" ? L.T("ZIP 완료")
+                : job.State == "failed" ? L.T("다운로드 실패") : job.State == "cancelled" ? L.T("취소됨") : L.T("받는 중");
+        }
+    }
     private readonly LibraryService _library;
     private readonly DeezerClient _deezer;
     private readonly ReleaseRecommender _recommender;
@@ -351,6 +413,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public MainViewModel(AppSettings settings)
     {
         _settings = settings;
+        // 기록이 있는 경우만 백그라운드 처리를 다시 시작한다.
+        if (File.Exists(Path.Combine(JsonCache<object>.Dir, "soulseek-native-downloads.json")) || SoulseekSettings.Load().AutoConnect)
+        {
+            try { _albumDownloads = new AlbumDownloads(); }
+            catch (Exception ex) { System.Diagnostics.Trace.WriteLine(ex); }
+        }
         AutoUpdate = settings.AutoRetrain;
         DebugPipeline = settings.DebugPipeline;
         _library = new LibraryService(settings);
@@ -2515,6 +2583,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _life.Cancel();
         _watcher?.Dispose();
+        if (_albumDownloads != null) await _albumDownloads.DisposeAsync();
         if (_sound != null) await _sound.DisposeAsync();
     }
 }

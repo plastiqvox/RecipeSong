@@ -8,6 +8,8 @@
         Background="{StaticResource Bg}" FontFamily="{StaticResource Sans}"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="WorkspaceStyles.xaml"/></ResourceDictionary.MergedDictionaries>
         <!-- 카드 폭: 본문 폭에 맞춰 코드에서 바꾼다 (고정 폭이면 좁은 창에서 한 칸만 나오고 오른쪽이 비었다) -->
         <sys:Double x:Key="CardWidth">400</sys:Double>
         <!-- 수록곡 한 줄 -->
@@ -144,6 +146,7 @@
                         </Border>
                         <StackPanel Margin="16,2,0,0">
                             <TextBlock Text="{Binding Album}" FontSize="18" FontWeight="Bold" TextWrapping="Wrap" MaxHeight="72" TextTrimming="CharacterEllipsis" ToolTip="{Binding Album}"/>
+                            <TextBlock Text="{Binding DownloadStatus}" FontSize="11" Foreground="{StaticResource AccentText}" Visibility="{Binding DownloadStatus, Converter={StaticResource EmptyCollapsed}}"/>
                             <!-- 팔로우: 카드와 같은 별 (아티스트 이름 앞) -->
                             <DockPanel Margin="0,6,0,0">
                                 <Button DockPanel.Dock="Left" Style="{StaticResource Bare}" BorderThickness="0" Padding="0,0,6,0" VerticalAlignment="Center"
@@ -196,6 +199,7 @@
                             <TextBlock Text="⋯" FontSize="14" Foreground="{StaticResource Text2}" Margin="0,-3,0,0"/>
                             <Button.ContextMenu>
                                 <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="{local:Tr 'Soulseek 검색·다운로드'}" Click="Soulseek_Click"/>
                                     <MenuItem Header="{Binding FollowMenu}" Command="{Binding ToggleFollowCommand}"/>
                                     <MenuItem Header="{local:Tr '뮤지션 차단…'}" Tag="artist" Click="Block_Click"/>
                                     <MenuItem Header="{local:Tr '레이블 차단…'}" Tag="label" Click="Block_Click" IsEnabled="{Binding HasLabel}"/>
@@ -205,6 +209,8 @@
                     </StackPanel>
                     <!-- 재생: 이 창이 열려 있으면 하단 재생 바 대신 여기서 다룬다.
                          재생 버튼은 이 앨범 기준 (다른 앨범을 듣고 있으면 이 앨범을 틀고, 이 앨범이면 일시정지), 제목·막대는 지금 재생 중인 곡 -->
+                    <Button Style="{StaticResource Bare}" Content="{local:Tr 'Soulseek 검색·다운로드'}" Click="Soulseek_Click"
+                            HorizontalAlignment="Left" Padding="12,6" Margin="0,10,0,0"/>
                     <Border x:Name="playerBox" Margin="0,14,0,0" Padding="12,10" CornerRadius="10" Background="{StaticResource Surface2}">
                         <DockPanel DataContext="{Binding DataContext.Player, RelativeSource={RelativeSource AncestorType=Window}}">
                             <Button DockPanel.Dock="Left" Style="{StaticResource RoundPlay}" Width="40" Height="40" VerticalAlignment="Center"
@@ -345,6 +351,7 @@
                 <Border.ContextMenu>
                     <!-- 컨텍스트 메뉴는 시각 트리 밖이라 컨테이너가 재사용되면 예전 카드를 가리킬 수 있다 → 열 때마다 지금 카드를 본다 -->
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="{local:Tr 'Soulseek 검색·다운로드'}" Click="Soulseek_Click"/>
                         <MenuItem Header="{Binding FollowMenu}" Command="{Binding ToggleFollowCommand}"/>
                         <MenuItem Header="{local:Tr '뮤지션 차단…'}" Tag="artist" Click="Block_Click"/>
                         <MenuItem Header="{local:Tr '레이블 차단…'}" Tag="label" Click="Block_Click" IsEnabled="{Binding HasLabel}"/>
@@ -425,6 +432,7 @@
                             </Border>
                         </DockPanel>
                         <TextBlock Text="{Binding Album}" FontWeight="Bold" FontSize="15" TextTrimming="CharacterEllipsis" Margin="0,-18,52,0" ToolTip="{Binding Album}"/>
+                        <TextBlock Text="{Binding DownloadStatus}" FontSize="11" Foreground="{StaticResource AccentText}" Margin="0,2,0,0" Visibility="{Binding DownloadStatus, Converter={StaticResource EmptyCollapsed}}"/>
                         <DockPanel Margin="0,3,0,0">
                             <!-- 팔로우: 신보를 항상 맨 앞에 -->
                             <Button DockPanel.Dock="Left" Style="{StaticResource Bare}" BorderThickness="0" Padding="0,0,5,0" VerticalAlignment="Center"
@@ -626,8 +634,11 @@
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
+        </ResourceDictionary>
     </Window.Resources>
 
+    <TabControl x:Name="WorkspaceTabs" Style="{StaticResource WorkspaceTabs}">
+        <TabItem Header="{local:Tr '추천'}" Style="{StaticResource WorkspaceTab}">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition/>
@@ -674,6 +685,7 @@
                 </DockPanel>
 
                 <!-- AI 커넥터 (아래 고정, 취향 모델 위) -->
+                <Button DockPanel.Dock="Bottom" Style="{StaticResource Bare}" Content="{Binding TransferButton}" Command="{Binding OpenTransfersCommand}" Padding="12,9" Margin="0,10,0,0"/>
                 <Border DockPanel.Dock="Bottom" Padding="16,12" Margin="0,10,0,0" CornerRadius="12" Background="{StaticResource Surface2}">
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="10,4" Command="{Binding OpenConnectorCommand}"
@@ -1441,4 +1453,7 @@
             </Grid>
         </Border>
     </Grid>
+        </TabItem>
+        <TabItem Header="{local:Tr 'Soulseek'}" Style="{StaticResource WorkspaceTab}"><ContentControl x:Name="SoulseekHost"/></TabItem>
+    </TabControl>
 </Window>

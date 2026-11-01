@@ -29,6 +29,7 @@ public sealed partial class ReleaseItem : ObservableObject
     public IAsyncRelayCommand PlayCommand { get; }
 
     public string Album => Rec.Album;
+    [ObservableProperty] private string _downloadStatus = "";
     public string Artist => Rec.Artist;
     public string? CoverUrl => FoundCover ?? Rec.CoverUrl;
     /// <summary>추천 결과에 커버가 없을 때 따로 찾아 온 커버 (발매 전 앨범 등)</summary>

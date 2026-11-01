@@ -180,6 +180,12 @@ public partial class SettingsWindow : Window
         Dispatcher.BeginInvoke(() => _vm.OpenConnectorCommand.Execute(null));
     }
 
+    private void OpenSoulseek_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+        Dispatcher.BeginInvoke(() => _vm.OpenSoulseekSettingsCommand.Execute(null));
+    }
+
     private void OpenCache_Click(object sender, RoutedEventArgs e) =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(CacheLocation.Directory) { UseShellExecute = true });
 

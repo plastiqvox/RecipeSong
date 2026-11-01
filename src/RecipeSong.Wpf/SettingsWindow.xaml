@@ -133,6 +133,8 @@
                            Text="{local:Tr '추천 계산 · 내 곡 분석 · 소리 서비스가 지금 무엇을 하는지 순서도로 보여 줘요. 계산이 시작되면 창이 뜨고, 메인 화면의 현황 버튼으로 열고 닫아요. 저장된 추천만 보여 줄 때는 뜨지 않아요.'}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
+                <TextBlock Text="Soulseek" Style="{StaticResource Kicker}" Margin="0,24,0,8"/>
+                <Button Style="{StaticResource Bare}" Content="{local:Tr '계정·공유 폴더·전송 제한'}" Click="OpenSoulseek_Click" Padding="12,8"/>
                 <!-- 저장 위치와 용량 -->
                 <TextBlock Text="{local:Tr '저장 위치와 용량'}" Style="{StaticResource Kicker}" Margin="0,24,0,8"/>
                 <DockPanel>
