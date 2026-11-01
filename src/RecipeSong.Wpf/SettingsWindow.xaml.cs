@@ -105,8 +105,7 @@ public partial class SettingsWindow : Window
 
     private void Restart_Click(object sender, RoutedEventArgs e)
     {
-        if (Environment.ProcessPath is { } exe) System.Diagnostics.Process.Start(exe);
-        Application.Current.Shutdown();
+        if (Application.Current.MainWindow is MainWindow main) main.Restart();
     }
 
     // ---- iTunes 라이브러리 ----
@@ -178,6 +177,12 @@ public partial class SettingsWindow : Window
     {
         Close();
         Dispatcher.BeginInvoke(() => _vm.OpenConnectorCommand.Execute(null));
+    }
+
+    private void OpenSoulseek_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+        Dispatcher.BeginInvoke(() => _vm.OpenSoulseekSettingsCommand.Execute(null));
     }
 
     private void OpenCache_Click(object sender, RoutedEventArgs e) =>

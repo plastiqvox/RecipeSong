@@ -8,12 +8,55 @@ namespace RecipeSong.Wpf;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;
+    private SoulseekWorkspaceView? _soulseekWorkspace;
+    private ArtistLibraryView? _artistLibrary;
+    private readonly System.Windows.Threading.DispatcherTimer _transferTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private bool _refreshingTransfers;
+    private bool _checkingExit;
+    private bool _exitApproved;
+    private bool _restartRequested;
 
     public MainWindow(MainViewModel vm)
     {
         InitializeComponent();
         DarkTitleBar.Apply(this);
         DataContext = _vm = vm;
+        _vm.SoulseekSearchRequested += OpenSoulseekSearch;
+        _vm.SoulseekSectionRequested += section => { GetSoulseekWorkspace().ShowSection(section); WorkspaceTabs.SelectedIndex = 1; };
+        WorkspaceTabs.SelectionChanged += async (_, e) =>
+        {
+            if (e.Source == WorkspaceTabs && WorkspaceTabs.SelectedIndex == 1) GetSoulseekWorkspace();
+            if (e.Source == WorkspaceTabs && WorkspaceTabs.SelectedIndex == 2)
+            {
+                if (_artistLibrary == null)
+                {
+                    _artistLibrary = new ArtistLibraryView(_vm.CreateArtistDiscoveryAsync);
+                    _artistLibrary.SearchRequested += album =>
+                    {
+                        GetSoulseekWorkspace().ShowAlbum(album);
+                        WorkspaceTabs.SelectedIndex = 1;
+                    };
+                    ArtistLibraryHost.Content = _artistLibrary;
+                }
+                await _artistLibrary.InitializeAsync();
+            }
+        };
+        _transferTimer.Tick += async (_, _) =>
+        {
+            if (_refreshingTransfers) return;
+            _refreshingTransfers = true;
+            try { await _vm.RefreshTransfersAsync(); }
+            catch (Exception ex) { System.Diagnostics.Trace.WriteLine(ex); }
+            finally { _refreshingTransfers = false; }
+        };
+        _transferTimer.Start();
+        Closed += (_, _) =>
+        {
+            _transferTimer.Stop();
+            _soulseekWorkspace?.Dispose();
+            _artistLibrary?.Dispose();
+            if (_restartRequested && Environment.ProcessPath is { } exe) System.Diagnostics.Process.Start(exe);
+        };
         Loaded += async (_, _) => await _vm.InitializeAsync();
         _vm.ScrollToRequested += item => Dispatcher.BeginInvoke(() => ScrollTo(item), System.Windows.Threading.DispatcherPriority.Loaded);
         _vm.ScrollTopRequested += () => listScroll.ScrollToTop();
@@ -26,12 +69,53 @@ public partial class MainWindow : Window
         PreviewKeyDown += Shortcut_KeyDown;
     }
 
+    public void Restart()
+    {
+        _restartRequested = true;
+        Close();
+    }
+
+    protected override async void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        if (e.Cancel || _exitApproved) return;
+        // 상태 확인을 기다리는 동안 중복 종료 요청을 막는다. 취소하면 작업은 그대로 둔다.
+        e.Cancel = true;
+        if (_checkingExit) return;
+        _checkingExit = true;
+        try
+        {
+            var downloading = await _vm.HasPendingDownloadsAsync();
+            var searching = _vm.IsBusy || _vm.IsRefreshing || _vm.IsPrecise || _vm.AiBusy
+                || _soulseekWorkspace?.IsSearching == true || _artistLibrary?.IsSearching == true;
+            if ((searching || downloading) && MessageBox.Show(this,
+                    RecipeSong.Core.L.T("검색·추천 계산 또는 다운로드 작업이 남아 있어요. 종료하면 진행 중인 작업이 중단될 수 있어요. 종료할까요?"),
+                    RecipeSong.Core.L.T("작업 중 종료"), MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+            {
+                _restartRequested = false;
+                return;
+            }
+            _exitApproved = true;
+            // Closing 이벤트 안에서 Close를 바로 호출하면 재진입 오류가 나므로 다음 UI 작업으로 보낸다.
+            _ = Dispatcher.BeginInvoke(new Action(Close));
+        }
+        catch (Exception ex)
+        {
+            _restartRequested = false;
+            System.Diagnostics.Trace.WriteLine(ex);
+            MessageBox.Show(this, RecipeSong.Core.L.T("작업 상태를 확인하지 못했어요. 잠시 후 다시 종료해 주세요."),
+                RecipeSong.Core.L.T("작업 중 종료"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally { _checkingExit = false; }
+    }
+
     /// <summary>
     /// 단축키: Space 재생/일시정지, ←→ 이전·다음 곡, 수록곡 창이 열려 있으면 ↑↓ 이전·다음 앨범, Esc 창 닫기.
     /// 글을 쓰는 칸·슬라이더에 포커스가 있으면 그쪽에 맡긴다. Space 는 마지막에 누른 버튼을 다시 누르지 않게 여기서 먹는다.
     /// </summary>
     private void Shortcut_KeyDown(object sender, KeyEventArgs e)
     {
+        if (WorkspaceTabs.SelectedIndex != 0) return;
         if (Keyboard.Modifiers != ModifierKeys.None) return;
         var focused = Keyboard.FocusedElement;
         if (focused is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox or System.Windows.Controls.ComboBox) return;
@@ -115,6 +199,26 @@ public partial class MainWindow : Window
     private void Block_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: ReleaseItem item, Tag: string tag }) _vm.Block(item, tag == "label");
+    }
+
+    private void Soulseek_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ReleaseItem item }) _vm.OpenSoulseek(item);
+    }
+
+    private SoulseekWorkspaceView GetSoulseekWorkspace()
+    {
+        if (_soulseekWorkspace != null) return _soulseekWorkspace;
+        _soulseekWorkspace = new SoulseekWorkspaceView(_vm.SoulseekDownloads, _vm.DownloadRecommendation, _vm.IsDownloadFavorite, _vm.ToggleDownloadFavoriteAsync);
+        _soulseekWorkspace.RecommendationsRequested += () => WorkspaceTabs.SelectedIndex = 0;
+        SoulseekHost.Content = _soulseekWorkspace;
+        return _soulseekWorkspace;
+    }
+
+    private void OpenSoulseekSearch(ReleaseItem item)
+    {
+        GetSoulseekWorkspace().ShowAlbum(item.Rec with { CoverUrl = item.CoverUrl });
+        WorkspaceTabs.SelectedIndex = 1;
     }
 
     /// <summary>수록곡 창의 ⋯ 버튼: 왼쪽 클릭으로도 메뉴를 버튼 아래에 연다</summary>

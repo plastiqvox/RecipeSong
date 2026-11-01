@@ -64,6 +64,16 @@
         <Geometry x:Key="BookmarkIcon">M6,3 H18 V21 L12,16.5 L6,21 Z</Geometry>
         <Geometry x:Key="ChevronLeft">M15,18 L9,12 L15,6</Geometry>
         <Geometry x:Key="ChevronRight">M9,18 L15,12 L9,6</Geometry>
+        <!-- 보조 작업: 기존 아이콘과 같은 24 단위 벡터 -->
+        <Geometry x:Key="SearchIcon">M17,10 A7,7 0 1 1 3,10 A7,7 0 1 1 17,10 M15,15 L21,21</Geometry>
+        <Geometry x:Key="RefreshIcon">M20,5 V11 H14 M20,11 A8,8 0 1 0 18,18</Geometry>
+        <Geometry x:Key="BackIcon">M21,12 H3 M10,5 L3,12 L10,19</Geometry>
+        <Geometry x:Key="StopIcon">M5,5 H19 V19 H5 Z</Geometry>
+        <Geometry x:Key="MoreIcon">M5,12 A1.6,1.6 0 1 1 1.8,12 A1.6,1.6 0 1 1 5,12 M13.6,12 A1.6,1.6 0 1 1 10.4,12 A1.6,1.6 0 1 1 13.6,12 M22.2,12 A1.6,1.6 0 1 1 19,12 A1.6,1.6 0 1 1 22.2,12</Geometry>
+        <Geometry x:Key="FolderIcon">M3,7 V20 H21 V7 H12 L9,4 H3 V7 Z M3,9 H21</Geometry>
+        <Geometry x:Key="DownloadIcon">M12,3 V16 M6,10 L12,16 L18,10 M3,18 V22 H21 V18</Geometry>
+        <Geometry x:Key="PipelineIcon">M3,3 H9 V9 H3 Z M3,15 H9 V21 H3 Z M15,15 H21 V21 H15 Z M6,9 V15 M6,12 H18 V15</Geometry>
+        <Geometry x:Key="AdjustmentsIcon">M3,6 H6 M10,6 H21 M6,3 H10 V9 H6 Z M3,18 H14 M18,18 H21 M14,15 H18 V21 H14 Z</Geometry>
 
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Text}"/>

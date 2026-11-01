@@ -1,7 +1,7 @@
 // 추천 흐름 그림 원본 (shorts-deck 스킬).
 //   node ~/.claude/skills/shorts-deck/build.mjs docs/images/recommendation.mjs
 // → recommendation-flow.svg, genre-ladder.svg. 추천 방식을 바꾸면 이 파일을 고치고 다시 만든다.
-// tone "focus" 는 0.2 에서 바뀐 곳 (레시피·국적 구분을 빼고 장르 칸으로, 비슷한 아티스트에 Last.fm 을 더함).
+// tone "focus" 는 0.2 변경과 통합 뮤지션 ID DB (수동 우선·보유 정보 대조)를 강조한다.
 export default (k) => {
   const X = { l: 300, c: 800, r: 1300 };
   const Y = (i) => 90 + i * 165;
@@ -12,6 +12,7 @@ export default (k) => {
   const seed = C(X.c, 1, "시드 아티스트", "곡 가중치 합 상위 80명 + 하트·팔로우", "focus");
   const similar = C(X.c, 2, "비슷한 아티스트 2단계", "Deezer 연관 + Last.fm · 상위 1,000명", "focus");
   const mine = C(X.r, 2, "내 아카이브 뮤지션", "가중치 상위 500명 · 신보 항상 앞", "focus");
+  const identity = k.card(X.r, Y(1), "뮤지션 ID · SQLite", ["수동 우선 · 보유 앨범/곡명 대조", "보유 정보 변경 · ID 다시 찾기"], { w: 400, size: 22, tone: "focus" });
   const rel = C(X.c, 3, "그 기간 발매작", "가진 앨범·차단 빼고");
   const listen = C(X.c, 4, "미리듣기 소리 분석", "CLAP · 앨범당 최대 20곡");
   const ai = C(X.r, 4, "AI 커넥터 · 웹진", "Deezer에서 있는지 확인");
@@ -29,7 +30,9 @@ export default (k) => {
     title: "라이브러리 전체에서 시드와 내 곡 소리 기준을 만들고, Deezer로 후보를 모아 미리듣기 소리를 비교해 점수를 매긴 뒤 장르 칸으로 나눠 보여 주는 흐름. AI와 웹진 앨범은 닮음 기준을 넘어야 보인다.",
     items: [
       A([k.edge(lib, "left"), [X.l, lib.y], k.edge(base, "top")], "전 곡 소리 (처음 한 번)"),
-      A([k.edge(lib, "right"), [X.r, lib.y], k.edge(mine, "top")], "2곡 이상 · 하트"),
+      A([k.edge(lib, "right"), [X.r, lib.y], k.edge(identity, "top")], "보유 정보"),
+      down(identity, mine, "ID 공유"),
+      A([k.edge(identity, "left"), k.edge(seed, "right")]),
       down(lib, seed, "많이 듣고 좋아한"),
       down(seed, similar, "연관 아티스트"),
       down(similar, rel, "디스코그래피"),
@@ -42,7 +45,7 @@ export default (k) => {
       A([k.edge(ladder, "right"), k.edge(crate, "left")]),
       down(crate, screen, "칸마다 묶기"),
       A([k.edge(gate, "left"), k.edge(screen, "right")], null, { dashed: true }),
-      lib, base, seed, similar, mine, rel, listen, ai, score, ladder, crate, screen, gate,
+      lib, base, seed, similar, mine, identity, rel, listen, ai, score, ladder, crate, screen, gate,
     ],
   };
 

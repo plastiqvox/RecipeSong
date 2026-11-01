@@ -1,0 +1,71 @@
+<UserControl x:Class="RecipeSong.Wpf.SoulseekSettingsView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:RecipeSong.Wpf"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Text}" FontFamily="{StaticResource Sans}">
+    <UserControl.Resources><ResourceDictionary Source="SoulseekStyles.xaml"/></UserControl.Resources>
+    <DockPanel Margin="24">
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" Foreground="{StaticResource AccentText}" Margin="0,0,0,8"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Style="{StaticResource Bare}" Content="{local:Tr '설정 저장'}" Click="Save_Click" Padding="16,7"/>
+            </StackPanel>
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="0,0,10,0">
+                <TextBlock Text="{local:Tr '계정'}" Style="{StaticResource Kicker}" Margin="0,0,0,8"/>
+                <Button Style="{StaticResource Bare}" Content="{local:Tr '설치된 Soulseek 설정 가져오기…'}" Click="ImportNs_Click" Padding="12,7" HorizontalAlignment="Left" Margin="0,0,0,12"/>
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <TextBlock Text="{local:Tr 'Soulseek ID'}" VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="1" x:Name="UsernameBox" AutomationProperties.Name="{local:Tr 'Soulseek ID'}"/>
+                    <TextBlock Grid.Row="1" Text="{local:Tr '비밀번호'}" VerticalAlignment="Center"/>
+                    <PasswordBox Grid.Row="1" Grid.Column="1" x:Name="PasswordBox" Margin="0,6,0,0" AutomationProperties.Name="{local:Tr '비밀번호'}"/>
+                </Grid>
+                <WrapPanel Margin="130,10,0,0">
+                    <CheckBox x:Name="RememberBox" Content="{local:Tr '비밀번호 저장'}" Foreground="{StaticResource Text}" Margin="0,0,20,0"/>
+                    <CheckBox x:Name="AutoBox" Content="{local:Tr '앱 시작 시 로그인'}" Foreground="{StaticResource Text}"/>
+                </WrapPanel>
+                <WrapPanel Margin="130,12,0,0">
+                    <Button x:Name="LoginButton" Style="{StaticResource Bare}" Content="{local:Tr '로그인'}" Click="Login_Click" Padding="16,7"/>
+                    <Button Style="{StaticResource Bare}" Content="{local:Tr '로그아웃'}" Click="Logout_Click" Padding="16,7" Margin="8,0,0,0"/>
+                    <TextBlock x:Name="ConnectionText" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Text2}"/>
+                </WrapPanel>
+                <TextBlock Text="{local:Tr '같은 ID로 SoulseekQt와 동시에 로그인하면 연결이 끊길 수 있어요.'}" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,10,0,0"/>
+                <TextBlock Text="{local:Tr '공유 폴더'}" Style="{StaticResource Kicker}" Margin="0,24,0,8"/>
+                <ListBox x:Name="SharesList" Height="100" AutomationProperties.Name="{local:Tr '공유 폴더'}"/>
+                <WrapPanel Margin="0,8,0,0">
+                    <Button Style="{StaticResource Bare}" Content="{local:Tr '폴더 추가'}" Click="AddShare_Click" Padding="12,6"/>
+                    <Button Style="{StaticResource Bare}" Content="{local:Tr '목록에서 제거'}" Click="RemoveShare_Click" Padding="12,6" Margin="6,0,0,0"/>
+                    <Button Style="{StaticResource Bare}" Content="{local:Tr '저장·다시 스캔'}" Click="Save_Click" Padding="12,6" Margin="6,0,0,0"/>
+                    <Button Style="{StaticResource Bare}" Content="{local:Tr 'SoulseekQt 폴더 후보 가져오기…'}" Click="Import_Click" Padding="12,6" Margin="6,0,0,0"/>
+                </WrapPanel>
+                <TextBlock x:Name="ShareStatus" FontSize="12" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                <TextBlock Text="{local:Tr '전송 제한'}" Style="{StaticResource Kicker}" Margin="0,24,0,8"/>
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="120"/><ColumnDefinition Width="120"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <TextBlock Grid.Column="1" Text="{local:Tr '다운로드'}" Margin="0,0,8,8"/><TextBlock Grid.Column="2" Text="{local:Tr '업로드'}" Margin="0,0,0,8"/>
+                    <TextBlock Grid.Row="1" Text="{local:Tr '동시 전송 슬롯'}" VerticalAlignment="Center"/><TextBox Grid.Row="1" Grid.Column="1" x:Name="DownSlotsBox" Margin="0,0,8,6" AutomationProperties.Name="{local:Tr '다운로드 슬롯'}"/><TextBox Grid.Row="1" Grid.Column="2" x:Name="UpSlotsBox" Margin="0,0,0,6" AutomationProperties.Name="{local:Tr '업로드 슬롯'}"/>
+                    <TextBlock Grid.Row="2" Text="{local:Tr '사용자당 슬롯'}" VerticalAlignment="Center"/><TextBox Grid.Row="2" Grid.Column="1" x:Name="DownUserBox" Margin="0,0,8,6" AutomationProperties.Name="{local:Tr '다운로드 사용자당 슬롯'}"/><TextBox Grid.Row="2" Grid.Column="2" x:Name="UpUserBox" Margin="0,0,0,6" AutomationProperties.Name="{local:Tr '업로드 사용자당 슬롯'}"/>
+                    <TextBlock Grid.Row="3" Text="{local:Tr '전체 속도 제한 (KiB/s)'}" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,0,8,0"><TextBox x:Name="DownSpeedBox" AutomationProperties.Name="{local:Tr '다운로드 속도 제한'}"/><CheckBox x:Name="DownUnlimited" Content="{local:Tr '무제한'}" Foreground="{StaticResource Text}" Margin="0,5,0,0" Checked="Unlimited_Changed" Unchecked="Unlimited_Changed"/></StackPanel>
+                    <StackPanel Grid.Row="3" Grid.Column="2"><TextBox x:Name="UpSpeedBox" AutomationProperties.Name="{local:Tr '업로드 속도 제한'}"/><CheckBox x:Name="UpUnlimited" Content="{local:Tr '무제한'}" Foreground="{StaticResource Text}" Margin="0,5,0,0" Checked="Unlimited_Changed" Unchecked="Unlimited_Changed"/></StackPanel>
+                </Grid>
+                <TextBlock Text="{local:Tr '속도 제한은 진행 중 전송에도 적용해요. 슬롯을 줄이면 진행 중 파일은 마치고 다음 파일부터 제한해요.'}" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,10,0,0"/>
+                <TextBlock Text="{local:Tr '저장'}" Style="{StaticResource Kicker}" Margin="0,24,0,8"/>
+                <TextBlock Text="{local:Tr '원본 다운로드 폴더'}" Margin="0,0,0,4"/>
+                <DockPanel Margin="0,0,0,10"><Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Content="{local:Tr '찾기…'}" Click="DownloadsFolder_Click" Padding="12,6" Margin="8,0,0,0"/><TextBox x:Name="DownloadsBox" AutomationProperties.Name="{local:Tr '원본 다운로드 폴더'}"/></DockPanel>
+                <TextBlock Text="{local:Tr 'ZIP 저장 폴더'}" Margin="0,0,0,4"/>
+                <DockPanel><Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Content="{local:Tr '찾기…'}" Click="ArchiveFolder_Click" Padding="12,6" Margin="8,0,0,0"/><TextBox x:Name="ArchiveBox" AutomationProperties.Name="{local:Tr 'ZIP 저장 폴더'}"/></DockPanel>
+                <TextBlock Text="{local:Tr 'MP3 320kbps · 기존 MP3 음질 유지 · cover.jpg와 MP3 내장 앨범아트 필수'}" FontSize="12" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                <TextBlock Text="[2026.02.03] (Album) Cory Wong - Lost In The Wonder.zip" FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                <Expander Header="{local:Tr '고급'}" Margin="0,20,0,0">
+                    <StackPanel Margin="0,10,0,0">
+                        <TextBlock Text="{local:Tr '수신 포트 (다시 로그인하면 적용)'}"/><TextBox x:Name="PortBox" Margin="0,4,0,10"/>
+                        <TextBlock Text="{local:Tr '변환기 경로 (비우면 앱에 포함된 ffmpeg 사용)'}"/><TextBox x:Name="FfmpegBox" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

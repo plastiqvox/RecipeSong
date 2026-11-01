@@ -21,3 +21,6 @@ installer/out/
 
 # 앱에 넣어 빌드하는 키 (secrets/lastfm.key → 빌드할 때 어셈블리에 들어간다). 공개 저장소라 올리지 않는다
 secrets/
+
+# 변환기 실행 파일: 배포물에는 포함하고 저장소에는 올리지 않는다
+tools/ffmpeg/ffmpeg.exe

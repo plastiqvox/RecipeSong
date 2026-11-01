@@ -93,11 +93,19 @@ public sealed record PoolArtist(long Id, string Name, double Score, IReadOnlyLis
 /// 4) 점수 = 1.5 × 취향 유사도(z) + 0.5 × 아티스트 연결(z) + 저장·좋아요 닮음 − 별로 닮음 + 레이블·참여·형식
 /// 5) 칸: 장르 DB(Last.fm → Discogs) → Deezer 장르 → 소리가 닮은 앨범의 칸 (국적은 나누지 않는다)
 /// </summary>
-public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres = null, SoundService? sound = null)
+public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres = null, SoundService? sound = null, ArtistIdentityStore? identityStore = null)
 {
-    private readonly JsonCache<long?> _artistIds = new("deezer-artist-ids", TimeSpan.FromDays(90));
-    // 라이브러리 뮤지션: 이름 정확히 일치 + 라이브러리 제목 확인을 거친 Deezer ID (없으면 null)
-    private readonly JsonCache<long?> _mineIds = new("deezer-playlist-artist-ids", TimeSpan.FromDays(90));
+    private readonly ArtistIdentityStore _identities = identityStore ?? new();
+    private ArtistAlbumDiscovery? _identityLibrary;
+    private IReadOnlyList<TrackRecord>? _identityTracks;
+    public long IdentityVersion => _identities.Revision;
+    public void SetIdentityLibrary(IReadOnlyList<TrackRecord> tracks)
+    {
+        if (ReferenceEquals(_identityTracks, tracks)) return;
+        _identityTracks = tracks;
+        _identityLibrary = new(deezer, tracks, [], [], identityStore: _identities);
+    }
+    public StoredArtistIdentity? KnownIdentity(string name) => _identities.FindValid(name, _identityLibrary?.EvidenceHash(name));
     private readonly JsonCache<List<DzArtist>> _related = new("deezer-related", TimeSpan.FromDays(14));
     private readonly JsonCache<List<DzAlbum>> _discography = new("deezer-discography", TimeSpan.FromDays(3));
     private readonly JsonCache<AlbumInfo> _albumInfo = new("deezer-album-info", TimeSpan.FromDays(365));
@@ -145,8 +153,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         int pending = 0;
         foreach (var m in mine)
         {
-            if (!_mineIds.TryGetStale(ListeningAnalyzer.NormalizeArtist(m.Artist), out var id, out _)) { pending++; continue; }
-            if (id is not { } artistId) continue;  // Deezer에 없음 / 동명이인
+            var identity = KnownIdentity(m.Artist);
+            if (identity == null) { pending++; continue; }
+            var artistId = identity.ArtistId;
             if (!_discography.TryGetStale(artistId.ToString(), out var albums, out var fresh)) { pending++; continue; }
             if (!fresh) pending++;
             byId[artistId] = byId.TryGetValue(artistId, out var s)
@@ -158,16 +167,15 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
 
     /// <summary>
     /// 라이브러리 뮤지션을 Deezer에서 찾고 디스코그래피를 새로 받는다 (요청 제한 때문에 처음엔 10분 이상).
-    /// 이름이 정확히 같고, 디스코그래피에 내 라이브러리 곡·앨범 제목이 하나라도 있어야 같은 뮤지션으로 본다.
+    /// 통합 ID DB의 수동 선택·자동 대조를 사용한다. 미확정 ID는 보유 앨범·수록곡으로 다시 대조한다.
     /// </summary>
     public async Task RefreshMineAsync(IReadOnlyList<PlaylistArtist> mine, IProgress<string>? progress = null, CancellationToken ct = default)
     {
         Step(progress, RecStage.Mine);
         var todo = mine.Where(m =>
         {
-            var key = ListeningAnalyzer.NormalizeArtist(m.Artist);
-            if (!_mineIds.TryGetStale(key, out var id, out _)) return true;
-            return id is { } i && !_discography.TryGet(i.ToString(), out _);
+            var identity = KnownIdentity(m.Artist);
+            return identity == null || !_discography.TryGet(identity.ArtistId.ToString(), out _);
         }).ToList();
         int done = 0;
         // 동시에 8명씩: 요청이 한꺼번에 줄 서지 않아 진행률이 고르게 오르고, 중간에 꺼져도 받은 만큼 남는다
@@ -175,26 +183,10 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         {
             await Parallel.ForEachAsync(todo, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct }, async (m, ct) =>
             {
-                var key = ListeningAnalyzer.NormalizeArtist(m.Artist);
-                if (!_mineIds.TryGetStale(key, out var id, out _))
-                {
-                    // 이름이 정확히 같은 후보 중 디스코그래피가 내 라이브러리와 겹치는 아티스트
-                    id = null;
-                    foreach (var a in await deezer.SearchArtistsAsync(m.Artist, ct))
-                    {
-                        if (ListeningAnalyzer.NormalizeArtist(a.Name) != key) continue;
-                        var albums = await deezer.ArtistAlbumsAsync(a.Id, ct);
-                        _discography.Set(a.Id.ToString(), [.. albums]);
-                        if (albums.Any(al => m.Titles.Contains(TasteProfile.TitleKey(al.Title)) && TasteProfile.TitleKey(al.Title).Length > 0))
-                        {
-                            id = a.Id;
-                            break;
-                        }
-                    }
-                    _mineIds.Set(key, id);
-                }
-                else if (id is { } i)
-                    _discography.Set(i.ToString(), [.. await deezer.ArtistAlbumsAsync(i, ct)]);
+                var id = KnownIdentity(m.Artist)?.ArtistId;
+                if (id == null && _identityLibrary != null)
+                    id = (await _identityLibrary.ResolveArtistAsync(new(m.Artist, [], m.DeezerId), ct)).SelectedId;
+                if (id is { } i) _discography.Set(i.ToString(), [.. await deezer.ArtistAlbumsAllAsync(i, ct)]);
     
                 int d = Interlocked.Increment(ref done);
                 if (d % 25 == 0) progress?.Report(L.F("아카이브 뮤지션 {0}/{1}", d, todo.Count));
@@ -459,8 +451,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         var hits = new List<(PoolArtist c, DzAlbum a)>();
         foreach (var f in follows.Where(f => f.DeezerId != 0))
         {
-            var albums = await FollowedDiscographyAsync(f.DeezerId, ct);
-            var c = new PoolArtist(f.DeezerId, f.Artist, 0, [f.Playlist], albums, f);
+            var artistId = KnownIdentity(f.Artist)?.ArtistId ?? f.DeezerId;
+            var albums = await FollowedDiscographyAsync(artistId, ct);
+            var c = new PoolArtist(artistId, f.Artist, 0, [f.Playlist], albums, f);
             hits.AddRange(albums.Where(a => a.Released is { } d && period.Contains(d) && a.RecordType != "compile" && !owned.HasAlbum(f.Artist, a.Title)
                     && !(options.ExcludeInstrumental && IsRedundantInstrumental(c, a, owned)))
                 .DistinctBy(a => a.Id).Select(a => (c, a)));
@@ -693,15 +686,31 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
 
     private async Task<DzArtist?> ExactArtistAsync(string name, CancellationToken ct)
     {
+        if (KnownIdentity(name) is { } known) return new(known.ArtistId, known.CatalogName, null, null);
+        if (_identityLibrary?.EvidenceHash(name) != null)
+        {
+            var identity = await _identityLibrary.ResolveArtistAsync(new(name, []), ct);
+            return identity.Candidates.FirstOrDefault(candidate => candidate.Artist.Id == identity.SelectedId)?.Artist;
+        }
         var norm = ListeningAnalyzer.NormalizeArtist(name);
         if (norm.Length == 0) return null;
         return await _lastFmArtists.GetOrAddAsync(norm, async () =>
             (await deezer.SearchArtistsAsync(name, ct)).FirstOrDefault(a => ListeningAnalyzer.NormalizeArtist(a.Name) == norm));
     }
 
-    private async Task<long?> ArtistIdAsync(string name, CancellationToken ct) =>
-        await _artistIds.GetOrAddAsync(ListeningAnalyzer.NormalizeArtist(name),
-            async () => (await deezer.FindArtistAsync(name, ct))?.Id);
+    private async Task<long?> ArtistIdAsync(string name, CancellationToken ct)
+    {
+        if (KnownIdentity(name) is { } known) return known.ArtistId;
+        if (_identityLibrary?.EvidenceHash(name) != null)
+            return (await _identityLibrary.ResolveArtistAsync(new(name, []), ct)).SelectedId;
+        if (_identities.FindLookup(name) is { } cached) return cached.ArtistId;
+        var generation = _identities.Generation(name);
+        var artist = await deezer.FindArtistAsync(name, ct);
+        ct.ThrowIfCancellationRequested();
+        if (artist is not { Id: > 0 }) return null;
+        return _identities.Save(new(name, artist.Name, artist.Id, ArtistIdentitySource.Lookup, "", [], 0, null, DateTimeOffset.UtcNow), generation)
+            ? artist.Id : KnownIdentity(name)?.ArtistId;
+    }
 
     private static double[] ZScores(double[] xs)
     {
@@ -723,8 +732,6 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
 
     private void SaveCaches()
     {
-        _artistIds.Save();
-        _mineIds.Save();
         _related.Save();
         _discography.Save();
         _lastFmArtists.Save();

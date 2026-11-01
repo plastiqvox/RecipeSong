@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256" role="img" aria-label="RecipeSong: selected record sleeves">
+  <path d="M56 2 H200 C230 2 254 26 254 56 V200 C254 230 230 254 200 254 H56 C26 254 2 230 2 200 V56 C2 26 26 2 56 2 Z" fill="#181B1C" stroke="#343839" stroke-width="2"/>
+  <path d="M52 67 C51 60 55 54 62 53 L165 38 C172 37 179 42 180 49 L202 190 C203 197 199 203 192 204 L89 219 C82 220 75 215 74 208 Z" fill="#CC7858"/>
+  <path d="M81 63 H196 Q208 63 208 75 V204 Q208 216 196 216 H81 Q69 216 69 204 V75 Q69 63 81 63 Z" fill="#F0EADB"/>
+  <path d="M183 132 A44 44 0 1 1 95 132 A44 44 0 1 1 183 132 Z" fill="#222627"/>
+  <path d="M172 132 A33 33 0 1 1 106 132 A33 33 0 1 1 172 132 Z" fill="none" stroke="#F0EADB" stroke-width="2" opacity="0.18"/>
+  <path d="M147 132 A8 8 0 1 1 131 132 A8 8 0 1 1 147 132 Z" fill="#CC7858"/>
+  <path d="M115 189 H163 A3 3 0 0 1 163 195 H115 A3 3 0 0 1 115 189 Z" fill="#222627"/>
+</svg>
