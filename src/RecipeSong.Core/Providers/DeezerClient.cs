@@ -121,7 +121,8 @@ public sealed record DzAlbum(
     [property: JsonPropertyName("artist")] DzArtist? Artist = null,
     [property: JsonPropertyName("label")] string? Label = null,
     [property: JsonPropertyName("tracks")] DzList<DzTrack>? Tracks = null,
-    [property: JsonPropertyName("genres")] DzList<DzGenre>? Genres = null)
+    [property: JsonPropertyName("genres")] DzList<DzGenre>? Genres = null,
+    [property: JsonPropertyName("nb_tracks")] int? TrackCount = null)
 {
     [JsonIgnore]
     public DateOnly? Released => DateOnly.TryParse(ReleaseDate, out var d) ? d : null;

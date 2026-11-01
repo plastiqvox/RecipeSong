@@ -20,7 +20,8 @@
                 <ComboBox x:Name="FormatBox" Style="{StaticResource SoulseekFormatBox}" Width="130" SelectionChanged="Format_Changed" AutomationProperties.Name="{local:Tr '파일 확장자'}" ToolTip="{local:Tr '선택한 확장자의 파일만 표시·다운로드해요.'}"/>
                 <TextBlock x:Name="FilterCountText" VerticalAlignment="Center" Foreground="{StaticResource Text2}" FontSize="12" Margin="10,5,0,5"/>
             </WrapPanel>
-            <TextBlock x:Name="FilterEmptyText" Text="{local:Tr '선택한 확장자의 결과가 없어요. 전체 또는 다른 확장자로 바꿔 보세요.'}" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{StaticResource AccentText}" FontSize="12" Margin="0,8,0,0"/>
+            <TextBlock x:Name="TrackCountText" TextWrapping="Wrap" Foreground="{StaticResource Text2}" FontSize="12" Margin="0,8,0,0"/>
+            <TextBlock x:Name="FilterEmptyText" Text="{local:Tr '앨범 곡수와 확장자에 맞는 결과가 없어요. 검색어나 확장자를 바꿔 보세요.'}" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{StaticResource AccentText}" FontSize="12" Margin="0,8,0,0"/>
             <TextBlock Text="{local:Tr '대기열 적은 순 · 속도 빠른 순'}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,7,0,0"/>
             <TextBlock x:Name="StatusText" Foreground="{StaticResource Text2}" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,12"/>
         </StackPanel>

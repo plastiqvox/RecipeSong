@@ -34,7 +34,7 @@ static class Program
                 var import = new SoulseekImportWindow(new SoulseekImportedSettings("example-user", "not-a-real-password", @"D:\Downloads", [@"E:\Music", @"F:\Albums"], false));
                 RenderWindow(import, Path.Combine(output, language + "-import.png"), 680, 580);
                 var album = new ReleaseRecommendation("Test artist", "A long album title for layout review", "album", new(2026, 11, 1), "Test label", null, 1, null, null, Region.International, null, null, null, [], [], false, 0);
-                var search = new SoulseekSearchView(album, downloads);
+                var search = new SoulseekSearchView(album, downloads, albumTrackCount: 10);
                 var files = Enumerable.Range(1, 10).Select(i => new SoulseekFile($"Music\\Album\\{i:00} Track.flac", 32000000, 950, 44100, 16)).ToArray();
                 var peer = new SoulseekPeer("example-peer", true, 4, 1000000, files);
                 ((ItemsControl)search.FindName("Groups")).ItemsSource = new[] { new SoulseekFolder(peer, "Music\\Album", files), new SoulseekFolder(peer with { HasFreeUploadSlot = false, QueueLength = 3 }, "Music\\Other edition", files) };
@@ -75,6 +75,7 @@ static class Program
                 Render(uploads, Path.Combine(output, language + "-uploads.png"), 650, 600);
                 CheckWorkspace(downloads, album, output, language);
                 CheckExtensionFilter(downloads, album, output, language);
+                CheckTrackCountFilter(downloads, album, output, language);
                 CheckSearchOrder(downloads, album, output, language);
                 CheckDownloadProgress(Path.Combine(output, language + "-progress-data"));
             }
@@ -231,7 +232,7 @@ static class Program
 
     static void CheckExtensionFilter(AlbumDownloads downloads, ReleaseRecommendation album, string output, string language)
     {
-        var search = new SoulseekSearchView(album, downloads);
+        var search = new SoulseekSearchView(album, downloads, albumTrackCount: 1);
         try
         {
             var files = new[] { new SoulseekFile(@"Mixed\01.FLAC", 100), new SoulseekFile(@"Mixed\02.mp3", 200), new SoulseekFile(@"Mixed\03.OgG", 300) };
@@ -256,14 +257,48 @@ static class Program
             Select("WAV");
             if (groups.Items.Count != 0 || ((TextBlock)search.FindName("FilterEmptyText")).Visibility != Visibility.Visible) throw new Exception("Empty filter state failed.");
             Select("");
-            if (groups.Items.Count != 2 || mixed.Files.Count != 3 || mixed.Files[1].Selected) throw new Exception("All formats did not restore results and choices.");
+            if (groups.Items.Count != 1 || mixed.Files.Count != 3 || mixed.Files[1].Selected) throw new Exception("All formats did not restore choices or hide mismatched track counts.");
         }
         finally { search.Stop(); }
     }
 
+    static void CheckTrackCountFilter(AlbumDownloads downloads, ReleaseRecommendation album, string output, string language)
+    {
+        var metadata = System.Text.Json.JsonSerializer.Deserialize<RecipeSong.Core.Providers.DzAlbum>("{\"id\":1,\"title\":\"Album\",\"nb_tracks\":23,\"tracks\":{\"data\":[]}}");
+        if (metadata?.TrackCount != 23) throw new Exception("Album count must use nb_tracks, not a partial track list.");
+        var search = new SoulseekSearchView(album, downloads, albumTrackCount: 2);
+        var unknown = new SoulseekSearchView(album, downloads);
+        try
+        {
+            SoulseekFolder Folder(string name, params string[] extensions)
+            {
+                var files = extensions.Select((ext, i) => new SoulseekFile($"{name}\\{i + 1:00}.{ext}", 100)).ToArray();
+                return new(new(name, true, 0, 1000, files), name, files);
+            }
+            var shortAlbum = Folder("Short", "flac");
+            var exact = Folder("Exact", "flac", "flac");
+            var extra = Folder("Bonus", "flac", "flac", "flac");
+            var mixed = Folder("Mixed", "flac", "flac", "mp3", "mp3");
+            var groups = (ItemsControl)search.FindName("Groups");
+            var source = (IList<SoulseekFolder>)groups.ItemsSource;
+            foreach (var item in new[] { shortAlbum, exact, extra, mixed }) source.Add(item);
+            if (groups.Items.Count != 1 || !ReferenceEquals(groups.Items[0], exact)) throw new Exception("Missing/extra tracks were not hidden.");
+            var format = (ComboBox)search.FindName("FormatBox");
+            format.SelectedItem = format.Items.Cast<ComboBoxItem>().Single(i => (string)i.Tag == "FLAC");
+            if (groups.Items.Count != 2 || !groups.Items.Contains(mixed)) throw new Exception("Count must follow the selected extension.");
+            format.SelectedItem = format.Items.Cast<ComboBoxItem>().Single(i => (string)i.Tag == "MP3");
+            if (groups.Items.Count != 1 || !ReferenceEquals(groups.Items[0], mixed)) throw new Exception("Extension change did not recompute matching counts.");
+            Render(search, Path.Combine(output, language + "-track-count-filter.png"), 700, 850);
+            var unknownGroups = (ItemsControl)unknown.FindName("Groups");
+            ((IList<SoulseekFolder>)unknownGroups.ItemsSource).Add(exact);
+            if (unknownGroups.Items.Count != 0) throw new Exception("Unknown album count must not expose unverified results.");
+        }
+        finally { search.Stop(); unknown.Stop(); }
+    }
+
     static void CheckSearchOrder(AlbumDownloads downloads, ReleaseRecommendation album, string output, string language)
     {
-        var search = new SoulseekSearchView(album, downloads);
+        var search = new SoulseekSearchView(album, downloads, albumTrackCount: 1);
         try
         {
             var files = new[] { new SoulseekFile(@"Album\01.flac", 10000000) };

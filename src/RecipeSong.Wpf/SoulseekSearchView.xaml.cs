@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RecipeSong.Core;
+using RecipeSong.Core.Providers;
 using RecipeSong.Core.Soulseek;
 
 namespace RecipeSong.Wpf;
@@ -17,6 +18,7 @@ public partial class SoulseekSearchView : UserControl
     private CancellationTokenSource? _search;
     private bool _disposed;
     private string _format = "";
+    private int? _albumTrackCount;
     private readonly Guid? _replaceJobId;
     private readonly string? _excludedPeer;
     public event Action? BackRequested;
@@ -25,10 +27,11 @@ public partial class SoulseekSearchView : UserControl
     public event Action<Guid>? JobQueued;
     public bool WantsLogin { get; private set; }
     public void ResumeSearch() { if (WantsLogin) Search_Click(this, new RoutedEventArgs()); }
-    public SoulseekSearchView(ReleaseRecommendation album, AlbumDownloads downloads, Guid? replaceJobId = null, string? excludedPeer = null)
+    public SoulseekSearchView(ReleaseRecommendation album, AlbumDownloads downloads, Guid? replaceJobId = null, string? excludedPeer = null, int? albumTrackCount = null)
     {
         InitializeComponent();
         _album = album;
+        _albumTrackCount = albumTrackCount;
         _downloads = downloads;
         _replaceJobId = replaceJobId;
         _excludedPeer = excludedPeer;
@@ -40,7 +43,7 @@ public partial class SoulseekSearchView : UserControl
         AlbumText.Text = $"{album.Artist} — {album.Album}";
         QueryBox.Text = $"{album.Artist} {album.Album}";
         Groups.ItemsSource = _groups;
-        Groups.Items.Filter = item => item is SoulseekFolder group && group.Files.Count > 0;
+        Groups.Items.Filter = item => item is SoulseekFolder group && _albumTrackCount is > 0 && group.Files.Count == _albumTrackCount;
         _groups.CollectionChanged += (_, _) => RefreshFilterCount();
         FormatBox.Items.Add(new ComboBoxItem { Content = L.T("전체"), Tag = "" });
         foreach (var format in new[] { "MP3", "FLAC", "OGG", "OPUS", "M4A", "AAC", "WAV", "AIFF", "AIF", "WMA", "ALAC" })
@@ -76,6 +79,9 @@ public partial class SoulseekSearchView : UserControl
     {
         var total = Groups.Items.SourceCollection.OfType<SoulseekFolder>().Count();
         FilterCountText.Text = L.F("표시 {0} / 전체 {1}개 폴더", Groups.Items.Count, total);
+        TrackCountText.Text = _albumTrackCount is > 0
+            ? L.F("앨범 {0}곡과 일치하는 결과만 표시해요.", _albumTrackCount)
+            : L.T("앨범 곡수를 확인한 뒤 일치하는 결과만 표시해요.");
         FilterEmptyText.Visibility = total > 0 && Groups.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -92,6 +98,20 @@ public partial class SoulseekSearchView : UserControl
         var seen = new HashSet<(string, string)>();
         try
         {
+            if (_albumTrackCount is not > 0)
+            {
+                StatusText.Text = L.T("앨범 곡수를 확인 중…");
+                using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                var album = _album.DeezerAlbumId > 0
+                    ? await new DeezerClient(http).AlbumAsync(_album.DeezerAlbumId, cancel.Token) : null;
+                cancel.Token.ThrowIfCancellationRequested();
+                _albumTrackCount = album?.TrackCount;
+                if (_albumTrackCount is not > 0)
+                    throw new InvalidOperationException(L.T("앨범 곡수를 확인하지 못해 검색 결과를 표시할 수 없어요. 다시 검색해 주세요."));
+                Groups.Items.Refresh();
+                RefreshFilterCount();
+            }
+            StatusText.Text = L.T("Soulseek에서 검색 중…");
             await _downloads.Session.SearchAsync(QueryBox.Text.Trim(), peer => Dispatcher.BeginInvoke(() =>
             {
                 if (_disposed || cancel.IsCancellationRequested) return;
@@ -104,12 +124,12 @@ public partial class SoulseekSearchView : UserControl
                     group.FilterFormat(_format);
                     _groups.Add(group);
                 }
-                StatusText.Text = L.F("검색 중… 앨범 폴더 {0}개", _groups.Count);
+                StatusText.Text = L.F("검색 중… 앨범 폴더 {0}개", Groups.Items.Count);
             }), cancel.Token);
-            StatusText.Text = _groups.Count == 0 ? L.T("검색 결과가 없어요. 검색어를 줄여 다시 찾아보세요.") : L.F("앨범 폴더 {0}개 · 받을 판본을 고르세요.", _groups.Count);
+            StatusText.Text = Groups.Items.Count == 0 ? L.T("앨범 곡수와 확장자에 맞는 결과가 없어요. 검색어나 확장자를 바꿔 보세요.") : L.F("앨범 폴더 {0}개 · 받을 판본을 고르세요.", Groups.Items.Count);
         }
-        catch (OperationCanceledException) { StatusText.Text = L.T("검색을 멈췄어요. 받은 결과에서 선택할 수 있어요."); }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested) { StatusText.Text = L.T("검색을 멈췄어요. 받은 결과에서 선택할 수 있어요."); }
+        catch (Exception ex) { StatusText.Text = _albumTrackCount is > 0 ? ex.Message : L.T("앨범 곡수를 확인하지 못해 검색 결과를 표시할 수 없어요. 다시 검색해 주세요."); }
         finally { _search = null; SearchButton.IsEnabled = true; StopButton.IsEnabled = false; }
     }
 
