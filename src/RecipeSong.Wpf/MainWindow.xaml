@@ -1078,17 +1078,17 @@
                                 </Popup>
                             </Grid>
                             <Button Style="{StaticResource Bare}" Padding="14,7" Command="{Binding ReanalyzeCommand}"
-                                    AutomationProperties.Name="{local:Tr '다시 계산'}" ToolTip="{local:Tr '저장된 추천 대신 지금 다시 계산해요 (AI 비용 없음)'}">
+                                    AutomationProperties.Name="{local:Tr '다시 계산'}" ToolTip="{local:Tr '선택한 방식으로 다시 계산해요. 촘촘한 계산은 저장된 주를 건너뛰어요 (AI 비용 없음)'}">
                                 <TextBlock Text="{local:Tr '다시 계산'}" Foreground="{StaticResource Text2}"/>
                             </Button>
-                            <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,0,0" Command="{Binding PreciseCommand}"
-                                    AutomationProperties.Name="{Binding PreciseLabel}" Visibility="{Binding CanPrecise, Converter={StaticResource BoolVis}}"
-                                    ToolTip="{local:Tr '월·연을 주 단위로 하나씩 계산해 저장해요. 이미 계산한 주는 건너뛰어요. 다시 누르면 멈춰요 (AI 비용 없음)'}">
-                                <Grid>
-                                    <TextBlock Text="{Binding PreciseLabel}" Foreground="{StaticResource Text2}" Visibility="{Binding IsPrecise, Converter={StaticResource NotBoolVis}}"/>
-                                    <TextBlock Text="{local:Tr '촘촘한 계산 멈추기'}" Foreground="{StaticResource AccentText}" Visibility="{Binding IsPrecise, Converter={StaticResource BoolVis}}"/>
-                                </Grid>
-                            </Button>
+                            <CheckBox x:Name="PreciseOption" IsChecked="{Binding UsePrecise, Mode=TwoWay}" Margin="12,0,0,0" VerticalAlignment="Center"
+                                      Content="{Binding PreciseLabel}" AutomationProperties.Name="{Binding PreciseLabel}"
+                                      Visibility="{Binding CanPrecise, Converter={StaticResource BoolVis}}"
+                                      ToolTip="{local:Tr '체크한 뒤 다시 계산을 누르면 월·연을 주별로 계산해요. 체크만 해서는 시작하지 않아요.'}">
+                                <CheckBox.Style><Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsPrecise}" Value="True"><Setter Property="IsEnabled" Value="False"/></DataTrigger></Style.Triggers>
+                                </Style></CheckBox.Style>
+                            </CheckBox>
                             <!-- 작업 현황 옵션이 켜져 있을 때만: 작업 현황 창 열기·닫기 -->
                             <Button Style="{StaticResource Bare}" Padding="14,7" Margin="8,0,0,0" Command="{Binding OpenPipelineCommand}"
                                     Visibility="{Binding DebugPipeline, Converter={StaticResource BoolVis}}"
@@ -1163,12 +1163,17 @@
                     </DockPanel>
                 </Border>
 
-                <!-- 촘촘한 계산(월·주별) 진행 -->
-                <StackPanel Margin="0,12,0,0" Orientation="Horizontal" Visibility="{Binding PreciseText, Converter={StaticResource EmptyCollapsed}}">
-                    <ProgressBar Style="{StaticResource Progress}" IsIndeterminate="True" Width="80" VerticalAlignment="Center" Margin="0,0,10,0"
+                <!-- 촘촘한 계산(월·연을 주별로) 진행 -->
+                <DockPanel Margin="0,12,0,0" Visibility="{Binding PreciseText, Converter={StaticResource EmptyCollapsed}}">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="10,3" Margin="10,0,16,0" Command="{Binding StopLoadCommand}"
+                            Visibility="{Binding IsPrecise, Converter={StaticResource BoolVis}}" VerticalAlignment="Center"
+                            AutomationProperties.Name="{local:Tr '촘촘한 계산 멈추기'}">
+                        <TextBlock Text="{local:Tr '멈추기'}" FontSize="12" Foreground="{StaticResource Text2}"/>
+                    </Button>
+                    <ProgressBar DockPanel.Dock="Left" Style="{StaticResource Progress}" IsIndeterminate="True" Width="80" VerticalAlignment="Center" Margin="0,0,10,0"
                                  Visibility="{Binding IsPrecise, Converter={StaticResource BoolVis}}"/>
-                    <TextBlock Text="{Binding PreciseText}" FontSize="12" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
-                </StackPanel>
+                    <TextBlock Text="{Binding PreciseText}" FontSize="12" Foreground="{StaticResource Text2}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                </DockPanel>
 
                 <!-- 진행 상황 -->
                 <StackPanel Margin="0,18,0,0" Visibility="{Binding BusyText, Converter={StaticResource EmptyCollapsed}}">

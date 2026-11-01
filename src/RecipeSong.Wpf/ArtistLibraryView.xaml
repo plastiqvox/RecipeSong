@@ -51,7 +51,11 @@
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" Background="{StaticResource Line}"/>
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                <TextBlock x:Name="ArtistTitle" Text="{local:Tr '왼쪽에서 아티스트를 골라 주세요.'}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                <DockPanel Margin="0,0,0,10">
+                    <Button x:Name="ResetIdentityButton" DockPanel.Dock="Right" Style="{StaticResource Bare}" Content="{local:Tr 'ID 다시 찾기'}" Click="ResetIdentity_Click" IsEnabled="False" Padding="10,5" Margin="8,0,0,0"
+                            ToolTip="{local:Tr '이 아티스트의 저장된 ID를 지우고 보유 정보로 다시 대조해요.'}"/>
+                    <TextBlock x:Name="ArtistTitle" Text="{local:Tr '왼쪽에서 아티스트를 골라 주세요.'}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                </DockPanel>
                 <Expander Grid.Row="1" Header="{local:Tr '내 플리에 담긴 곡'}" Margin="0,0,0,10"><ListBox x:Name="MySongs" MaxHeight="150" DisplayMemberPath="Title"/></Expander>
                 <StackPanel Grid.Row="2">
                     <TextBlock Text="{local:Tr '동명이인이 아닌지 확인한 뒤 앨범을 불러오세요.'}" Foreground="{StaticResource Text2}" FontSize="12" TextWrapping="Wrap"/>

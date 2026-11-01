@@ -108,6 +108,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public void SaveGenreSettings() => _genres.Settings.Save();
     private readonly Dictionary<string, CandidatePool> _pools = [];
     private readonly Dictionary<string, string> _poolFavVersion = [];
+    private readonly Dictionary<string, long> _poolIdentityVersion = [];
     private readonly SemaphoreSlim _poolLock = new(1, 1);
     private readonly CancellationTokenSource _life = new();
     private CancellationTokenSource? _loadCts;
@@ -1658,14 +1659,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await _poolLock.WaitAsync(ct);
         try
         {
+            var tracks = await _library.GetTracksAsync(ct);
+            _recommender.SetIdentityLibrary(tracks);
+            var identityVersion = _recommender.IdentityVersion;
             if (_pools.TryGetValue(key, out var p) && DateTime.Now - p.BuiltAt < TimeSpan.FromHours(12)
-                && _poolFavVersion.GetValueOrDefault(key) == FavoritesVersion)
+                && _poolFavVersion.GetValueOrDefault(key) == FavoritesVersion && _poolIdentityVersion.GetValueOrDefault(key) == identityVersion)
             {
                 // 작업 현황 창: 시드·비슷한 아티스트·라이브러리 뮤지션 칸은 앞 계산이 만든 후보를 그대로 쓴다
                 (progress as StageProgress)?.Reused(p.BuiltAt);
                 return p;
             }
-            var tracks = await _library.GetTracksAsync(ct);
             var seeds = TasteProfile.FromLibrary(tracks);
             // 좋아요(앨범·곡 하트)한 아티스트도 출발점으로 (라이브러리 시드와 겹치면 라이브러리 쪽을 둔다)
             var savedSeeds = _likedAlbums.All.Select(s => s.Rec.Artist).Concat(_likedTracks.All.Select(t => t.Artist))
@@ -1681,6 +1684,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             p = await _recommender.BuildPoolAsync(seeds, _mine, RecOptions, progress, ct);
             _pools[key] = p;
             _poolFavVersion[key] = FavoritesVersion;
+            _poolIdentityVersion[key] = identityVersion;
             if (p.MinePending > 0 && _mineRefresh == null) _mineRefresh = RefreshMineAsync(_mine);
             return p;
         }
@@ -1859,6 +1863,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     // 이미 계산한 주(주 보기·월 촘촘한 계산)를 그대로 건너뛴다
     public bool CanPrecise => Mode != PeriodKind.Week;
     public string PreciseLabel => L.T("주별로 촘촘히 계산");
+    [ObservableProperty] private bool _usePrecise;
     [ObservableProperty] private bool _isPrecise;
     [ObservableProperty] private string _preciseText = "";
     private CancellationTokenSource? _preciseCts;
@@ -1908,8 +1913,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return true;
     }
 
-    /// <summary>버튼을 다시 누르면 멈춘다 (끝낸 조각은 저장돼 있어 다음에 이어서)</summary>
-    [RelayCommand]
+    /// <summary>체크한 뒤 다시 계산으로 실행한다. 중지는 StopLoad, 끝낸 조각은 저장돼 있어 다음에 이어서 계산한다.</summary>
     private async Task PreciseAsync()
     {
         if (IsPrecise) { _preciseCts?.Cancel(); return; }
@@ -1962,9 +1966,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         finally { IsPrecise = false; }
     }
 
-    /// <summary>"다시 계산": 저장된 결과를 무시하고 지금 다시 계산</summary>
+    /// <summary>"다시 계산": 월·연은 선택한 방식으로, 주는 일반 방식으로 계산한다.</summary>
     [RelayCommand]
-    private Task Reanalyze() => LoadAsync(force: true);
+    private Task Reanalyze() => UsePrecise && CanPrecise ? PreciseAsync() : LoadAsync(force: true);
 
     /// <summary>AI 결과 + 웹진 추천 (같은 앨범이면 배지를 합친다)</summary>
     private List<ReleaseRecommendation> SavedPicksFor(Period period) =>
@@ -1980,6 +1984,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private void StopLoad()
     {
+        if (IsPrecise) { _preciseCts?.Cancel(); _loadCts?.Cancel(); return; }
         bool first = IsBusy;
         _loadCts?.Cancel();
         IsBusy = false;

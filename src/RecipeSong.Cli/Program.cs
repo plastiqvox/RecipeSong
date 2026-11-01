@@ -97,6 +97,7 @@ if (cmd == "recommend")
     var http = new HttpClient();
     var rec = new ReleaseRecommender(new DeezerClient(http), new GenreSources(new HttpClient(), GenreSourceSettings.Load()), sound);
     var sw = System.Diagnostics.Stopwatch.StartNew();
+    rec.SetIdentityLibrary(tracks);
     var mine = TasteProfile.LibraryArtists(tracks);
     var pool = await rec.BuildPoolAsync(seeds, mine, progress: progress);
     if (pool.MinePending > 0)

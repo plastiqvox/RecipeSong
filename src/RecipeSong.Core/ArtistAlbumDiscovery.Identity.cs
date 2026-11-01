@@ -2,16 +2,46 @@ using RecipeSong.Core.Providers;
 
 namespace RecipeSong.Core;
 
-public sealed record ArtistIdentityMatch(DzArtist Artist, int AlbumMatches, int? TrackMatches, bool Verified);
-public sealed record ArtistIdentityResult(IReadOnlyList<ArtistIdentityMatch> Candidates, long? SelectedId);
+public sealed record ArtistIdentityMatch(DzArtist Artist, int AlbumMatches, int? TrackMatches, bool Verified, IReadOnlyList<string>? Evidence = null);
+public sealed record ArtistIdentityResult(IReadOnlyList<ArtistIdentityMatch> Candidates, long? SelectedId, bool FromStore = false);
 
 public sealed partial class ArtistAlbumDiscovery
 {
-    private readonly Dictionary<string, ArtistIdentityResult> _identityResults = [];
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ArtistIdentityResult> _identityResults = [];
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _identityGenerations = [];
+    private readonly Lazy<IReadOnlyDictionary<string, string>> _identityHashes = new(() => tracks.GroupBy(t => Key(Who(t)))
+        .ToDictionary(g => g.Key, g => ArtistIdentityStore.Fingerprint(g.Select(t => System.Text.Json.JsonSerializer.Serialize(new[] { Key(t.Album), Key(t.Title) })))));
+    public string? EvidenceHash(string artist) => _identityHashes.Value.GetValueOrDefault(Key(artist));
+    public void ConfirmArtist(PlaylistMusician musician, DzArtist artist)
+    {
+        var match = _identityResults.Where(pair => pair.Key.StartsWith(Key(musician.Name) + "\u001f", StringComparison.Ordinal))
+            .SelectMany(pair => pair.Value.Candidates).FirstOrDefault(candidate => candidate.Artist.Id == artist.Id);
+        var previous = _identities.Read(musician.Name);
+        _identities.Save(new(musician.Name, artist.Name, artist.Id, ArtistIdentitySource.Manual, EvidenceHash(musician.Name) ?? "",
+            match?.Evidence ?? (previous?.ArtistId == artist.Id ? previous.Evidence : []),
+            match?.AlbumMatches ?? (previous?.ArtistId == artist.Id ? previous.AlbumMatches : 0),
+            match?.TrackMatches ?? (previous?.ArtistId == artist.Id ? previous.TrackMatches : null), DateTimeOffset.UtcNow));
+        _identityResults.Clear();
+    }
+    public void ForgetArtist(string artist)
+    {
+        _identities.Forget(artist); _identityResults.Clear(); _identityDiscographies.Clear();
+    }
     public async Task<ArtistIdentityResult> ResolveArtistAsync(PlaylistMusician musician, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var cacheKey = Key(musician.Name) + "\u001f" + musician.DeezerId;
+        var stored = _identities.FindValid(musician.Name, EvidenceHash(musician.Name));
+        if (stored != null)
+            return new([new(new(stored.ArtistId, stored.CatalogName, null, null), stored.AlbumMatches, stored.TrackMatches,
+                stored.Source == ArtistIdentitySource.Automatic, stored.Evidence)], stored.ArtistId, true);
+        var generation = _identities.Generation(musician.Name);
+        var previousGeneration = _identityGenerations.GetOrAdd(Key(musician.Name), generation);
+        if (previousGeneration != generation)
+        {
+            _identityGenerations[Key(musician.Name)] = generation;
+            _identityDiscographies.Clear();
+        }
+        var cacheKey = Key(musician.Name) + "\u001f" + musician.DeezerId + "\u001f" + _identities.Revision;
         if (_identityResults.TryGetValue(cacheKey, out var cached)) return cached;
         var owned = tracks.Where(t => Key(Who(t)) == Key(musician.Name) && !string.IsNullOrWhiteSpace(t.Album))
             .GroupBy(t => EditionKey(t.Album)).Where(g => g.Key.Length > 0)
@@ -20,6 +50,8 @@ public sealed partial class ArtistAlbumDiscovery
         if (owned.Length == 0 && musician.DeezerId > 0)
             return new([new(new(musician.DeezerId, musician.Name, null, null), 0, 0, false)], musician.DeezerId);
         var artists = (await client.SearchArtistsAsync(musician.Name, ct)).Where(a => a.Id > 0).DistinctBy(a => a.Id).ToList();
+        var hint = _identities.Read(musician.Name);
+        if (hint != null && artists.All(a => a.Id != hint.ArtistId)) artists.Add(new(hint.ArtistId, hint.CatalogName, null, null));
         if (musician.DeezerId > 0 && artists.All(a => a.Id != musician.DeezerId))
             artists.Add(new(musician.DeezerId, musician.Name, null, null));
         // 이름 검색에서 빠진 ID도 실제 보유 앨범의 검색 결과에서 보충한다.
@@ -54,7 +86,8 @@ public sealed partial class ArtistAlbumDiscovery
                         foreach (var name in matchingSongs) songMatches.Add(pair.Local.Key + "\u001f" + name);
                         strongTrackAlbum |= matchingSongs.Count >= 2;
                     }
-                matches.Add(new(artist, albumMatches, strongAlbums >= 2 ? null : songMatches.Count, strongAlbums >= 2 || strongTrackAlbum));
+                matches.Add(new(artist, albumMatches, strongAlbums >= 2 ? null : songMatches.Count, strongAlbums >= 2 || strongTrackAlbum,
+                    matched.Select(pair => "album:" + pair.Local.Key).Concat(songMatches.Select(song => "track:" + song)).ToArray()));
             }
             catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
             {
@@ -67,6 +100,20 @@ public sealed partial class ArtistAlbumDiscovery
         long? selected = complete && verified.Length == 1 ? verified[0].Artist.Id : null;
         var result = new ArtistIdentityResult(matches.OrderByDescending(m => m.Verified).ThenByDescending(m => m.AlbumMatches)
             .ThenByDescending(m => m.TrackMatches).ThenBy(m => m.Artist.Id).ToArray(), selected);
+        if (selected is { } selectedId)
+        {
+            ct.ThrowIfCancellationRequested();
+            var chosen = verified.Single(m => m.Artist.Id == selectedId);
+            var saved = _identities.Save(new(musician.Name, chosen.Artist.Name, selectedId, ArtistIdentitySource.Automatic,
+                EvidenceHash(musician.Name)!, chosen.Evidence ?? [], chosen.AlbumMatches, chosen.TrackMatches, DateTimeOffset.UtcNow), generation);
+            if (!saved)
+            {
+                var current = _identities.FindValid(musician.Name, EvidenceHash(musician.Name));
+                return current == null ? result with { SelectedId = null }
+                    : new([new(new(current.ArtistId, current.CatalogName, null, null), current.AlbumMatches, current.TrackMatches,
+                        current.Source == ArtistIdentitySource.Automatic, current.Evidence)], current.ArtistId, true);
+            }
+        }
         if (complete) _identityResults[cacheKey] = result;
         return result;
     }

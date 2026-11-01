@@ -14,6 +14,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
     private ReleaseRecommendation? _selected;
     private bool _disposed;
     private bool _updating;
+    private bool _applyingIdentity;
     private CancellationTokenSource _coverRequests = new();
     private readonly SemaphoreSlim _coverSlot = new(1, 1);
     private readonly Dictionary<string, Task<string?>> _coverTasks = [];
@@ -124,8 +125,10 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         FindButton.IsEnabled = false;
         MySongs.ItemsSource = null;
         ArtistTitle.Text = L.T("왼쪽에서 아티스트를 골라 주세요.");
+        ResetIdentityButton.IsEnabled = false;
         if (_discovery == null || Artists.SelectedItem is not PlaylistMusician musician) return;
         ArtistTitle.Text = musician.Name;
+        ResetIdentityButton.IsEnabled = true;
         MySongs.ItemsSource = musician.Tracks.OrderBy(t => t.Album).ThenBy(t => t.Title).ToArray();
         StatusText.Text = L.T("보유 앨범·수록곡으로 아티스트 ID를 확인하는 중…");
         try
@@ -136,8 +139,11 @@ public partial class ArtistLibraryView : UserControl, IDisposable
             CandidateBox.ItemsSource = candidates;
             CandidateList.ItemsSource = candidates;
             CandidateChoices.Visibility = identity.SelectedId == null && candidates.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-            CandidateBox.SelectedItem = candidates.FirstOrDefault(a => a.Artist.Id == identity.SelectedId);
-            StatusText.Text = identity.SelectedId != null ? musician.DeezerId > 0 && musician.TopAlbums.Count == 0
+            _applyingIdentity = true;
+            try { CandidateBox.SelectedItem = candidates.FirstOrDefault(a => a.Artist.Id == identity.SelectedId); }
+            finally { _applyingIdentity = false; }
+            StatusText.Text = identity.FromStore ? L.T("DB에 저장된 아티스트 ID를 불러왔어요. ID 다시 찾기로 초기화할 수 있어요.")
+                : identity.SelectedId != null ? musician.DeezerId > 0 && musician.TopAlbums.Count == 0
                 ? L.T("저장된 팔로우 ID를 선택했어요. 확인 후 앨범을 찾아보세요.")
                 : L.T("보유 정보와 일치하는 아티스트 ID를 선택했어요. 확인 후 앨범을 찾아보세요.")
                 : candidates.Length > 0 ? L.T("아티스트 ID를 확정하지 못했어요. 일치 정보를 보고 직접 선택해 주세요.") : L.T("카탈로그에서 아티스트를 찾지 못했어요.");
@@ -155,10 +161,22 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         BeginRequest();
         ClearAlbums();
         FindButton.IsEnabled = CandidateBox.SelectedItem != null;
+        if (!_applyingIdentity && _discovery != null && Artists.SelectedItem is PlaylistMusician musician && CandidateBox.SelectedItem is Candidate candidate)
+        {
+            try { _discovery.ConfirmArtist(musician, candidate.Artist); StatusText.Text = L.T("선택한 아티스트 ID를 DB에 저장했어요."); }
+            catch (Exception ex) { FindButton.IsEnabled = false; StatusText.Text = ex.Message; }
+        }
     }
     private void CandidateList_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!_updating) CandidateBox.SelectedItem = CandidateList.SelectedItem;
+    }
+    private void ResetIdentity_Click(object sender, RoutedEventArgs e)
+    {
+        if (_discovery == null || Artists.SelectedItem is not PlaylistMusician musician) return;
+        BeginRequest();
+        try { _discovery.ForgetArtist(musician.Name); Artist_Changed(sender, new SelectionChangedEventArgs(ListBox.SelectionChangedEvent, Array.Empty<object>(), Array.Empty<object>())); }
+        catch (Exception ex) { StatusText.Text = ex.Message; }
     }
 
     private void ClearAlbums()

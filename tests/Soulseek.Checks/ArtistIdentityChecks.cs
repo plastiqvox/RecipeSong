@@ -20,7 +20,8 @@ static class ArtistIdentityChecks
                 _ => all,
             };
             var playlist = new Playlist("Favorites", "1", null, PlaylistKind.User, [library[0]]);
-            var discovery = new ArtistAlbumDiscovery(new DeezerClient(http), library, [playlist], [new(1, "Shared", "", DateTime.Now)]);
+            var discovery = new ArtistAlbumDiscovery(new DeezerClient(http), library, [playlist], [new(1, "Shared", "", DateTime.Now)],
+                identityStore: new(Path.Combine(CacheLocation.Directory, "identity-" + mode + "-" + Guid.NewGuid().ToString("N") + ".sqlite3")));
             var resolved = await discovery.ResolveArtistAsync(discovery.Musicians().Single(), CancellationToken.None);
             var expected = mode is "albums" or "songs" or "album-search" ? (long?)2 : null;
             if (resolved.SelectedId != expected) throw new Exception($"Identity mode {mode}: expected {expected}, got {resolved.SelectedId}.");

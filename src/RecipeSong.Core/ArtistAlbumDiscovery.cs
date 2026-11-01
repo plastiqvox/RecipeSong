@@ -50,8 +50,9 @@ public sealed record DiscoveredAlbum(DzAlbum Album, string Artist, CatalogOwners
 /// <summary>플리는 취향 아티스트의 출처다. 보유 판정에는 플리가 아닌 전체 라이브러리를 사용한다.</summary>
 public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyList<TrackRecord> tracks,
     IReadOnlyList<Playlist> playlists, IReadOnlyList<FollowList.Followed> follows,
-    Func<AlbumSummary, CancellationToken, Task<string?>>? artwork = null)
+    Func<AlbumSummary, CancellationToken, Task<string?>>? artwork = null, ArtistIdentityStore? identityStore = null)
 {
+    private readonly ArtistIdentityStore _identities = identityStore ?? new();
     public IReadOnlyList<Playlist> Playlists { get; } = playlists.Where(p => p.Kind == PlaylistKind.User).ToArray();
     private readonly Lazy<IReadOnlyDictionary<string, IReadOnlyList<AlbumSummary>>> _topAlbums = new(() => TopAlbums(tracks));
 
@@ -93,7 +94,7 @@ public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyL
             .ThenBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase)];
     }
 
-    private readonly Dictionary<long, IReadOnlyList<DzAlbum>> _identityDiscographies = [];
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, IReadOnlyList<DzAlbum>> _identityDiscographies = [];
     private async Task<IReadOnlyList<DzAlbum>> IdentityDiscographyAsync(long artistId, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();

@@ -35,7 +35,7 @@ static partial class Program
         var fourthPlayed = mostPlayed with { Album = "Fourth album", PlayCount = 10 };
         var discovery = new ArtistAlbumDiscovery(new DeezerClient(http), [song, mostPlayed, secondPlayed, fourthPlayed], playlists, [],
             (album, _) => album.Album != "Fourth album" ? Task.FromResult<string?>(new Uri(coverPath).AbsoluteUri)
-                : throw new Exception("Artist thumbnail requested an album outside the top three."));
+                : throw new Exception("Artist thumbnail requested an album outside the top three."), identityStore: FreshIdentityStore());
         using var view = new ArtistLibraryView(_ => Task.FromResult(discovery));
         ReleaseRecommendation? requested = null;
         view.SearchRequested += album => requested = album;
@@ -85,7 +85,7 @@ static partial class Program
             if (artists.Items.Count != 1) throw new Exception("Specific playlist selection failed.");
         });
         using var fallbackHttp = new HttpClient(new ArtistCatalogHandler(new Uri(coverPath).AbsoluteUri, ambiguous: true));
-        var fallbackDiscovery = new ArtistAlbumDiscovery(new DeezerClient(fallbackHttp), [song, mostPlayed, secondPlayed], playlists, []);
+        var fallbackDiscovery = new ArtistAlbumDiscovery(new DeezerClient(fallbackHttp), [song, mostPlayed, secondPlayed], playlists, [], identityStore: FreshIdentityStore());
         using var fallbackView = new ArtistLibraryView(_ => Task.FromResult(fallbackDiscovery));
         OnUi(async () =>
         {
@@ -108,12 +108,18 @@ static partial class Program
             list.SelectedItem = list.Items.Cast<object>().Single(item => item.ToString()!.Contains("ID 6"));
             if (albums.Items.Count != 0 || ((Button)fallbackView.FindName("SearchButton")).IsEnabled)
                 throw new Exception("Changing a manual artist ID left stale albums available.");
+            var storedIdentity = await fallbackDiscovery.ResolveArtistAsync((PlaylistMusician)artists.SelectedItem, CancellationToken.None);
+            if (!storedIdentity.FromStore || storedIdentity.SelectedId != 6) throw new Exception("Manual selection was not persisted.");
+            ((Button)fallbackView.FindName("ResetIdentityButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitFor(() => choices.Visibility == Visibility.Visible && list.Items.Count == 2 && selected.SelectedItem == null);
+            if (find.IsEnabled) throw new Exception("ID reset left an old confirmed selection enabled.");
+            Render(fallbackView, Path.Combine(output, language + "-artist-id-reset.png"), 700, 850);
             ((TextBox)fallbackView.FindName("ArtistQuery")).Text = "no match";
             if (list.Items.Count != 0 || choices.Visibility != Visibility.Collapsed || find.IsEnabled)
                 throw new Exception("Artist filtering left stale candidate IDs.");
         });
         using var emptyHttp = new HttpClient(new ArtistCatalogHandler("", empty: true));
-        var emptyDiscovery = new ArtistAlbumDiscovery(new DeezerClient(emptyHttp), [song], playlists, []);
+        var emptyDiscovery = new ArtistAlbumDiscovery(new DeezerClient(emptyHttp), [song], playlists, [], identityStore: FreshIdentityStore());
         using var emptyView = new ArtistLibraryView(_ => Task.FromResult(emptyDiscovery));
         OnUi(async () =>
         {
@@ -125,6 +131,8 @@ static partial class Program
                 || ((Button)emptyView.FindName("FindButton")).IsEnabled) throw new Exception("Empty ID search must not expose invalid candidates.");
         });
     }
+
+    static ArtistIdentityStore FreshIdentityStore() => new(Path.Combine(CacheLocation.Directory, "identity-ui-" + Guid.NewGuid().ToString("N") + ".sqlite3"));
 
     static IEnumerable<Image> AlbumImages(DependencyObject parent)
     {
