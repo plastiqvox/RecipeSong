@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -42,7 +43,8 @@ public partial class SoulseekSearchView : UserControl
             ExcludedPeerText.Visibility = Visibility.Visible;
         }
         AlbumText.Text = $"{album.Artist} — {album.Album}";
-        QueryBox.Text = $"{album.Artist} {album.Album}";
+        // 자동 검색어의 기호 표기 차이를 줄인다. 사용자가 입력한 제외 조건은 전송할 때 바꾸지 않는다.
+        QueryBox.Text = Regex.Replace(Regex.Replace($"{album.Artist} {album.Album}", @"[&'\u2018\u2019\u02BC\uFF07\p{Pd}]+", " "), @"\s+", " ").Trim();
         Groups.ItemsSource = _groups;
         Groups.Items.Filter = item => item is SoulseekFolder group && _albumTrackCount is > 0 && group.Files.Count == _albumTrackCount;
         _groups.CollectionChanged += (_, _) => RefreshFilterCount();
