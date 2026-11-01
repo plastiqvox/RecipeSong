@@ -11,6 +11,8 @@ public partial class ArtistLibraryView : UserControl, IDisposable
     private ArtistAlbumDiscovery? _discovery;
     private IReadOnlyList<DiscoveredAlbum> _albums = [];
     private CancellationTokenSource? _request;
+    private int _activeRequests;
+    public bool IsSearching => _activeRequests > 0;
     private ReleaseRecommendation? _selected;
     private bool _disposed;
     private bool _updating;
@@ -41,6 +43,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         if (_discovery != null || _disposed) return;
         var token = BeginRequest();
         StatusText.Text = L.T("플레이리스트를 불러오는 중…");
+        _activeRequests++;
         try
         {
             var discovery = await _load(token);
@@ -52,6 +55,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (!token.IsCancellationRequested) StatusText.Text = ex.Message; }
+        finally { _activeRequests--; }
     }
 
     private CancellationToken BeginRequest()
@@ -131,6 +135,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         ResetIdentityButton.IsEnabled = true;
         MySongs.ItemsSource = musician.Tracks.OrderBy(t => t.Album).ThenBy(t => t.Title).ToArray();
         StatusText.Text = L.T("보유 앨범·수록곡으로 아티스트 ID를 확인하는 중…");
+        _activeRequests++;
         try
         {
             var identity = await _discovery.ResolveArtistAsync(musician, token);
@@ -150,6 +155,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (!token.IsCancellationRequested) StatusText.Text = ex.Message; }
+        finally { _activeRequests--; }
     }
 
     private void Candidate_Changed(object sender, SelectionChangedEventArgs e)
@@ -197,6 +203,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         ClearAlbums();
         FindButton.IsEnabled = false;
         StatusText.Text = L.T("전체 디스코그래피를 라이브러리와 비교하는 중…");
+        _activeRequests++;
         try
         {
             var albums = await _discovery.AlbumsAsync(candidate.Artist, token, (Artists.SelectedItem as PlaylistMusician)?.Name);
@@ -206,7 +213,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (!token.IsCancellationRequested) StatusText.Text = ex.Message; }
-        finally { if (!token.IsCancellationRequested) FindButton.IsEnabled = true; }
+        finally { _activeRequests--; if (!token.IsCancellationRequested) FindButton.IsEnabled = true; }
     }
 
     private void Type_Changed(object sender, RoutedEventArgs e) { if (Albums != null) RefreshAlbums(); }
@@ -227,6 +234,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         if (_discovery == null || Albums.SelectedItem is not DiscoveredAlbum album) return;
         FindButton.IsEnabled = CandidateBox.SelectedItem != null;
         StatusText.Text = L.T("수록곡을 불러오는 중…");
+        _activeRequests++;
         try
         {
             var detail = await _discovery.DetailsAsync(album, token);
@@ -238,6 +246,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (!token.IsCancellationRequested) StatusText.Text = ex.Message; }
+        finally { _activeRequests--; }
     }
 
     private void Search_Click(object sender, RoutedEventArgs e) { if (_selected != null) SearchRequested?.Invoke(_selected); }

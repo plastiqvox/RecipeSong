@@ -12,6 +12,9 @@ public partial class MainWindow : Window
     private ArtistLibraryView? _artistLibrary;
     private readonly System.Windows.Threading.DispatcherTimer _transferTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private bool _refreshingTransfers;
+    private bool _checkingExit;
+    private bool _exitApproved;
+    private bool _restartRequested;
 
     public MainWindow(MainViewModel vm)
     {
@@ -47,7 +50,13 @@ public partial class MainWindow : Window
             finally { _refreshingTransfers = false; }
         };
         _transferTimer.Start();
-        Closed += (_, _) => { _transferTimer.Stop(); _soulseekWorkspace?.Dispose(); _artistLibrary?.Dispose(); };
+        Closed += (_, _) =>
+        {
+            _transferTimer.Stop();
+            _soulseekWorkspace?.Dispose();
+            _artistLibrary?.Dispose();
+            if (_restartRequested && Environment.ProcessPath is { } exe) System.Diagnostics.Process.Start(exe);
+        };
         Loaded += async (_, _) => await _vm.InitializeAsync();
         _vm.ScrollToRequested += item => Dispatcher.BeginInvoke(() => ScrollTo(item), System.Windows.Threading.DispatcherPriority.Loaded);
         _vm.ScrollTopRequested += () => listScroll.ScrollToTop();
@@ -58,6 +67,46 @@ public partial class MainWindow : Window
             [new CustomPopupPlacement(new Point(target.Width - popup.Width, target.Height + 6),
                 PopupPrimaryAxis.Horizontal)];
         PreviewKeyDown += Shortcut_KeyDown;
+    }
+
+    public void Restart()
+    {
+        _restartRequested = true;
+        Close();
+    }
+
+    protected override async void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        if (e.Cancel || _exitApproved) return;
+        // 상태 확인을 기다리는 동안 중복 종료 요청을 막는다. 취소하면 작업은 그대로 둔다.
+        e.Cancel = true;
+        if (_checkingExit) return;
+        _checkingExit = true;
+        try
+        {
+            var downloading = await _vm.HasPendingDownloadsAsync();
+            var searching = _vm.IsBusy || _vm.IsRefreshing || _vm.IsPrecise || _vm.AiBusy
+                || _soulseekWorkspace?.IsSearching == true || _artistLibrary?.IsSearching == true;
+            if ((searching || downloading) && MessageBox.Show(this,
+                    RecipeSong.Core.L.T("검색·추천 계산 또는 다운로드 작업이 남아 있어요. 종료하면 진행 중인 작업이 중단될 수 있어요. 종료할까요?"),
+                    RecipeSong.Core.L.T("작업 중 종료"), MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+            {
+                _restartRequested = false;
+                return;
+            }
+            _exitApproved = true;
+            // Closing 이벤트 안에서 Close를 바로 호출하면 재진입 오류가 나므로 다음 UI 작업으로 보낸다.
+            _ = Dispatcher.BeginInvoke(new Action(Close));
+        }
+        catch (Exception ex)
+        {
+            _restartRequested = false;
+            System.Diagnostics.Trace.WriteLine(ex);
+            MessageBox.Show(this, RecipeSong.Core.L.T("작업 상태를 확인하지 못했어요. 잠시 후 다시 종료해 주세요."),
+                RecipeSong.Core.L.T("작업 중 종료"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally { _checkingExit = false; }
     }
 
     /// <summary>

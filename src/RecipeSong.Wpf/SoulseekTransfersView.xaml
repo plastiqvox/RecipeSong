@@ -18,11 +18,14 @@
                     <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
                         <Button x:Name="RetryButton" Style="{StaticResource Bare}" Content="{local:Tr '다시 시도'}" Click="RetryJob_Click" Padding="10,6" Margin="0,0,6,6" Visibility="Collapsed"/>
                         <Button x:Name="SearchAgainButton" Style="{StaticResource Bare}" Content="{local:Tr '다른 상대 찾기'}" Click="SearchAgain_Click" Padding="10,6" Margin="0,0,6,6"/>
-                        <Button x:Name="MoreButton" Style="{StaticResource Bare}" Content="{local:Tr '더보기'}" Click="More_Click" Padding="10,6" Margin="0,0,6,6" AutomationProperties.Name="{local:Tr '앨범 작업 더보기'}">
+                        <Button x:Name="MoreButton" Style="{StaticResource UtilityIconButton}" Click="More_Click" Margin="0,0,6,6" ToolTip="{local:Tr '앨범 작업 더보기'}" AutomationProperties.Name="{local:Tr '앨범 작업 더보기'}">
+                            <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource MoreIcon}" StrokeThickness="0" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                             <Button.ContextMenu>
                                 <ContextMenu x:Name="AlbumMenu">
                                     <MenuItem x:Name="FavoriteMenu" Header="{local:Tr '즐겨찾기 등록'}" Click="Favorite_Click"/>
-                                    <MenuItem x:Name="FolderMenu" Header="{local:Tr '폴더 열기'}" Click="OpenFolder_Click"/>
+                                    <MenuItem x:Name="FolderMenu" Header="{local:Tr '폴더 열기'}" Click="OpenFolder_Click">
+                                        <MenuItem.Icon><Path Data="{StaticResource FolderIcon}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource Text2}" StrokeThickness="1.6" StrokeLineJoin="Round"/></MenuItem.Icon>
+                                    </MenuItem>
                                     <MenuItem x:Name="ArtworkMenu" Header="{local:Tr '앨범아트 바꿔 재처리'}" Click="ChangeArt_Click"/>
                                     <MenuItem x:Name="CleanupMenu" Header="{local:Tr '파일 정리 재시도'}" Click="Cleanup_Click"/>
                                     <Separator x:Name="TaskMenuSeparator"/>

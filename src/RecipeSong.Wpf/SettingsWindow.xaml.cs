@@ -105,8 +105,7 @@ public partial class SettingsWindow : Window
 
     private void Restart_Click(object sender, RoutedEventArgs e)
     {
-        if (Environment.ProcessPath is { } exe) System.Diagnostics.Process.Start(exe);
-        Application.Current.Shutdown();
+        if (Application.Current.MainWindow is MainWindow main) main.Restart();
     }
 
     // ---- iTunes 라이브러리 ----

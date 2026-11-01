@@ -14,6 +14,7 @@ public partial class SoulseekWorkspaceView : UserControl, IDisposable
     private readonly ContentControl _transferHost = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private SoulseekSearchView? _search;
+    public bool IsSearching => _search?.IsSearching == true;
     private ReleaseRecommendation? _album;
     private Guid? _replacementId;
     private readonly Func<AlbumDownload, ReleaseRecommendation>? _recommendation;

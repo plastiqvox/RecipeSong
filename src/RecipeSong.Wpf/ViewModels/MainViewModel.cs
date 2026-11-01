@@ -22,6 +22,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly AppSettings _settings;
     private AlbumDownloads? _albumDownloads;
     public AlbumDownloads SoulseekDownloads => _albumDownloads ??= new AlbumDownloads();
+    public async Task<bool> HasPendingDownloadsAsync() => _albumDownloads != null
+        && (await _albumDownloads.SnapshotAsync()).Any(j => j.State is "waiting" or "downloading" or "packing");
     public event Action<ReleaseItem>? SoulseekSearchRequested;
     public event Action<string>? SoulseekSectionRequested;
 
@@ -78,16 +80,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private void OpenSoulseekSettings() => SoulseekSectionRequested?.Invoke("settings");
 
-    [RelayCommand]
-    private void OpenTransfers() => SoulseekSectionRequested?.Invoke("downloads");
-
-    [ObservableProperty] private string _transferButton = L.T("전송함");
     public async Task RefreshTransfersAsync()
     {
         if (_albumDownloads == null) return;
         var jobs = await _albumDownloads.SnapshotAsync();
-        var active = jobs.Count(j => j.State is "waiting" or "downloading" or "packing");
-        TransferButton = active == 0 ? L.T("전송함") : L.F("전송함 · {0}", active);
         foreach (var item in _all.Concat(SavedSections.SelectMany(s => s.Items)).Append(Detail).OfType<ReleaseItem>())
         {
             var job = jobs.LastOrDefault(j => j.Artist == item.Artist && j.Album == item.Album);
@@ -346,14 +342,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         var win = new RecommendSettingsWindow(_recPrefs, _blocked, this)
             { Owner = Application.Current.MainWindow };
-        if (win.ShowDialog() != true || win.Result == _recPrefs) return;
-        RefreshBlocked();  // 창에서 차단을 해제했을 수 있다
+        if (win.ShowDialog() != true) return;
+        win.Edits.Apply();
+        if (win.Edits.WebzinesChanged) SetDisabledWebzines(win.Edits.DisabledWebzines);
+        if (win.Edits.BlocksChanged || win.Edits.WebzinesChanged) RefreshBlocked();
+        if (win.Edits.FollowsChanged) await RefreshFollowsAsync();
+        // 목록만 바꾼 경우에도 저장·화면 갱신을 마친 뒤 반환한다.
+        if (win.Result == _recPrefs) return;
         bool poolChanged = win.Result.Amount != _recPrefs.Amount;
         // 라이브판·리믹스 빼기만 바뀌었으면 다시 불러오지 않고 화면에서만 다시 거른다
         bool filterOnly = win.Result with { ExcludeLive = _recPrefs.ExcludeLive, ExcludeRemix = _recPrefs.ExcludeRemix } == _recPrefs;
         _recPrefs = win.Result;
         _recPrefsStore.Set("prefs", _recPrefs);
         _recPrefsStore.Save();
+        OnPropertyChanged(nameof(UsePrecise));
         if (filterOnly) { ApplyFilters(); return; }
         // 추천 양이 바뀌면 후보 아티스트부터 다시 모은다
         if (poolChanged)
@@ -361,7 +363,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             await _poolLock.WaitAsync(_life.Token);
             try { _pools.Clear(); } finally { _poolLock.Release(); }
         }
-        await LoadAsync();
+        await Reanalyze();
     }
 
     // ---- 크레이트 순서 (칩 우클릭으로 바꾼다) ----
@@ -557,7 +559,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _pageSize = PageStep;
         ScrollTopRequested?.Invoke();
         NavMonth = new DateTime(SelectedDate.Year, SelectedDate.Month, 1);
-        foreach (var n in new[] { nameof(CanPrecise), nameof(PreciseLabel), nameof(IsYearMode), nameof(IsWeekMode), nameof(IsMonthMode), nameof(IsYearModeChecked), nameof(CanAiWeekly),
+        foreach (var n in new[] { nameof(CanPrecise), nameof(IsYearMode), nameof(IsWeekMode), nameof(IsMonthMode), nameof(IsYearModeChecked), nameof(CanAiWeekly),
                                   nameof(NavLabel), nameof(PeriodTitle), nameof(PeriodRange) })
             OnPropertyChanged(n);
         BuildCalendar();
@@ -1471,7 +1473,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             .Where(r => r.AiBy?.Any(b => !DisabledWebzines.Contains(b.Replace("웹진 · ", ""))) != false)];
 
     /// <summary>웹진 새 글을 읽어 Deezer 확인·소리 점수까지 매겨 저장한다. force면 6시간 안 지나도.</summary>
-    public async Task RefreshWebzinesAsync(bool force = false)
+    public async Task RefreshWebzinesAsync(bool force = false, IReadOnlySet<string>? disabledWebzines = null)
     {
         if (!force && _webzineRun.TryGet("last", out var last) && DateTime.Now - last < TimeSpan.FromHours(6)) return;
         var reader = new WebzineFeeds(new HttpClient { Timeout = TimeSpan.FromSeconds(20) });
@@ -1479,7 +1481,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // 순서도: 웹진은 'AI 웹 검색 · 웹진 글' 칸에서 시작 (옆 줄기라 창은 띄우지 않는다)
         var progress = Tracked(L.T("웹진 추천 확인"), m => SyncText = L.F("웹진 추천 확인 중 · {0}", m), RunKind.Ai, primary: false);
         (progress as IStageProgress)?.Stage(RecStage.AiSearch);
-        foreach (var feed in WebzineFeeds.Defaults.Where(f => !DisabledWebzines.Contains(f.Name)))
+        foreach (var feed in WebzineFeeds.Defaults.Where(f => !(disabledWebzines ?? DisabledWebzines).Contains(f.Name)))
         {
             try
             {
@@ -1862,8 +1864,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     // 연도 주 단위로 한다 (예전엔 월 단위): 소리를 듣는 양은 주 52 × 150장 ≈ 월 12 × 600장으로 비슷한데 주 보기만큼 촘촘하고,
     // 이미 계산한 주(주 보기·월 촘촘한 계산)를 그대로 건너뛴다
     public bool CanPrecise => Mode != PeriodKind.Week;
-    public string PreciseLabel => L.T("주별로 촘촘히 계산");
-    [ObservableProperty] private bool _usePrecise;
+    public bool UsePrecise => _recPrefs.UsePrecise;
     [ObservableProperty] private bool _isPrecise;
     [ObservableProperty] private string _preciseText = "";
     private CancellationTokenSource? _preciseCts;

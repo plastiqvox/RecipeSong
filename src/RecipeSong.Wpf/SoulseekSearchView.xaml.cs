@@ -16,6 +16,7 @@ public partial class SoulseekSearchView : UserControl
     private readonly AlbumDownloads _downloads;
     private readonly ObservableCollection<SoulseekFolder> _groups = [];
     private CancellationTokenSource? _search;
+    public bool IsSearching => _search != null;
     private bool _disposed;
     private string _format = "";
     private int? _albumTrackCount;

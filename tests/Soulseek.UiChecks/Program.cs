@@ -18,10 +18,12 @@ static partial class Program
         var app = new App();
         app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        CheckRecommendationSettingsEdits(output);
         // OnStartup과 Application.Run은 호출하지 않는다. 사용자 앱·설정·소리 서비스·네트워크에 접근하지 않는다.
         foreach (var language in new[] { "ko", "en" })
         {
             L.Init(language);
+            CheckRecommendationCalculationSettings(output, language);
             var settings = new SoulseekSettings { Username = "example-user", SharedDirectories = [@"D:\Music", @"E:\Albums"], ArchiveDirectory = Path.Combine(output, "albums"), DownloadsDirectory = Path.Combine(output, "originals") };
             settings.Save();
             var downloads = new AlbumDownloads();

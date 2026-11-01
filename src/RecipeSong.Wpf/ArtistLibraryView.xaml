@@ -12,7 +12,9 @@
             <WrapPanel>
                 <ComboBox x:Name="PlaylistBox" Style="{StaticResource SoulseekFormatBox}" Width="240" DisplayMemberPath="Name" SelectionChanged="Playlist_Changed" AutomationProperties.Name="{local:Tr '플레이리스트 선택'}" Margin="0,0,12,8"/>
                 <CheckBox x:Name="FollowBox" Content="{local:Tr '팔로우 포함'}" IsChecked="True" Checked="Source_Changed" Unchecked="Source_Changed" VerticalAlignment="Center" Margin="0,0,12,8"/>
-                <Button Content="{local:Tr '목록 새로고침'}" Style="{StaticResource Bare}" Click="Reload_Click" Padding="12,6" Margin="0,0,0,8"/>
+                <Button Style="{StaticResource UtilityIconButton}" Click="Reload_Click" Margin="0,0,0,8" ToolTip="{local:Tr '목록 새로고침'}" AutomationProperties.Name="{local:Tr '목록 새로고침'}">
+                    <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource RefreshIcon}"/>
+                </Button>
             </WrapPanel>
         </StackPanel>
         <TextBlock x:Name="StatusText" Grid.Row="1" TextWrapping="Wrap" Foreground="{StaticResource Text2}" Margin="0,0,0,12"/>

@@ -4,15 +4,25 @@
     <DockPanel>
         <StackPanel DockPanel.Dock="Top">
             <DockPanel Margin="0,0,0,12">
-                <Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Content="{local:Tr 'Soulseek 설정'}" Click="Settings_Click" Padding="8,5"/>
-                <Button Style="{StaticResource Bare}" Content="{local:Tr '추천으로'}" Click="Back_Click" Padding="8,5" HorizontalAlignment="Left"/>
+                <Button DockPanel.Dock="Right" Style="{StaticResource UtilityIconButton}" Click="Settings_Click" ToolTip="{local:Tr 'Soulseek 설정'}" AutomationProperties.Name="{local:Tr 'Soulseek 설정'}">
+                    <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource GearIcon}" StrokeThickness="0" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </Button>
+                <Button Style="{StaticResource UtilityIconButton}" Click="Back_Click" HorizontalAlignment="Left" ToolTip="{local:Tr '추천으로'}" AutomationProperties.Name="{local:Tr '추천으로'}">
+                    <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource BackIcon}"/>
+                </Button>
             </DockPanel>
             <TextBlock x:Name="AlbumText" FontSize="18" FontWeight="Bold" TextWrapping="Wrap"/>
             <TextBlock x:Name="ExcludedPeerText" Foreground="{StaticResource AccentText}" FontSize="12" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,6,0,0"/>
-            <TextBox x:Name="QueryBox" AutomationProperties.Name="{local:Tr 'Soulseek 검색어'}" Margin="0,12,0,0"/>
+            <DockPanel Margin="0,12,0,0">
+                <Button DockPanel.Dock="Right" x:Name="SearchButton" Style="{StaticResource UtilityIconButton}" Click="Search_Click" Margin="6,0,0,0" ToolTip="{local:Tr '검색'}" AutomationProperties.Name="{local:Tr '검색'}">
+                    <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource SearchIcon}"/>
+                </Button>
+                <TextBox x:Name="QueryBox" AutomationProperties.Name="{local:Tr 'Soulseek 검색어'}" MinHeight="36" VerticalContentAlignment="Center"/>
+            </DockPanel>
             <WrapPanel Margin="0,8,0,0">
-                <Button x:Name="SearchButton" Style="{StaticResource Bare}" Content="{local:Tr '검색'}" Click="Search_Click" Padding="14,6"/>
-                <Button x:Name="StopButton" Style="{StaticResource Bare}" Content="{local:Tr '검색 중지'}" Click="Stop_Click" Padding="12,6" Margin="6,0,0,0" IsEnabled="False"/>
+                <Button x:Name="StopButton" Style="{StaticResource UtilityIconButton}" Click="Stop_Click" IsEnabled="False" ToolTip="{local:Tr '검색 중지'}" AutomationProperties.Name="{local:Tr '검색 중지'}">
+                    <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource StopIcon}" StrokeThickness="0" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </Button>
                 <Button x:Name="DownloadsButton" Style="{StaticResource Bare}" Content="{local:Tr '다운로드 상태 보기'}" Click="Downloads_Click" Padding="12,6" Margin="6,0,0,0"/>
             </WrapPanel>
             <WrapPanel Margin="0,10,0,0">
