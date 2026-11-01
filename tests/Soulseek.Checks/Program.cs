@@ -20,6 +20,11 @@ L.Init("en");
 var root = Path.Combine(Path.GetTempPath(), "RecipeSong-soulseek-checks-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 CacheLocation.Directory = Path.Combine(root, "cache");
+if (args.FirstOrDefault() == "--track-names")
+{
+    await TrackNameChecks.RunAsync(root, args[1]);
+    return;
+}
 if (args.FirstOrDefault() == "--per-track")
 {
     await PerTrackChecks.RunAsync(root);

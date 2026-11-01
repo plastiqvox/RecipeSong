@@ -162,12 +162,19 @@ static class Program
             OnUi(view.RefreshAsync);
             if (((AlbumDownloadStatus)jobs.SelectedItem).Id != first.Id || tracks.Items.Count != 2) throw new Exception("Album selection was lost during refresh.");
             OnUi(view.ToggleFavoriteAsync);
-            if (!saved.Contains(album.DeezerAlbumId) || ((Button)view.FindName("FavoriteButton")).Content?.ToString() != L.T("즐겨찾기 해제")) throw new Exception($"Favorite registration failed: saved={saved.Contains(album.DeezerAlbumId)}, button={((Button)view.FindName("FavoriteButton")).Content}, status={((TextBlock)view.FindName("StatusText")).Text}.");
+            var menu = ((Button)view.FindName("MoreButton")).ContextMenu;
+            MenuItem Item(string name) => menu.Items.OfType<MenuItem>().Single(i => i.Name == name);
+            if (!saved.Contains(album.DeezerAlbumId) || Item("FavoriteMenu").Header?.ToString() != L.T("즐겨찾기 해제")) throw new Exception("Favorite menu registration failed.");
+            if (((Button)view.FindName("RetryButton")).Visibility != Visibility.Visible || Item("ArtworkMenu").Visibility != Visibility.Visible
+                || Item("CleanupMenu").Visibility != Visibility.Collapsed) throw new Exception("Failed album actions are incorrect.");
             Render(workspace, Path.Combine(output, language + "-album-actions.png"), 1040, 680);
+            RenderMenu(menu, Path.Combine(output, language + "-album-menu.png"));
             OnUi(view.ToggleFavoriteAsync);
             if (saved.Contains(album.DeezerAlbumId)) throw new Exception("Favorite removal failed.");
             jobs.SelectedItem = jobs.Items.Cast<AlbumDownloadStatus>().Single(j => j.Id == second.Id);
             if (tracks.Items.Count != 1 || tracks.Items.Cast<SoulseekTransfer>().Single().State != L.T("ZIP에 저장됨")) throw new Exception("Archived album track manifest is missing.");
+            if (((Button)view.FindName("RetryButton")).Visibility != Visibility.Collapsed || Item("StopAlbumMenu").Visibility != Visibility.Collapsed
+                || Item("ArtworkMenu").Visibility != Visibility.Collapsed) throw new Exception("Completed album must hide irrelevant actions.");
             jobs.SelectedItem = jobs.Items.Cast<AlbumDownloadStatus>().Single(j => j.Id == first.Id);
             ((Button)view.FindName("SearchAgainButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             var search = (SoulseekSearchView)((ContentControl)workspace.FindName("SearchHost")).Content;
@@ -181,6 +188,19 @@ static class Program
             OnUi(() => downloads.DisposeAsync().AsTask());
             CacheLocation.Directory = oldCache;
         }
+    }
+
+    static void RenderMenu(ContextMenu menu, string path)
+    {
+        // 팝업 창을 띄우지 않고 같은 메뉴 스타일과 표시 상태만 렌더한다.
+        var panel = new StackPanel();
+        foreach (var entry in menu.Items.OfType<Control>().Where(c => c.Visibility == Visibility.Visible))
+        {
+            if (entry is MenuItem item) panel.Children.Add(new MenuItem { Header = item.Header, IsEnabled = item.IsEnabled });
+            else if (entry is Separator) panel.Children.Add(new Separator { Style = (Style)Application.Current.FindResource(MenuItem.SeparatorStyleKey) });
+        }
+        Render(new Border { Background = (Brush)Application.Current.FindResource("Surface2"), BorderBrush = (Brush)Application.Current.FindResource("Line3"),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(4), Child = panel, VerticalAlignment = VerticalAlignment.Top }, path, 300, 340);
     }
 
     sealed class TestUiContext : SynchronizationContext

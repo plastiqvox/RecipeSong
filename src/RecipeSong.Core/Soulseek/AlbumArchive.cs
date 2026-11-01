@@ -48,10 +48,14 @@ public static class AlbumArchive
             }
         }
         await RunFfmpegAsync(job.FfmpegPath, ["-i", Path.Combine(work, "artwork"), "-frames:v", "1", "-update", "1", cover], ct);
+        var tracks = AlbumTrackNames.Metadata(job, sources);
         var entries = new List<string> { cover };
+        var archiveNames = new Dictionary<string, string> { [cover] = "cover.jpg" };
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cover.jpg" };
-        foreach (var source in sources)
+        for (var index = 0; index < sources.Count; index++)
         {
+            var source = sources[index];
+            var track = tracks[index];
             ct.ThrowIfCancellationRequested();
             var stem = SafeName(Path.GetFileNameWithoutExtension(source));
             var name = stem + ".mp3";
@@ -62,10 +66,14 @@ public static class AlbumArchive
             var args = new List<string> { "-i", source, "-i", cover, "-map", "0:a:0", "-map", "1:v:0", "-map_metadata", "0", "-c:a", codec };
             if (codec != "copy") args.AddRange(["-b:a", "320k"]);
             args.AddRange(["-c:v", "mjpeg", "-disposition:v:0", "attached_pic", "-id3v2_version", "3",
-                "-metadata", "artist=" + job.Artist, "-metadata", "album=" + job.Album,
+                "-metadata", "artist=" + job.Artist, "-metadata", "album_artist=" + job.Artist, "-metadata", "album=" + job.Album,
+                "-metadata", "title=" + track.Title,
+                "-metadata", "track=" + track.Number + (track.TrackCount > 0 ? "/" + track.TrackCount : ""),
+                "-metadata", "disc=" + track.Disc + (track.DiscCount > 0 ? "/" + track.DiscCount : ""),
                 "-metadata", "date=" + job.ReleaseDate.ToString("yyyy-MM-dd"), "-metadata:s:v", "title=Album cover", target]);
             await RunFfmpegAsync(job.FfmpegPath, args, ct);
             entries.Add(target);
+            archiveNames[target] = track.FileName;
         }
         var temporary = Path.Combine(work, "album.zip.partial");
         await using (var file = File.Create(temporary))
@@ -75,7 +83,7 @@ public static class AlbumArchive
             {
                 ct.ThrowIfCancellationRequested();
                 // 음원은 이미 압축되어 있으므로 ZIP에서는 재압축하지 않는다.
-                var item = zip.CreateEntry(Path.GetFileName(entry), CompressionLevel.NoCompression);
+                var item = zip.CreateEntry(archiveNames[entry], CompressionLevel.NoCompression);
                 await using var from = File.OpenRead(entry);
                 await using var to = item.Open();
                 await from.CopyToAsync(to, ct);

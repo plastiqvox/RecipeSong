@@ -35,7 +35,6 @@ public partial class SoulseekWorkspaceView : UserControl, IDisposable
             ShowSection("search");
             _search.ResumeSearch();
         };
-        _transfers.SettingsRequested += () => ShowSection("settings");
         _transfers.SearchAgainRequested += job =>
         {
             var album = _recommendation?.Invoke(job) ?? job.Recommendation ?? new ReleaseRecommendation(job.Artist, job.Album, job.RecordType,

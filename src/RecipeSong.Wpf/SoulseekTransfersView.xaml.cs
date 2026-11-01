@@ -23,6 +23,7 @@ public partial class SoulseekTransfersView : UserControl, IDisposable
         _downloads = downloads;
         _isFavorite = isFavorite;
         _toggleFavorite = toggleFavorite;
+        UpdateSelectedAlbum();
         _timer.Tick += async (_, _) => await RefreshAsync();
         Loaded += async (_, _) => { _timer.Start(); await RefreshAsync(); };
         Unloaded += (_, _) => _timer.Stop();
@@ -69,7 +70,6 @@ public partial class SoulseekTransfersView : UserControl, IDisposable
         list.ItemsSource = items;
         if (selected != null) list.SelectedItem = items.FirstOrDefault(i => id(i) == selected);
     }
-    public event Action? SettingsRequested;
     public event Action<AlbumDownload>? SearchAgainRequested;
     public void SelectAlbum(Guid id) => _selectedAlbum = id;
 
@@ -84,11 +84,32 @@ public partial class SoulseekTransfersView : UserControl, IDisposable
         _selectedAlbum = selected?.Id;
         Replace(DownloadsList, selected?.Tracks.ToList() ?? [], x => x.Id);
         SelectedAlbumText.Text = selected == null ? L.T("왼쪽에서 앨범을 선택하세요.") : $"{selected.Job.Artist} — {selected.Job.Album}";
-        FavoriteButton.IsEnabled = selected != null && _toggleFavorite != null;
-        FavoriteButton.Content = selected?.IsFavorite == true ? L.T("즐겨찾기 해제") : L.T("즐겨찾기 등록");
-        StopAlbumButton.IsEnabled = StopSelectedAlbumButton.IsEnabled = selected != null && selected.Job.State != "done";
         SearchAgainButton.IsEnabled = selected != null;
-        CleanupButton.IsEnabled = selected != null && selected.Job.State is "done" or "cancelled" && !selected.Job.FilesRemoved;
+        MoreButton.IsEnabled = JobsList.Items.Count > 0;
+        static Visibility Show(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
+        var state = selected?.Job.State;
+        RetryButton.Visibility = Show(state is "failed" or "cancelled");
+        // 열린 메뉴는 항목 위치를 유지한다. 실제 작업 가능 여부는 각 처리부에서 다시 확인한다.
+        if (AlbumMenu.IsOpen) return;
+        FavoriteMenu.IsEnabled = selected != null && _toggleFavorite != null;
+        FavoriteMenu.Header = selected?.IsFavorite == true ? L.T("즐겨찾기 해제") : L.T("즐겨찾기 등록");
+        FavoriteMenu.Visibility = Show(selected != null && _toggleFavorite != null);
+        FolderMenu.Visibility = Show(selected?.Job.ArchivePath is { Length: > 0 });
+        ArtworkMenu.Visibility = Show(state == "failed");
+        CleanupMenu.Visibility = Show(selected != null && state is "done" or "cancelled" && !selected.Job.FilesRemoved);
+        StopAlbumMenu.Visibility = Show(selected != null && state != "done" && !selected.Job.FilesRemoved);
+        DeleteHistoryMenu.Visibility = Show(state is "done" or "failed" or "cancelled");
+        var hasExtras = new[] { FavoriteMenu, FolderMenu, ArtworkMenu, CleanupMenu }.Any(item => item.Visibility == Visibility.Visible);
+        TaskMenuSeparator.Visibility = Show(hasExtras && (StopAlbumMenu.Visibility == Visibility.Visible || DeleteHistoryMenu.Visibility == Visibility.Visible));
+        HistoryMenuSeparator.Visibility = Show(hasExtras || StopAlbumMenu.Visibility == Visibility.Visible || DeleteHistoryMenu.Visibility == Visibility.Visible);
+    }
+
+    private void More_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateSelectedAlbum();
+        AlbumMenu.PlacementTarget = MoreButton;
+        AlbumMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        AlbumMenu.IsOpen = true;
     }
 
     private void SearchAgain_Click(object sender, RoutedEventArgs e)
@@ -100,10 +121,10 @@ public partial class SoulseekTransfersView : UserControl, IDisposable
     public async Task ToggleFavoriteAsync()
     {
         if (_toggleFavorite == null || JobsList.SelectedItem is not AlbumDownloadStatus { Job: var job }) return;
-        FavoriteButton.IsEnabled = false;
+        FavoriteMenu.IsEnabled = false;
         try { await _toggleFavorite(job); await RefreshAsync(); }
         catch (Exception ex) { StatusText.Text = ex.Message; }
-        finally { FavoriteButton.IsEnabled = JobsList.SelectedItem != null && _toggleFavorite != null; }
+        finally { FavoriteMenu.IsEnabled = JobsList.SelectedItem != null && _toggleFavorite != null; }
     }
     public void Dispose() => _timer.Stop();
     public void ShowUploads(bool uploads)
@@ -111,7 +132,6 @@ public partial class SoulseekTransfersView : UserControl, IDisposable
         TransferTabs.SelectedIndex = uploads ? 1 : 0;
         TransferTitle.Text = uploads ? L.T("업로드") : L.T("다운로드");
     }
-    private void Settings_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
     private async void CancelJob_Click(object sender, RoutedEventArgs e)
     {
         try { if (JobsList.SelectedItem is AlbumDownloadStatus { Job: var job }) { await _downloads.CancelAsync(job.Id); await RefreshAsync(); } }
@@ -119,13 +139,13 @@ public partial class SoulseekTransfersView : UserControl, IDisposable
     }
     private async void RetryJob_Click(object sender, RoutedEventArgs e)
     {
-        try { if (JobsList.SelectedItem is AlbumDownloadStatus { Job: var job }) await _downloads.RetryAsync(job.Id, SoulseekSettings.Load()); }
+        try { if (JobsList.SelectedItem is AlbumDownloadStatus { Job: var job }) { await _downloads.RetryAsync(job.Id, SoulseekSettings.Load()); await RefreshAsync(); } }
         catch (Exception ex) { StatusText.Text = ex.Message; }
     }
     private async void Cleanup_Click(object sender, RoutedEventArgs e)
     {
         if (JobsList.SelectedItem is not AlbumDownloadStatus { Id: var id }) return;
-        CleanupButton.IsEnabled = false;
+        CleanupMenu.IsEnabled = false;
         try
         {
             var count = await _downloads.RetryCleanupAsync(id);
@@ -133,6 +153,7 @@ public partial class SoulseekTransfersView : UserControl, IDisposable
             StatusText.Text = count > 0 ? L.F("파일 정리 완료: {0}개 앨범", count) : L.T("정리할 파일이 없거나 아직 정리를 완료하지 못했어요.");
         }
         catch (Exception ex) { StatusText.Text = ex.Message; }
+        finally { CleanupMenu.IsEnabled = true; }
     }
     private async void ChangeArt_Click(object sender, RoutedEventArgs e)
     {
@@ -140,11 +161,6 @@ public partial class SoulseekTransfersView : UserControl, IDisposable
         var dialog = new Microsoft.Win32.OpenFileDialog { Title = L.T("앨범아트를 선택하세요"), Filter = "Images|*.jpg;*.jpeg;*.png;*.webp" };
         if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
         try { await _downloads.RetryAsync(job.Id, SoulseekSettings.Load(), dialog.FileName); }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
-    }
-    private async void CancelDownload_Click(object sender, RoutedEventArgs e)
-    {
-        try { if (JobsList.SelectedItem is AlbumDownloadStatus { Id: var id }) { await _downloads.CancelAsync(id); await RefreshAsync(); } }
         catch (Exception ex) { StatusText.Text = ex.Message; }
     }
     private void CancelUpload_Click(object sender, RoutedEventArgs e) { if (UploadsList.SelectedItem is SoulseekTransfer row) _downloads.Session.Cancel(row.Id); }

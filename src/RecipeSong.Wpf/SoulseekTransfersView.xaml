@@ -4,7 +4,7 @@
     <UserControl.Resources><ResourceDictionary Source="SoulseekStyles.xaml"/></UserControl.Resources>
     <DockPanel Margin="24">
         <StackPanel DockPanel.Dock="Top">
-            <DockPanel><Button DockPanel.Dock="Right" Style="{StaticResource Bare}" Content="{local:Tr 'Soulseek 설정'}" Click="Settings_Click" Padding="12,6"/><TextBlock x:Name="TransferTitle" Text="{local:Tr '다운로드'}" FontSize="24" FontWeight="Bold"/></DockPanel>
+            <TextBlock x:Name="TransferTitle" Text="{local:Tr '다운로드'}" FontSize="24" FontWeight="Bold"/>
             <TextBlock x:Name="SummaryText" FontSize="13" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,12,0,12"/>
         </StackPanel>
         <TextBlock DockPanel.Dock="Bottom" x:Name="StatusText" TextWrapping="Wrap" Foreground="{StaticResource AccentText}" Margin="0,10,0,0"/>
@@ -16,15 +16,23 @@
                     <DockPanel Grid.Column="0">
                     <TextBlock DockPanel.Dock="Top" Text="{local:Tr '앨범 목록'}" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,10"/>
                     <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-                        <Button x:Name="StopAlbumButton" Style="{StaticResource Bare}" Content="{local:Tr '중단·파일 삭제'}" Click="CancelJob_Click" Padding="10,6" Margin="0,0,6,6" IsEnabled="False"/>
-                        <Button x:Name="SearchAgainButton" Style="{StaticResource Bare}" Content="{local:Tr '다른 상대에게 다시 받기'}" Click="SearchAgain_Click" Padding="10,6" Margin="0,0,6,6"/>
-                        <Button x:Name="FavoriteButton" Style="{StaticResource Bare}" Content="{local:Tr '즐겨찾기 등록'}" Click="Favorite_Click" Padding="10,6" Margin="0,0,6,6" IsEnabled="False"/>
-                        <Button x:Name="CleanupButton" Style="{StaticResource Bare}" Content="{local:Tr '파일 정리 재시도'}" Click="Cleanup_Click" Padding="10,6" Margin="0,0,6,6" IsEnabled="False"/>
-                        <Button Style="{StaticResource Bare}" Content="{local:Tr '다시 시도'}" Click="RetryJob_Click" Padding="10,6" Margin="0,0,6,6"/>
-                        <Button Style="{StaticResource Bare}" Content="{local:Tr '앨범아트 바꿔 재처리'}" Click="ChangeArt_Click" Padding="10,6" Margin="0,0,6,6"/>
-                        <Button Style="{StaticResource Bare}" Content="{local:Tr '폴더 열기'}" Click="OpenFolder_Click" Padding="10,6" Margin="0,0,6,6"/>
-                        <Button Style="{StaticResource Bare}" Content="{local:Tr '선택 기록 삭제'}" Click="DeleteHistory_Click" Padding="10,6" Margin="0,0,6,6" ToolTip="{local:Tr '종료된 앨범 기록만 삭제해요. 받은 파일은 보존해요.'}"/>
-                        <Button Style="{StaticResource Bare}" Content="{local:Tr '종료 기록 모두 삭제'}" Click="ClearHistory_Click" Padding="10,6" Margin="0,0,6,6" ToolTip="{local:Tr '완료·실패·취소 기록을 삭제해요. 진행 중 작업과 받은 파일은 보존해요.'}"/>
+                        <Button x:Name="RetryButton" Style="{StaticResource Bare}" Content="{local:Tr '다시 시도'}" Click="RetryJob_Click" Padding="10,6" Margin="0,0,6,6" Visibility="Collapsed"/>
+                        <Button x:Name="SearchAgainButton" Style="{StaticResource Bare}" Content="{local:Tr '다른 상대 찾기'}" Click="SearchAgain_Click" Padding="10,6" Margin="0,0,6,6"/>
+                        <Button x:Name="MoreButton" Style="{StaticResource Bare}" Content="{local:Tr '더보기'}" Click="More_Click" Padding="10,6" Margin="0,0,6,6" AutomationProperties.Name="{local:Tr '앨범 작업 더보기'}">
+                            <Button.ContextMenu>
+                                <ContextMenu x:Name="AlbumMenu">
+                                    <MenuItem x:Name="FavoriteMenu" Header="{local:Tr '즐겨찾기 등록'}" Click="Favorite_Click"/>
+                                    <MenuItem x:Name="FolderMenu" Header="{local:Tr '폴더 열기'}" Click="OpenFolder_Click"/>
+                                    <MenuItem x:Name="ArtworkMenu" Header="{local:Tr '앨범아트 바꿔 재처리'}" Click="ChangeArt_Click"/>
+                                    <MenuItem x:Name="CleanupMenu" Header="{local:Tr '파일 정리 재시도'}" Click="Cleanup_Click"/>
+                                    <Separator x:Name="TaskMenuSeparator"/>
+                                    <MenuItem x:Name="StopAlbumMenu" Header="{local:Tr '중단·파일 삭제'}" Click="CancelJob_Click"/>
+                                    <MenuItem x:Name="DeleteHistoryMenu" Header="{local:Tr '선택 기록 삭제'}" Click="DeleteHistory_Click"/>
+                                    <Separator x:Name="HistoryMenuSeparator"/>
+                                    <MenuItem Header="{local:Tr '종료 기록 모두 삭제'}" Click="ClearHistory_Click"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
                     </WrapPanel>
                     <ListBox x:Name="JobsList" SelectionChanged="Album_Changed" AutomationProperties.Name="{local:Tr '앨범 다운로드 작업'}">
                         <ListBox.ItemTemplate><DataTemplate><StackPanel>
@@ -41,7 +49,6 @@
                         <TextBlock Text="{local:Tr '다운로드 상태'}" FontSize="14" FontWeight="SemiBold"/>
                         <TextBlock x:Name="SelectedAlbumText" Text="{local:Tr '왼쪽에서 앨범을 선택하세요.'}" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource Text2}" Margin="0,5,0,0"/>
                     </StackPanel>
-                    <Button x:Name="StopSelectedAlbumButton" DockPanel.Dock="Bottom" Style="{StaticResource Bare}" Content="{local:Tr '앨범 중단·파일 삭제'}" Click="CancelDownload_Click" Padding="10,6" HorizontalAlignment="Left" Margin="0,8,0,0" IsEnabled="False"/>
                     <ListBox x:Name="DownloadsList" AutomationProperties.Name="{local:Tr '파일 다운로드 전송'}"><ListBox.ItemTemplate><DataTemplate><StackPanel>
                         <TextBlock Text="{Binding Display}" TextWrapping="Wrap"/>
                         <TextBlock Text="{Binding QueueStatus}" TextWrapping="Wrap" Foreground="{StaticResource AccentText}" FontSize="12" Margin="0,5,0,0" Visibility="{Binding QueueStatus, Converter={StaticResource EmptyCollapsed}}"/>
