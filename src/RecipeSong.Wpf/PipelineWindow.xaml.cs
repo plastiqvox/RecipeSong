@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -19,7 +20,7 @@ public partial class PipelineWindow : Window
     /// <summary>창이 떠 있으면 기간을 바꿀 때 바로 새 기간으로 바꿔 보여 준다 (MainViewModel.LoadAsync)</summary>
     public static bool IsOpen => _shared != null;
 
-    // 그림 좌표 (Viewbox 가 창 크기에 맞춰 늘이고 줄인다). 네 줄: 왼쪽 · 가운데 · 오른쪽 · 맨 오른쪽 (PipelineMonitor.Stages 배치 설명)
+    // 원래 크기로 보여 주고 사용자가 확대·스크롤한다. 네 줄 배치는 PipelineMonitor.Stages 설명을 따른다.
     private static readonly double[] ColX = [140, 420, 690, 950];
     private static readonly double[] ColW = [230, 260, 230, 230];
     private const double RowTop = 8, RowStep = 102, NodeH = 72, ChartW = 1090;
@@ -30,6 +31,7 @@ public partial class PipelineWindow : Window
 
     private readonly Dictionary<string, Node> _nodes = [];
     private readonly List<(StageEdge Edge, Shape[] Parts)> _edges = [];
+    private string? _followedNode;
 
     public PipelineWindow()
     {
@@ -50,6 +52,51 @@ public partial class PipelineWindow : Window
         clock.Tick += (_, _) => Paint();
         clock.Start();
         Closed += (_, _) => { m.Changed -= Paint; clock.Stop(); };
+        Loaded += (_, _) => FollowCurrent(force: true);
+        ChartViewport.SizeChanged += (_, _) => { if (IsLoaded) FollowCurrent(force: true); };
+    }
+
+    private void ZoomOut_Click(object sender, RoutedEventArgs e) => SetZoom(ChartScale.ScaleX - 0.25);
+    private void ZoomIn_Click(object sender, RoutedEventArgs e) => SetZoom(ChartScale.ScaleX + 0.25);
+    private void ZoomReset_Click(object sender, RoutedEventArgs e) => SetZoom(1);
+    private void FollowStep_Click(object sender, RoutedEventArgs e) => FollowCurrent(force: true);
+
+    private void SetZoom(double value)
+    {
+        var old = ChartScale.ScaleX;
+        var x = (ChartViewport.HorizontalOffset + ChartViewport.ViewportWidth / 2) / old;
+        var y = (ChartViewport.VerticalOffset + ChartViewport.ViewportHeight / 2) / old;
+        var scale = Math.Clamp(Math.Round(value, 2), 0.75, 2);
+        ChartScale.ScaleX = ChartScale.ScaleY = scale;
+        ZoomResetButton.Content = (scale * 100).ToString("0", CultureInfo.CurrentCulture) + "%";
+        ZoomOutButton.IsEnabled = scale > 0.75;
+        ZoomInButton.IsEnabled = scale < 2;
+        ZoomOutButton.Opacity = ZoomOutButton.IsEnabled ? 1 : 0.45;
+        ZoomInButton.Opacity = ZoomInButton.IsEnabled ? 1 : 0.45;
+        ChartViewport.UpdateLayout();
+        ChartViewport.ScrollToHorizontalOffset(x * scale - ChartViewport.ViewportWidth / 2);
+        ChartViewport.ScrollToVerticalOffset(y * scale - ChartViewport.ViewportHeight / 2);
+        FollowCurrent(force: true);
+    }
+
+    private void FollowCurrent(bool force = false)
+    {
+        if (FollowStep.IsChecked != true || (!force && !IsLoaded) || ChartViewport.ViewportWidth <= 0) return;
+        var m = PipelineMonitor.Instance;
+        var node = _nodes.Values.FirstOrDefault(n => n.Item.State == StageState.Current && n.Item.Stage == m.Primary?.Current)
+            ?? _nodes.Values.FirstOrDefault(n => n.Item.State == StageState.Current)
+            ?? _nodes.Values.FirstOrDefault(n => n.Item.Key == "archive" && n.Item.State is StageState.Failed or StageState.Cancelled)
+            ?? _nodes.Values.FirstOrDefault(n => n.Item.Key == "screen" && n.Item.State == StageState.Done)
+            ?? _nodes.Values.FirstOrDefault(n => n.Item.Key == "archive" && n.Item.State == StageState.Done);
+        if (node == null) return;
+        var run = node.Item.Key == "archive" ? m.Runs.FirstOrDefault(r => r.Kind == RunKind.Archive && !r.Ended)
+            : node.Item.Stage == RecStage.Analyze ? m.Runs.FirstOrDefault(r => r.Kind == RunKind.Analysis && !r.Ended) : m.Primary;
+        var key = run?.Id + ":" + node.Item.Key + ":" + node.Item.State;
+        if (!force && key == _followedNode) return;
+        _followedNode = key;
+        var box = Box(node.Item);
+        ChartViewport.ScrollToHorizontalOffset((box.Left + box.Width / 2) * ChartScale.ScaleX - ChartViewport.ViewportWidth / 2);
+        ChartViewport.ScrollToVerticalOffset((box.Top + box.Height / 2) * ChartScale.ScaleY - ChartViewport.ViewportHeight / 2);
     }
 
     /// <summary>순서도 버튼: 열려 있으면 닫고, 닫혀 있으면 연다 (닫아도 계산 상태는 PipelineMonitor 에 남아 다시 열면 그대로 보인다)</summary>
@@ -81,12 +128,12 @@ public partial class PipelineWindow : Window
 
     private static Brush Res(string key) => (Brush)Application.Current.Resources[key];
 
-    // 아이콘 칸(데이터·규칙)은 상자가 없어 좁게 잡는다 — 옆으로 닿는 화살표가 글자 가까이에서 끝나게
-    private const double IconW = 200;
+    // 데이터·규칙 도형은 보조 입력이므로 처리 단계보다 폭을 좁게 잡는다.
+    private const double DataRuleWidth = 200;
 
     private static Rect Box(StageItem s)
     {
-        double w = s.Kind == NodeKind.Step ? ColW[s.Col] : Math.Min(ColW[s.Col], IconW);
+        double w = s.Kind == NodeKind.Step ? ColW[s.Col] : Math.Min(ColW[s.Col], DataRuleWidth);
         return new(ColX[s.Col] - w / 2, RowTop + s.Row * RowStep, w, NodeH);
     }
 
@@ -179,14 +226,13 @@ public partial class PipelineWindow : Window
         Canvas.SetTop(bar, r.Bottom - 6);
         Chart.Children.Add(bar);
         _nodes[s.Key] = new Node(s, frame, body, title, chip, chipText, detail, ring, markers, bar, contour);
-        s.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName is nameof(StageItem.State) or nameof(StageItem.Time) or nameof(StageItem.Detail)) Paint();
-        };
+        // 칸이 일부만 갱신된 상태를 따라가지 않도록 모니터의 Changed에서 한 번에 그린다.
     }
 
     private static readonly Brush DoneDeep = Frozen("#15261C");
     private static readonly Brush Quiet = Frozen("#E3C25B");
+    private static readonly Brush Failed = Frozen("#EC8088");
+    private static readonly Brush FailedDeep = Frozen("#361F26");
 
     /// <summary>진행 문구의 "32/83"·"2,500/2,523" → 0~1</summary>
     private static double? Fraction(string text) =>
@@ -302,6 +348,7 @@ public partial class PipelineWindow : Window
                 StageState.Current => line,
                 StageState.Done => Res("Ok"),
                 StageState.Reused => Reuse,
+                StageState.Failed => Failed,
                 _ => Res("Line3"),
             };
             n.Frame.StrokeThickness = st == StageState.Current ? 3 : 2;
@@ -314,12 +361,15 @@ public partial class PipelineWindow : Window
                 StageState.Fixed => Res("Surface2"),
                 _ => Brushes.Transparent,
             };
-            n.Body.Opacity = n.Frame.Opacity = st == StageState.Skipped && n.Item.Key != "archive" ? 0.35 : 1;
+            n.Body.Opacity = 1;
+            n.Frame.Opacity = st == StageState.Skipped ? 0.35 : 1;
             n.Title.Foreground = st switch
             {
                 StageState.Current => text,
                 StageState.Done => Res("Ok"),
                 StageState.Reused => ReuseText,
+                StageState.Failed => Failed,
+                StageState.Cancelled => Res("Muted"),
                 StageState.Todo or StageState.Skipped => Res("Muted"),
                 _ => Res("Text"),
             };
@@ -330,8 +380,8 @@ public partial class PipelineWindow : Window
                 // 상태 색은 유지하되 단계의 사각형 대신 데이터·규칙의 외곽선을 칠한다.
                 n.Frame.Visibility = Visibility.Collapsed;
                 n.Body.Background = Brushes.Transparent;
-                contour.Stroke = st switch { StageState.Current => line, StageState.Done => Res("Ok"), StageState.Reused => Reuse, _ => Res("Muted") };
-                contour.Fill = st switch { StageState.Current => deep, StageState.Done => DoneDeep, StageState.Reused => ReuseDeep, _ => Res("Surface2") };
+                contour.Stroke = st switch { StageState.Current => line, StageState.Done => Res("Ok"), StageState.Reused => Reuse, StageState.Failed => Failed, _ => Res("Muted") };
+                contour.Fill = st switch { StageState.Current => deep, StageState.Done => DoneDeep, StageState.Reused => ReuseDeep, StageState.Failed => FailedDeep, _ => Res("Surface2") };
                 contour.StrokeThickness = st == StageState.Current ? 2 : 1.4;
             }
             n.Detail.Visibility = st == StageState.Current || (n.Item.Key == "archive" && n.Item.Detail.Length > 0)
@@ -342,7 +392,7 @@ public partial class PipelineWindow : Window
             n.Detail.Text = detail + (quiet >= 15 ? (detail.Length > 0 ? " · " : "") + L.F("{0:0}초째 소식 없음", quiet) : "");
             n.Body.ToolTip = n.Item.Label + "\n" + n.Item.Sub + (n.Item.Time.Length > 0 ? "\n" + n.Item.Time : "")
                 + (n.Item.Detail.Length > 0 ? "\n" + n.Item.Detail : "");
-            n.Detail.Foreground = quiet >= 45 ? Quiet : text;
+            n.Detail.Foreground = st == StageState.Failed ? Failed : st == StageState.Cancelled ? Res("Muted") : quiet >= 45 ? Quiet : text;
             var frac = st == StageState.Current ? Fraction(n.Item.Detail) : null;
             n.Bar.Visibility = frac != null ? Visibility.Visible : Visibility.Collapsed;
             if (frac is { } f) { n.Bar.Width = Math.Max(2, (n.Body.Width - 6) * f); n.Bar.Fill = line; }
@@ -356,10 +406,10 @@ public partial class PipelineWindow : Window
                 StageState.Todo => (L.T("대기"), Res("Line2"), Res("Muted")),
                 StageState.Reused => (L.T("재사용") + (time.Length > 0 ? " · " + time : ""), Reuse, Res("OnAccent")),
                 StageState.Skipped => (L.T("안 함"), Brushes.Transparent, Res("Muted")),
+                StageState.Failed => (L.T("실패"), Failed, Res("OnAccent")),
+                StageState.Cancelled => (L.T("취소됨"), Res("Line2"), Res("Text")),
                 _ => ("", Brushes.Transparent, Brushes.Transparent),
             };
-            if (n.Item.Key == "archive" && st == StageState.Skipped)
-                chip = (L.T("멈춤"), Res("Line2"), Res("Text"));
             if (st == StageState.Current && n.Item.Detail == RecipeSong.Core.Sound.SoundService.WaitingText)
             {
                 // 소리 서비스가 앞 요청(다른 계산·멈춘 계산·옆 작업)을 처리하는 동안 차례를 기다린다
@@ -390,6 +440,7 @@ public partial class PipelineWindow : Window
                 });
         }
         PaintQueue();
+        FollowCurrent();
         foreach (var (e, parts) in _edges)
         {
             var fromNode = _nodes[e.From].Item;
@@ -437,8 +488,9 @@ public partial class PipelineWindow : Window
             const double gutter = 267;
             pts.Add(new(a.Left - gap, a.Top + NodeH / 2));
             pts.Add(new(gutter, a.Top + NodeH / 2));
-            pts.Add(new(gutter, b.Top + NodeH / 2));
-            pts.Add(new(b.Right + gap, b.Top + NodeH / 2));
+            pts.Add(new(gutter, b.Top - 16));
+            pts.Add(new(ColX[to.Col], b.Top - 16));
+            pts.Add(new(ColX[to.Col], b.Top - gap));
         }
         else if (from.Key == "saved" && to.Key == "screen")
         {
@@ -496,7 +548,8 @@ public partial class PipelineWindow : Window
         bool vertical = Math.Abs(pts[bi + 1].Y - pts[bi].Y) > Math.Abs(pts[bi + 1].X - pts[bi].X);
         var label = new TextBlock { Text = e.Label, FontSize = 10.5, Foreground = Res("Muted") };
         label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        Canvas.SetLeft(label, vertical ? mid.X + 10 : mid.X - label.DesiredSize.Width / 2);
+        var labelX = from.Key == "base" && to.Key == "listen" ? 40 : vertical ? mid.X + 10 : mid.X - label.DesiredSize.Width / 2;
+        Canvas.SetLeft(label, labelX);
         Canvas.SetTop(label, vertical ? mid.Y - label.DesiredSize.Height / 2 : mid.Y - label.DesiredSize.Height - 2);
         Chart.Children.Add(label);
     }

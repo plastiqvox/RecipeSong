@@ -933,5 +933,13 @@
  "ZIP 읽기 실패: {0}": "ZIP scan failed: {0}",
  "ZIP 경로 {0}개": "{0} ZIP folders",
  "라이브러리 뮤지션 모으기": "Library artists",
- "내 라이브러리 뮤지션": "My library artists"
+ "내 라이브러리 뮤지션": "My library artists",
+ "축소": "Zoom out",
+ "확대": "Zoom in",
+ "원래 크기": "Actual size",
+ "진행 단계 따라가기": "Follow active step",
+ "추천 흐름도": "Recommendation flowchart",
+ "진행 기록 펼치기/접기": "Show/hide log",
+ "{0} · ZIP 읽기 실패": "{0} · ZIP scan failed",
+ "{0} · ZIP 읽기 취소": "{0} · ZIP scan cancelled"
 }

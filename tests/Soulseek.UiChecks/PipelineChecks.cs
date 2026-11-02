@@ -1,6 +1,8 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using Polyline = System.Windows.Shapes.Polyline;
 using RecipeSong.Core;
 using RecipeSong.Wpf;
@@ -45,8 +47,23 @@ static partial class Program
                         || a.Y == b.Y && a.Y > box.Top && a.Y < box.Bottom && Math.Max(a.X, b.X) > box.Left && Math.Min(a.X, b.X) < box.Right)
                         throw new Exception("A pipeline edge crosses a node: " + box);
             }
-        RenderWindow(window, Path.Combine(output, "pipeline-active.png"), 900, 1000);
-        RenderWindow(new PipelineWindow(), Path.Combine(output, "pipeline-narrow.png"), 480, 700);
+        var segments = chart.Children.OfType<Polyline>().SelectMany(line => line.Points.Zip(line.Points.Skip(1))).ToArray();
+        foreach (var (a, b) in segments)
+            foreach (var (c, d) in segments)
+            {
+                bool horizontal = a.Y == b.Y && c.Y == d.Y && a.Y == c.Y && (b.X - a.X) * (d.X - c.X) < 0
+                    && Math.Max(Math.Min(a.X, b.X), Math.Min(c.X, d.X)) < Math.Min(Math.Max(a.X, b.X), Math.Max(c.X, d.X));
+                bool vertical = a.X == b.X && c.X == d.X && a.X == c.X && (b.Y - a.Y) * (d.Y - c.Y) < 0
+                    && Math.Max(Math.Min(a.Y, b.Y), Math.Min(c.Y, d.Y)) < Math.Min(Math.Max(a.Y, b.Y), Math.Max(c.Y, d.Y));
+                if (horizontal || vertical) throw new Exception("Opposing edges must not share a segment and imply a bidirectional relationship.");
+            }
+        var baseline = chart.Children.OfType<TextBlock>().Single(t => t.Text == L.T("비교 기준"));
+        var labelBox = new Rect(Canvas.GetLeft(baseline), Canvas.GetTop(baseline), baseline.DesiredSize.Width, baseline.DesiredSize.Height);
+        foreach (var (a, b) in segments)
+            if (a.X == b.X && a.X > labelBox.Left && a.X < labelBox.Right && Math.Max(a.Y, b.Y) > labelBox.Top && Math.Min(a.Y, b.Y) < labelBox.Bottom)
+                throw new Exception("The sound baseline label must not cross the ZIP-to-ID connection.");
+        RenderPipeline(window, Path.Combine(output, "pipeline-active.png"), 900, 1000, checkControls: true);
+        RenderPipeline(new PipelineWindow(), Path.Combine(output, "pipeline-narrow.png"), 480, 700);
 
         monitor.Stage(recommendation, RecStage.Score);
         if (Node("archive").State != StageState.Current || Node("archive").Detail != detail)
@@ -55,12 +72,18 @@ static partial class Program
         monitor.Message(reading, "late update");
         if (Node("archive").State != StageState.Done || Node("archive").Detail == "late update" || monitor.Runs.Any(r => r.Id == reading))
             throw new Exception("Completed ZIP scans must ignore late reports and leave the active run list.");
-        foreach (var note in new[] { L.T("ZIP 읽기 취소"), L.F("ZIP 읽기 실패: {0}", "test") })
+        foreach (var (note, canceled, state) in new[]
+        {
+            (L.T("ZIP 읽기 취소"), true, StageState.Cancelled),
+            (L.F("ZIP 읽기 실패: {0}", "test"), false, StageState.Failed),
+        })
         {
             var stopped = monitor.Begin(L.T("ZIP 보유 읽기"), RunKind.Archive, primary: false);
-            monitor.Finish(stopped, note);
-            if (Node("archive").State == StageState.Done || Node("archive").Detail != note)
-                throw new Exception("Canceled/failed ZIP scans must not appear completed.");
+            monitor.Finish(stopped, note, canceled);
+            var status = L.F(canceled ? "{0} · ZIP 읽기 취소" : "{0} · ZIP 읽기 실패", L.T("진행 중"));
+            if (Node("archive").State != state || Node("archive").Detail != note || monitor.Status != status)
+                throw new Exception("Canceled and failed ZIP scans must have distinct states and remain visible in the summary.");
+            if (canceled) RenderPipeline(new PipelineWindow(), Path.Combine(output, "pipeline-cancelled.png"), 900, 1000);
         }
         monitor.Finish(recommendation, L.T("멈춤"));
         var cached = monitor.Begin("2026.11 · " + L.T("보통 계산"), RunKind.Load);
@@ -69,6 +92,53 @@ static partial class Program
         monitor.SetSavedResult(recommendation, "stale report", reused: false);
         if (Node("saved").State != StageState.Reused || Node("saved").Detail == "stale report" || Node("screen").State != StageState.Done)
             throw new Exception("Cached recommendations must reach the screen and ignore older run reports.");
-        RenderWindow(new PipelineWindow(), Path.Combine(output, "pipeline-reused.png"), 900, 1000);
+        if (monitor.Status != L.F("{0} · ZIP 읽기 실패", L.T("끝")))
+            throw new Exception("A completed recommendation must not hide an earlier ZIP failure.");
+        RenderPipeline(new PipelineWindow(), Path.Combine(output, "pipeline-reused.png"), 900, 1000);
+        var retry = monitor.Begin(L.T("ZIP 보유 읽기"), RunKind.Archive, primary: false);
+        monitor.CompleteArchive(retry, completed);
+        if (monitor.Status != L.T("끝")) throw new Exception("A successful ZIP retry must clear the failure summary.");
+    }
+
+    static void RenderPipeline(PipelineWindow window, string path, int width, int height, bool checkControls = false)
+    {
+        var content = (FrameworkElement)window.Content;
+        content.DataContext = window.DataContext;
+        window.Content = null;
+        var viewport = (ScrollViewer)window.FindName("ChartViewport");
+        var scale = (ScaleTransform)window.FindName("ChartScale");
+        var follow = (CheckBox)window.FindName("FollowStep");
+        var log = (ToggleButton)window.FindName("LogToggle");
+        Render(content, path, width, height);
+        if (scale.ScaleX != 1 || viewport.ScrollableWidth <= 0 || log.IsChecked == true)
+            throw new Exception("The chart must retain readable size with scrolling and a collapsed log, even in narrow windows.");
+        if (checkControls)
+        {
+            var zoomIn = (Button)window.FindName("ZoomInButton");
+            zoomIn.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            if (scale.ScaleX != 1.25) throw new Exception("Zoom in must enlarge the chart.");
+            for (int i = 0; i < 10; i++) zoomIn.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            if (scale.ScaleX != 2 || zoomIn.IsEnabled) throw new Exception("Zoom must stop at its upper limit.");
+            var zoomOut = (Button)window.FindName("ZoomOutButton");
+            for (int i = 0; i < 10; i++) zoomOut.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            if (scale.ScaleX != 0.75 || zoomOut.IsEnabled) throw new Exception("Zoom must stop at its lower limit.");
+            ((Button)window.FindName("ZoomResetButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            if (scale.ScaleX != 1) throw new Exception("Actual size must restore 100%.");
+            var heightBefore = viewport.ViewportHeight;
+            log.IsChecked = true;
+            Render(content, Path.Combine(Path.GetDirectoryName(path)!, "pipeline-log.png"), width, height);
+            if (viewport.ViewportHeight >= heightBefore) throw new Exception("Expanding the log must leave a scrollable chart above it.");
+            log.IsChecked = false;
+            follow.IsChecked = false;
+            viewport.ScrollToVerticalOffset(0);
+            follow.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Render(content, path, width, height);
+            if (viewport.VerticalOffset != 0) throw new Exception("Turning follow off must allow manual inspection.");
+            follow.IsChecked = true;
+        }
+        follow.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Render(content, path, width, height);
+        if (viewport.VerticalOffset <= 0) throw new Exception("Follow active step must reveal progress without shrinking the chart.");
+        window.Close();
     }
 }

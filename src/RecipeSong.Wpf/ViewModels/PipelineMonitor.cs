@@ -11,8 +11,9 @@ namespace RecipeSong.Wpf.ViewModels;
 /// Reused: 앞 계산이 만든 결과(후보 목록)를 그대로 써서 이번엔 하지 않은 칸.
 /// Skipped: 이번 계산에는 없는 칸이거나 저장된 결과·멈춤으로 하지 않은 칸 ('안 함').
 /// Fixed: 단계가 아닌 칸(라이브러리·거르기 — 늘 같은 모양)
+/// Failed·Cancelled: ZIP 읽기의 실패·취소. 건너뛴 단계와 구분해 상단 요약에도 남긴다.
 /// </summary>
-public enum StageState { Todo, Current, Done, Reused, Skipped, Fixed }
+public enum StageState { Todo, Current, Done, Reused, Skipped, Fixed, Failed, Cancelled }
 
 /// <summary>
 /// 계산 종류 — 순서도 창에서 색으로 구분한다 (동시에 여럿 돌 수 있다).
@@ -315,10 +316,10 @@ public sealed partial class PipelineMonitor : ObservableObject
     /// <summary>
     /// 계산이 끝까지 가지 않고 끝났다: 저장된 추천을 그대로 보여 줬거나 멈췄다. 주 계산이면 끝나지 않은 칸을 '안 거침'으로
     /// </summary>
-    public void Finish(int id, string note)
+    public void Finish(int id, string note, bool canceled = false)
     {
         if (Find(id) is not { Ended: false } run) return;
-        if (run.Kind == RunKind.Archive) { EndArchive(run, note, completed: false); return; }
+        if (run.Kind == RunKind.Archive) { EndArchive(run, note, canceled ? StageState.Cancelled : StageState.Failed); return; }
         if (run.Kind == RunKind.Analysis) { EndAnalysis(run); Refresh(); return; }
         if (run == Primary)
         {
@@ -357,13 +358,13 @@ public sealed partial class PipelineMonitor : ObservableObject
 
     public void CompleteArchive(int id, string note)
     {
-        if (Find(id) is { Ended: false, Kind: RunKind.Archive } run) EndArchive(run, note, completed: true);
+        if (Find(id) is { Ended: false, Kind: RunKind.Archive } run) EndArchive(run, note, StageState.Done);
     }
 
-    private void EndArchive(RunInfo run, string note, bool completed)
+    private void EndArchive(RunInfo run, string note, StageState state)
     {
         Archive.Watch.Stop();
-        Archive.State = completed ? StageState.Done : StageState.Skipped;
+        Archive.State = state;
         Archive.Detail = note;
         if (Primary == null) _note = note;
         End(run, note);
@@ -446,6 +447,8 @@ public sealed partial class PipelineMonitor : ObservableObject
         Status = _note != null && running == 0 ? _note
             : running > 1 ? L.F("{0}개 계산이 함께 진행 중 · 미리듣기·분석은 소리 서비스가 하나씩 처리해요", running)
             : running == 1 ? L.T("진행 중") : L.T("끝");
+        if (Primary != null && Archive.State == StageState.Failed) Status = L.F("{0} · ZIP 읽기 실패", Status);
+        else if (Primary != null && Archive.State == StageState.Cancelled) Status = L.F("{0} · ZIP 읽기 취소", Status);
         Changed?.Invoke();
     }
 }
@@ -488,9 +491,9 @@ public sealed class StageProgress(string title, Action<string> report, RunKind k
     });
 
     /// <summary>끝까지 계산하지 않고 끝났다 (저장된 결과·멈춤)</summary>
-    public void Finish(string note) => Post(() =>
+    public void Finish(string note, bool canceled = false) => Post(() =>
     {
-        if (_run != 0) PipelineMonitor.Instance.Finish(_run, note);
+        if (_run != 0) PipelineMonitor.Instance.Finish(_run, note, canceled);
     });
 
     public void CompleteArchive(string note) => Post(() =>

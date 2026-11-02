@@ -90,7 +90,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             monitor?.CompleteArchive(L.F("ZIP 보유 앨범 {0}개 · 취향 평가는 중립", albums.Count));
             return albums;
         }
-        catch (OperationCanceledException) { monitor?.Finish(L.T("ZIP 읽기 취소")); throw; }
+        catch (OperationCanceledException) { monitor?.Finish(L.T("ZIP 읽기 취소"), canceled: true); throw; }
         catch (Exception ex) { monitor?.Finish(L.F("ZIP 읽기 실패: {0}", ex.Message)); throw; }
         finally { _archiveReadLock.Release(); }
     }
