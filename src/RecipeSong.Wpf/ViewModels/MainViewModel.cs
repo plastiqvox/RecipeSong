@@ -1601,6 +1601,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ApplyFilters()
     {
+        Player.StopIfExcluded(IsPlaybackExcluded);
         var items = FilteredBase().ToList();
         int aiCount = items.Count(i => i.IsAiConnector);
         int webzineCount = items.Count(i => i.IsWebzine);
@@ -2265,9 +2266,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- 재생 ---------------------------------------------------------------
 
+    private bool IsPlaybackExcluded(ReleaseRecommendation release) =>
+        _disliked.Contains(release.DeezerAlbumId) || _blocked.IsBlocked(release);
+
     /// <summary>track이 null이면 커버 버튼: 이 앨범에서 듣던 곡을 이어서, 없으면 첫 곡부터.</summary>
     private async Task PlayReleaseAsync(ReleaseItem item, TrackItem? track)
     {
+        if (IsPlaybackExcluded(item.Rec)) return;
         var target = track ?? item.Current;
         if (target != null && Player.IsCurrent(target.SetPlaying))
         {
@@ -2275,7 +2280,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
         Detail = item;  // 재생하면 상세 패널에 수록곡을 연다 (지금 어느 곡인지 보이게)
-        if (!await EnsureTracksAsync(item)) return;
+        if (!await EnsureTracksAsync(item) || IsPlaybackExcluded(item.Rec)) return;
         target ??= item.Tracks.FirstOrDefault(t => t.HasPreview);
         if (target?.Preview is not { } url)
         {

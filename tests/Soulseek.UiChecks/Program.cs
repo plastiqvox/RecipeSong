@@ -18,6 +18,12 @@ static partial class Program
         var app = new App();
         app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (args.Length > 1 && args[1] == "--playback")
+        {
+            CheckExcludedPlayback(output);
+            Console.WriteLine("Excluded playback checks passed.");
+            return 0;
+        }
         if (args.Length > 1 && args[1] == "--pipeline")
         {
             L.Init(args.Length > 2 ? args[2] : "ko");
