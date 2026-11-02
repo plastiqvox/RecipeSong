@@ -96,11 +96,11 @@ public partial class PipelineWindow : Window
     /// 단계가 아닌 칸(데이터·규칙)은 테두리 없이 순서도 기호 아이콘(Icon) + 이름
     /// </summary>
     private sealed record Node(StageItem Item, Rectangle Frame, Border Body, TextBlock Title, Border Chip, TextBlock ChipText, TextBlock Detail,
-        Rectangle Ring, StackPanel Markers, Rectangle Bar, Path? Icon);
+        Rectangle Ring, StackPanel Markers, Rectangle Bar, Path? Contour);
 
-    // 순서도 기호 (PipelineWindow.xaml 범례와 같은 경로): 데이터 = 원통, 규칙 = 저울
-    private static readonly Geometry DataIcon = Geometry.Parse("M1,3 A6,2.2 0 0 1 13,3 L13,13 A6,2.2 0 0 1 1,13 Z M1,3 A6,2.2 0 0 0 13,3");
-    private static readonly Geometry RuleIcon = Geometry.Parse("M8,1.5 L8,14 M5,14.5 L11,14.5 M2,4 L14,4 M2,4 L0.5,9 M2,4 L3.5,9 M0.5,9 Q2,11.5 3.5,9 M14,4 L12.5,9 M14,4 L15.5,9 M12.5,9 Q14,11.5 15.5,9");
+    // 단계는 사각형, 데이터는 원통, 규칙은 접힌 메모. 이름·설명을 기호 안에 넣는다.
+    private static readonly Geometry DataContour = Geometry.Parse("M1,9 A99,8 0 0 1 199,9 L199,63 A99,8 0 0 1 1,63 Z M1,9 A99,8 0 0 0 199,9");
+    private static readonly Geometry RuleContour = Geometry.Parse("M1,1 L183,1 L199,17 L199,71 L1,71 Z M183,1 L183,17 L199,17");
 
     private void DrawNode(StageItem s)
     {
@@ -110,7 +110,7 @@ public partial class PipelineWindow : Window
         var chip = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(7, 1, 7, 2), Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top, Child = chipText };
         var sub = new TextBlock { Text = s.Sub, FontSize = 11, Foreground = Res("Muted"), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0) };
         var detail = new TextBlock { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 2, 0, 0) };
-        Path? icon = null;
+        Path? contour = null;
         StackPanel content;
         if (s.Kind == NodeKind.Step)
         {
@@ -122,22 +122,32 @@ public partial class PipelineWindow : Window
         }
         else
         {
-            // 단계가 아닌 칸: 상자 없이 아이콘 위, 이름 · 설명 아래 (가운데 맞춤)
-            icon = new Path
+            contour = new Path
             {
-                Data = s.Kind == NodeKind.Data ? DataIcon : RuleIcon, Width = 24, Height = 22, Stretch = Stretch.Uniform, StrokeThickness = 1.8,
-                StrokeLineJoin = PenLineJoin.Round, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 3),
-                ToolTip = s.Kind == NodeKind.Data ? L.T("추천 계산이 가져다 쓰는 저장된 것 (내 아카이브 · 내 곡 분석이 만든 소리 기준). 계산 단계가 아니라 색이 바뀌지 않아요") : L.T("계산 단계가 아니라 단계가 따르는 규칙 (장르 정하는 순서 · AI·웹진 거르기). 색이 바뀌지 않아요"),
+                Data = s.Kind == NodeKind.Data ? DataContour : RuleContour,
+                Width = r.Width, Height = r.Height, Stretch = Stretch.Fill, StrokeThickness = 1.4,
+                StrokeLineJoin = PenLineJoin.Round, IsHitTestVisible = false,
             };
+            title.FontSize = 12.5;
+            sub.FontSize = detail.FontSize = 10.5;
             chip.VerticalAlignment = VerticalAlignment.Center;
             sub.HorizontalAlignment = detail.HorizontalAlignment = HorizontalAlignment.Center;
-            var name = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Children = { title, chip } };
-            content = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { icon, name, sub, detail } };
+            var name = new DockPanel();
+            DockPanel.SetDock(chip, Dock.Right);
+            title.TextAlignment = TextAlignment.Center;
+            name.Children.Add(chip);
+            name.Children.Add(title);
+            content = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { name, sub, detail } };
         }
         var body = new Border
         {
             Width = r.Width, Height = r.Height, CornerRadius = new CornerRadius(10),
-            Padding = s.Kind == NodeKind.Step ? new Thickness(13, 8, 10, 6) : new Thickness(4, 0, 4, 0),
+            Padding = s.Kind switch
+            {
+                NodeKind.Step => new Thickness(13, 8, 10, 6),
+                NodeKind.Data => new Thickness(10, 18, 10, 7),
+                _ => new Thickness(12, 10, 18, 8),
+            },
             Child = content, ToolTip = s.Sub,
         };
         var frame = new Rectangle { Width = r.Width, Height = r.Height, RadiusX = 10, RadiusY = 10, IsHitTestVisible = false };
@@ -153,6 +163,12 @@ public partial class PipelineWindow : Window
             Canvas.SetTop(el, r.Top);
         }
         Chart.Children.Add(ring);
+        if (contour != null)
+        {
+            Canvas.SetLeft(contour, r.Left);
+            Canvas.SetTop(contour, r.Top);
+            Chart.Children.Add(contour);
+        }
         Chart.Children.Add(body);
         Chart.Children.Add(frame);
         Chart.Children.Add(markers);
@@ -162,7 +178,7 @@ public partial class PipelineWindow : Window
         Canvas.SetLeft(bar, r.Left + 3);
         Canvas.SetTop(bar, r.Bottom - 6);
         Chart.Children.Add(bar);
-        _nodes[s.Key] = new Node(s, frame, body, title, chip, chipText, detail, ring, markers, bar, icon);
+        _nodes[s.Key] = new Node(s, frame, body, title, chip, chipText, detail, ring, markers, bar, contour);
         s.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(StageItem.State) or nameof(StageItem.Time) or nameof(StageItem.Detail)) Paint();
@@ -269,6 +285,7 @@ public partial class PipelineWindow : Window
         var m = PipelineMonitor.Instance;
         var primary = m.Primary;
         var analysis = m.Runs.FirstOrDefault(r => r.Kind == RunKind.Analysis && !r.Ended);
+        var archive = m.Runs.FirstOrDefault(r => r.Kind == RunKind.Archive && !r.Ended);
         bool idle = primary == null && m.Runs.Count == 0;  // 이번 실행에서 아직 계산 없음 → '대기' 알약을 붙이지 않는다
         // 소리 서비스만 쓰는 옆 작업(좋아요 소리·수록곡·닮은 앨범)은 칸 고리 대신 '소리 서비스' 칸에만 보인다
         var others = m.Runs.Where(r => !r.Ended && r != primary && r.Kind is not (RunKind.Analysis or RunKind.Taste or RunKind.Tracks or RunKind.Similar)
@@ -278,7 +295,7 @@ public partial class PipelineWindow : Window
             var st = n.Item.State;
             bool isAnalysis = n.Item.Stage == RecStage.Analyze;
             // 진행 중 색: 분석 칸은 분석 색, 나머지는 주 계산 색
-            var run = isAnalysis ? analysis : primary;
+            var run = isAnalysis ? analysis : n.Item.Key == "archive" ? archive : primary;
             Brush line = run?.Brush ?? Res("Accent"), text = run?.TextBrush ?? Res("AccentText"), deep = run?.Deep ?? Res("AccentDeep");
             n.Frame.Stroke = st switch
             {
@@ -297,7 +314,7 @@ public partial class PipelineWindow : Window
                 StageState.Fixed => Res("Surface2"),
                 _ => Brushes.Transparent,
             };
-            n.Body.Opacity = n.Frame.Opacity = st == StageState.Skipped ? 0.35 : 1;
+            n.Body.Opacity = n.Frame.Opacity = st == StageState.Skipped && n.Item.Key != "archive" ? 0.35 : 1;
             n.Title.Foreground = st switch
             {
                 StageState.Current => text,
@@ -306,23 +323,31 @@ public partial class PipelineWindow : Window
                 StageState.Todo or StageState.Skipped => Res("Muted"),
                 _ => Res("Text"),
             };
-            n.Title.Text = st switch { StageState.Done => "✓ ", StageState.Current => "▶ ", StageState.Reused => "↺ ", _ => "" } + n.Item.Label;
-            if (n.Icon is { } icon)
+            n.Title.Text = (n.Item.Kind == NodeKind.Step
+                ? st switch { StageState.Done => "✓ ", StageState.Current => "▶ ", StageState.Reused => "↺ ", _ => "" } : "") + n.Item.Label;
+            if (n.Contour is { } contour)
             {
-                // 아이콘 칸: 테두리·바탕 없이 아이콘 색만 (내 곡 분석이 돌면 '내 곡 소리 기준' 아이콘이 분석 색)
+                // 상태 색은 유지하되 단계의 사각형 대신 데이터·규칙의 외곽선을 칠한다.
                 n.Frame.Visibility = Visibility.Collapsed;
                 n.Body.Background = Brushes.Transparent;
-                icon.Stroke = st switch { StageState.Current => line, StageState.Done => Res("Ok"), _ => Res("Text2") };
+                contour.Stroke = st switch { StageState.Current => line, StageState.Done => Res("Ok"), StageState.Reused => Reuse, _ => Res("Muted") };
+                contour.Fill = st switch { StageState.Current => deep, StageState.Done => DoneDeep, StageState.Reused => ReuseDeep, _ => Res("Surface2") };
+                contour.StrokeThickness = st == StageState.Current ? 2 : 1.4;
             }
-            n.Detail.Visibility = st == StageState.Current ? Visibility.Visible : Visibility.Collapsed;
+            n.Detail.Visibility = st == StageState.Current || (n.Item.Key == "archive" && n.Item.Detail.Length > 0)
+                ? Visibility.Visible : Visibility.Collapsed;
             // 진행 상태: 오래 조용하면(멈춘 건지 느린 건지) 문구 끝에 '소식 없음 n초'를 붙이고 노랗게
             var quiet = st == StageState.Current && n.Item.LastNews != default ? (DateTime.Now - n.Item.LastNews).TotalSeconds : 0;
-            n.Detail.Text = n.Item.Detail + (quiet >= 15 ? (n.Item.Detail.Length > 0 ? " · " : "") + L.F("{0:0}초째 소식 없음", quiet) : "");
+            var detail = n.Item.Key == "archive" ? n.Item.Detail.Split('\n')[0] : n.Item.Detail;
+            n.Detail.Text = detail + (quiet >= 15 ? (detail.Length > 0 ? " · " : "") + L.F("{0:0}초째 소식 없음", quiet) : "");
+            n.Body.ToolTip = n.Item.Label + "\n" + n.Item.Sub + (n.Item.Time.Length > 0 ? "\n" + n.Item.Time : "")
+                + (n.Item.Detail.Length > 0 ? "\n" + n.Item.Detail : "");
             n.Detail.Foreground = quiet >= 45 ? Quiet : text;
             var frac = st == StageState.Current ? Fraction(n.Item.Detail) : null;
             n.Bar.Visibility = frac != null ? Visibility.Visible : Visibility.Collapsed;
             if (frac is { } f) { n.Bar.Width = Math.Max(2, (n.Body.Width - 6) * f); n.Bar.Fill = line; }
-            var time = n.Item.Time;
+            // 데이터 칸은 제목·상태를 우선한다. 소요 시간은 작업 목록과 툴팁에서 본다.
+            var time = n.Item.Kind == NodeKind.Step ? n.Item.Time : "";
             (string text, Brush bg, Brush fg) chip = st switch
             {
                 StageState.Current => ((isAnalysis ? L.T("분석 중") : L.T("진행 중")) + (time.Length > 0 ? " " + time : ""), line, Res("OnAccent")),
@@ -333,6 +358,8 @@ public partial class PipelineWindow : Window
                 StageState.Skipped => (L.T("안 함"), Brushes.Transparent, Res("Muted")),
                 _ => ("", Brushes.Transparent, Brushes.Transparent),
             };
+            if (n.Item.Key == "archive" && st == StageState.Skipped)
+                chip = (L.T("멈춤"), Res("Line2"), Res("Text"));
             if (st == StageState.Current && n.Item.Detail == RecipeSong.Core.Sound.SoundService.WaitingText)
             {
                 // 소리 서비스가 앞 요청(다른 계산·멈춘 계산·옆 작업)을 처리하는 동안 차례를 기다린다
@@ -390,7 +417,38 @@ public partial class PipelineWindow : Window
         Rect a = Box(from), b = Box(to);
         const double gap = 6;
         var pts = new List<Point>();
-        if (from.Row == to.Row)
+        // 추가된 입력 칸을 지나가지 않도록 소리 기준·ZIP→ID·저장 결과의 선은 바깥 여백으로 돌린다.
+        if (from.Key == "base" && to.Key == "listen")
+        {
+            pts.Add(new(a.Left - gap, a.Top + NodeH / 2));
+            pts.Add(new(6, a.Top + NodeH / 2));
+            pts.Add(new(6, b.Top + NodeH / 2));
+            pts.Add(new(b.Left - gap, b.Top + NodeH / 2));
+        }
+        else if (from.Key == "archive" && to.Key == "identity")
+        {
+            pts.Add(new(a.Left - gap, a.Top + NodeH / 2));
+            pts.Add(new(23, a.Top + NodeH / 2));
+            pts.Add(new(23, b.Top + NodeH / 2));
+            pts.Add(new(b.Left - gap, b.Top + NodeH / 2));
+        }
+        else if (from.Key == "lib" && to.Key == "identity")
+        {
+            const double gutter = 267;
+            pts.Add(new(a.Left - gap, a.Top + NodeH / 2));
+            pts.Add(new(gutter, a.Top + NodeH / 2));
+            pts.Add(new(gutter, b.Top + NodeH / 2));
+            pts.Add(new(b.Right + gap, b.Top + NodeH / 2));
+        }
+        else if (from.Key == "saved" && to.Key == "screen")
+        {
+            const double gutter = 570;
+            pts.Add(new(a.Left - gap, a.Top + NodeH / 2));
+            pts.Add(new(gutter, a.Top + NodeH / 2));
+            pts.Add(new(gutter, b.Top + NodeH / 2));
+            pts.Add(new(b.Right + gap, b.Top + NodeH / 2));
+        }
+        else if (from.Row == to.Row)
         {
             bool right = to.Col > from.Col;
             pts.Add(new(right ? a.Right + gap : a.Left - gap, a.Top + NodeH / 2));

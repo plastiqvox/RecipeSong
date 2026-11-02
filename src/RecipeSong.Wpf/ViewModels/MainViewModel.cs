@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Text.RegularExpressions;
@@ -38,11 +39,61 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var cover = await _artwork.GetAsync(album, token);
             _artwork.Save();
             return cover.ArtworkUrl;
-        }, archives: await _library.GetArchiveAlbumsAsync(ct, refresh: true));
+        }, archives: await ReadArchivesAsync(ct, refresh: true));
     }
 
     private async Task<OwnedLibrary> LoadOwnedAsync(CancellationToken ct) =>
-        new(await _library.GetTracksAsync(ct), await _library.GetArchiveAlbumsAsync(ct));
+        new(await _library.GetTracksAsync(ct), await ReadArchivesAsync(ct));
+
+    private readonly SemaphoreSlim _archiveReadLock = new(1, 1);
+    private bool _archiveLoaded;
+
+    private async Task<IReadOnlyList<ArchiveAlbum>> ReadArchivesAsync(CancellationToken ct, bool refresh = false,
+        IProgress<ArchiveScanProgress>? progress = null)
+    {
+        progress?.Report(new(ArchiveScanStage.Waiting, "", 0, 0, 0, 0));
+        await _archiveReadLock.WaitAsync(ct);
+        StageProgress? monitor = null;
+        try
+        {
+            // 메모리에 있는 목록을 쓰는 호출은 새 읽기 작업으로 표시하지 않는다.
+            if (DebugPipeline && (refresh || !_archiveLoaded) && (_settings.ArchiveFolders.Count > 0 || refresh))
+            {
+                monitor = new StageProgress(L.F("ZIP 경로 {0}개", _settings.ArchiveFolders.Count), _ => { }, RunKind.Archive, primary: false);
+                monitor.Start();
+            }
+            var watch = Stopwatch.StartNew();
+            ArchiveScanStage? lastStage = null;
+            var reading = true;
+            var updates = new Progress<ArchiveScanProgress>(p =>
+            {
+                if (!reading) return;
+                progress?.Report(p);
+                if (monitor == null || (p.Stage == lastStage && watch.ElapsedMilliseconds < 250)) return;
+                lastStage = p.Stage;
+                watch.Restart();
+                var stage = p.Stage switch
+                {
+                    ArchiveScanStage.Waiting => L.T("다른 ZIP 읽기 작업을 기다리는 중…"),
+                    ArchiveScanStage.Enumerating => L.T("ZIP 경로를 확인하는 중…"),
+                    ArchiveScanStage.Saving => L.T("ZIP 색인을 저장하는 중…"),
+                    ArchiveScanStage.Completed => L.T("보유 정보를 적용하는 중…"),
+                    _ => L.T("ZIP 메타데이터를 읽는 중…"),
+                };
+                monitor.Note(L.F("ZIP {0}개 처리 · 앨범 {1}개 · 재사용 {2}개 · 경고 {3}개", p.Processed, p.Albums, p.Reused, p.Warnings)
+                    + "\n" + stage + (p.CurrentPath.Length > 0 ? "\n" + p.CurrentPath : ""));
+            });
+            IReadOnlyList<ArchiveAlbum> albums;
+            try { albums = await _library.GetArchiveAlbumsAsync(ct, refresh, updates); }
+            finally { reading = false; }
+            _archiveLoaded = true;
+            monitor?.CompleteArchive(L.F("ZIP 보유 앨범 {0}개 · 취향 평가는 중립", albums.Count));
+            return albums;
+        }
+        catch (OperationCanceledException) { monitor?.Finish(L.T("ZIP 읽기 취소")); throw; }
+        catch (Exception ex) { monitor?.Finish(L.F("ZIP 읽기 실패: {0}", ex.Message)); throw; }
+        finally { _archiveReadLock.Release(); }
+    }
 
     [ObservableProperty] private bool _archiveBusy;
     public int ArchiveAlbumCount => _library.ArchiveCount;
@@ -53,7 +104,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ArchiveBusy = true;
         try
         {
-            var albums = await _library.GetArchiveAlbumsAsync(ct, refresh: true, progress: progress);
+            var albums = await ReadArchivesAsync(ct, refresh: true, progress: progress);
             _owned = await LoadOwnedAsync(ct);
             _recommender.SetIdentityLibrary(await _library.GetTracksAsync(ct), albums);
             await _poolLock.WaitAsync(ct);
@@ -1685,7 +1736,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             var tracks = await _library.GetTracksAsync(ct);
-            _recommender.SetIdentityLibrary(tracks, await _library.GetArchiveAlbumsAsync(ct));
+            _recommender.SetIdentityLibrary(tracks, await ReadArchivesAsync(ct));
             var identityVersion = _recommender.IdentityVersion;
             if (_pools.TryGetValue(key, out var p) && DateTime.Now - p.BuiltAt < TimeSpan.FromHours(12)
                 && _poolFavVersion.GetValueOrDefault(key) == FavoritesVersion && _poolIdentityVersion.GetValueOrDefault(key) == identityVersion)
@@ -2141,6 +2192,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                     RecSavedNote = L.F("방금 계산 · {0:M.d HH:mm}", DateTime.Now);
                 }
             }
+            if (RecSavedNote.Length > 0) stages?.SavedResult(RecSavedNote, reused: !computed);
             if (!computed) stages?.Finish(stale ? L.T("저장된 추천을 먼저 보여 줌 · 뒤에서 새로 계산") : L.T("저장된 추천을 보여 줌 · 새로 계산하지 않음"));
             if (ct.IsCancellationRequested) return;
             _all = [.. releases.Select(r => MakeItem(r))];

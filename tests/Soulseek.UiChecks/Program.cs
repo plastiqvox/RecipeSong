@@ -18,6 +18,13 @@ static partial class Program
         var app = new App();
         app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (args.Length > 1 && args[1] == "--pipeline")
+        {
+            L.Init(args.Length > 2 ? args[2] : "ko");
+            CheckPipeline(output);
+            Console.WriteLine("Pipeline UI checks passed.");
+            return 0;
+        }
         CheckRecommendationSettingsEdits(output);
         // OnStartup과 Application.Run은 호출하지 않는다. 사용자 앱·설정·소리 서비스·네트워크에 접근하지 않는다.
         foreach (var language in new[] { "ko", "en" })
@@ -401,6 +408,8 @@ static partial class Program
     static void RenderWindow(Window window, string path, int width, int height)
     {
         var content = (FrameworkElement)window.Content;
+        if (content.ReadLocalValue(FrameworkElement.DataContextProperty) == DependencyProperty.UnsetValue)
+            content.DataContext = window.DataContext;
         window.Content = null;
         content.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/RecipeSong.Wpf;component/SoulseekStyles.xaml", UriKind.Relative) });
         Render(content, path, width, height);
