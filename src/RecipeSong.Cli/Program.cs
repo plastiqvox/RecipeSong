@@ -58,7 +58,7 @@ if (cmd == "ai-recover")
     Console.WriteLine($"{by} 제출 {picks.Count}장 다시 확인");
     var recov = new ReleaseRecommender(new DeezerClient(new HttpClient()));
     List<ReleaseRecommendation> bare = [];
-    var (_, _, olderWeeks) = await recov.ScoreAiPicksAsync(picks, new OwnedLibrary(await library.GetTracksAsync()), null, matched: b => bare = [.. b]);
+    var (_, _, olderWeeks) = await recov.ScoreAiPicksAsync(picks, new OwnedLibrary(await library.GetTracksAsync(), await library.GetArchiveAlbumsAsync()), null, matched: b => bare = [.. b]);
     bare = [.. bare, .. olderWeeks];
     var cache = new JsonCache<List<ReleaseRecommendation>>("ai-picks", TimeSpan.FromDays(3650));
     foreach (var g in bare.GroupBy(r => Periods.Create(PeriodKind.Week, r.ReleaseDate.ToDateTime(TimeOnly.MinValue)).Label))
@@ -97,7 +97,8 @@ if (cmd == "recommend")
     var http = new HttpClient();
     var rec = new ReleaseRecommender(new DeezerClient(http), new GenreSources(new HttpClient(), GenreSourceSettings.Load()), sound);
     var sw = System.Diagnostics.Stopwatch.StartNew();
-    rec.SetIdentityLibrary(tracks);
+    var archives = await library.GetArchiveAlbumsAsync();
+    rec.SetIdentityLibrary(tracks, archives);
     var mine = TasteProfile.LibraryArtists(tracks);
     var pool = await rec.BuildPoolAsync(seeds, mine, progress: progress);
     if (pool.MinePending > 0)
@@ -107,7 +108,7 @@ if (cmd == "recommend")
         pool = await rec.BuildPoolAsync(seeds, mine, progress: progress);
     }
     Console.WriteLine($"후보 풀: 아티스트 {pool.Artists.Count}명 (라이브러리 뮤지션 {pool.Artists.Count(a => a.Mine != null)}), {sw.Elapsed.TotalSeconds:F1}초");
-    var owned = new OwnedLibrary(tracks);
+    var owned = new OwnedLibrary(tracks, archives);
     // 같은 풀로 앞의 두 주를 더 돌려서 기간별 추천 속도를 확인
     foreach (var extra in Enumerable.Range(1, 2).Select(w => Periods.Create(PeriodKind.Week, period.Start.AddDays(-7 * w))))
     {

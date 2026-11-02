@@ -38,7 +38,30 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var cover = await _artwork.GetAsync(album, token);
             _artwork.Save();
             return cover.ArtworkUrl;
-        });
+        }, archives: await _library.GetArchiveAlbumsAsync(ct, refresh: true));
+    }
+
+    private async Task<OwnedLibrary> LoadOwnedAsync(CancellationToken ct) =>
+        new(await _library.GetTracksAsync(ct), await _library.GetArchiveAlbumsAsync(ct));
+
+    [ObservableProperty] private bool _archiveBusy;
+    public int ArchiveAlbumCount => _library.ArchiveCount;
+    public IReadOnlyList<string> ArchiveWarnings => _library.ArchiveWarnings;
+    public async Task<(int Count, IReadOnlyList<string> Warnings)> RefreshArchiveAsync(CancellationToken ct,
+        IProgress<RecipeSong.Core.Library.ArchiveScanProgress>? progress = null)
+    {
+        ArchiveBusy = true;
+        try
+        {
+            var albums = await _library.GetArchiveAlbumsAsync(ct, refresh: true, progress: progress);
+            _owned = await LoadOwnedAsync(ct);
+            _recommender.SetIdentityLibrary(await _library.GetTracksAsync(ct), albums);
+            await _poolLock.WaitAsync(ct);
+            try { _pools.Clear(); } finally { _poolLock.Release(); }
+            ApplyFilters();
+            return (albums.Count, _library.ArchiveWarnings);
+        }
+        finally { ArchiveBusy = false; }
     }
 
     public ReleaseRecommendation DownloadRecommendation(AlbumDownload job)
@@ -224,7 +247,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             m => { if (!ct.IsCancellationRequested) BusyText = L.F("팔로우 뮤지션 신보 확인 중 · {0}", m); }, RunKind.Follow, primary: false);
         try
         {
-            _owned ??= new OwnedLibrary(await _library.GetTracksAsync(ct));
+            _owned ??= await LoadOwnedAsync(ct);
             var recs = await Task.Run(() => _recommender.FollowedAsync(_follows.AsPlaylistArtists(), _owned, period, RecOptions.ForPeriod(period.Kind), progress, ct), ct);
             if (ct.IsCancellationRequested || CurrentPeriod.Label != period.Label) return;
             var byId = recs.ToDictionary(r => r.DeezerAlbumId);
@@ -761,7 +784,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var all = AiPicksFor(period);
             var bare = all.Where(r => r.Taste == null && r.Crate == null).ToList();
             if (bare.Count == 0) return;
-            _owned ??= new OwnedLibrary(await _library.GetTracksAsync(_life.Token));
+            _owned ??= await LoadOwnedAsync(_life.Token);
             var scored = await _recommender.RescoreAsync(bare, _owned, progress, _life.Token);
             var byId = scored.ToDictionary(r => r.DeezerAlbumId);
             _aiPicks.Set(AiKey(period), [.. all.Select(r => byId.GetValueOrDefault(r.DeezerAlbumId, r))]);
@@ -1016,7 +1039,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var picks = runs.SelectMany(r => r.picks).ToList();
             // 웹 검색부터 순서도에 올렸으니, 찾은 게 없으면 거기서 끝낸다 (아니면 AI 칸이 계속 '진행 중'으로 남는다)
             if (picks.Count == 0) (progress as StageProgress)?.Finish(L.T("AI가 찾은 앨범 없음"));
-            _owned ??= new OwnedLibrary(tracks);
+            _owned ??= await LoadOwnedAsync(_life.Token);
             // Deezer 확인이 끝나면 점수 전에 먼저 저장한다: 소리 서비스가 다른 기간 분석으로 바쁘면 점수가 한참 걸리고,
             // 그사이 앱을 끄면 AI 비용만 쓰고 결과가 사라졌다. 점수 없는 추천은 기간을 열 때 다시 점수를 매긴다
             void SaveMatched(IReadOnlyList<ReleaseRecommendation> bare)
@@ -1433,7 +1456,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 || _owned?.HasAlbum(i.Artist, original) == true);
         // 라이브판 · 리믹스: 제목으로 거른다 (추천 설정, 저장된 결과에도 바로)
         bool live = _recPrefs.ExcludeLive, remix = _recPrefs.ExcludeRemix;
-        return _all.Where(i => !_blocked.IsBlocked(i.Rec) && !RedundantInstrumental(i))
+        return _all.Where(i => !_blocked.IsBlocked(i.Rec) && !RedundantInstrumental(i) && _owned?.HasArchiveAlbum(i.Artist, i.Album) != true)
             .Where(i => !(live && AlbumVariants.IsLive(i.Album)) && !(remix && AlbumVariants.IsRemix(i.Album)))
             .Where(i => !i.IsDisliked
             && !(i.Rec.FromPlaylist == null && dislikedArtists.Contains(ListeningAnalyzer.NormalizeArtist(i.Rec.Artist))))
@@ -1496,7 +1519,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (picks.Count > 0)
             {
-                _owned ??= new OwnedLibrary(await _library.GetTracksAsync(_life.Token));
+                _owned ??= await LoadOwnedAsync(_life.Token);
                 var (recs, _, _) = await _recommender.ScoreAiPicksAsync(picks, _owned, null, progress, _life.Token);
                 var all = AllWebzinePicks().ToDictionary(r => r.DeezerAlbumId);
                 foreach (var r in recs)
@@ -1622,7 +1645,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         IsBusy = true;
         BusyText = L.T("아카이브 읽는 중…");
         var tracks = await _library.GetTracksAsync(_life.Token);
-        _owned = new OwnedLibrary(tracks);
+        _owned = await LoadOwnedAsync(_life.Token);
         BuildFileIndex(tracks);
         WatchLibrary();
         _ = StartSoundAsync();
@@ -1662,7 +1685,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             var tracks = await _library.GetTracksAsync(ct);
-            _recommender.SetIdentityLibrary(tracks);
+            _recommender.SetIdentityLibrary(tracks, await _library.GetArchiveAlbumsAsync(ct));
             var identityVersion = _recommender.IdentityVersion;
             if (_pools.TryGetValue(key, out var p) && DateTime.Now - p.BuiltAt < TimeSpan.FromHours(12)
                 && _poolFavVersion.GetValueOrDefault(key) == FavoritesVersion && _poolIdentityVersion.GetValueOrDefault(key) == identityVersion)
@@ -1870,16 +1893,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private CancellationTokenSource? _preciseCts;
 
     /// <summary>촘촘한 계산의 조각: 월·연 → 그 기간에 걸친 주 (오늘 이후는 뺀다)</summary>
-    private static List<Period> PartsOf(Period p)
-    {
-        if (p.Kind == PeriodKind.Week) return [];
-        var weeks = new List<Period>();
-        for (var d = p.Start; d < p.End && d <= DateTime.Today; d = d.AddDays(7))
-            weeks.Add(Periods.Create(PeriodKind.Week, d));
-        var last = Periods.Create(PeriodKind.Week, p.End.AddDays(-1));
-        if (last.Start <= DateTime.Today && weeks.All(w => w.Label != last.Label)) weeks.Add(last);
-        return [.. weeks.DistinctBy(w => w.Label)];
-    }
+    private static List<Period> PartsOf(Period p) => Periods.IntersectingWeeks(p, DateTime.Today);
 
     /// <summary>예전 연 촘촘한 계산의 조각 (1월~이번 달) — 그때 저장한 연 결과를 계속 합쳐 보여 주려고</summary>
     private static List<Period> MonthsOf(Period p) =>
@@ -1927,7 +1941,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         int done = 0, skipped = 0;
         try
         {
-            _owned ??= new OwnedLibrary(await _library.GetTracksAsync(ct));
+            _owned ??= await LoadOwnedAsync(ct);
             var prep = Tracked(L.F("{0} 준비", title), m => PreciseText = L.F("{0} 준비 · {1}", title, m), RunKind.Precise);
             CandidatePool pool;
             try { pool = await PoolAsync(prep, ct); }
@@ -1944,7 +1958,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 RecommendationResult result;
                 try { result = await _recommender.RecommendAsync(pool, _owned, part, RecOptions.ForPeriod(part.Kind), progress, ct); }
                 finally { Stopped(progress); }
-                if (result.SoundScored && result.Releases.Count > 0)
+                ct.ThrowIfCancellationRequested();
+                if (result.CanCache)
                 {
                     _recResults.Set(key, [.. result.Releases]);
                     _recHistory.Set(part.Label, new RecHistory(part.Kind, part.Start, part.End, DateTime.Now, result.Releases.Count));
@@ -2006,12 +2021,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var progress = Tracked(L.F("{0} · 뒤에서 새로 계산", period.Display), m => { if (!ct.IsCancellationRequested) BusyText = L.F("저장된 추천을 보여 주는 중 · 새로 계산: {0}", m); }, RunKind.Refresh);
         try
         {
-            _owned ??= new OwnedLibrary(await _library.GetTracksAsync(ct));
+            _owned ??= await LoadOwnedAsync(ct);
             var pool = await PoolAsync(progress, ct);
             var result = await _recommender.RecommendAsync(pool, _owned, period, RecOptions.ForPeriod(period.Kind), progress, ct);
             if (ct.IsCancellationRequested) return;
-            // 소리 분석까지 된 결과만 저장 (아니면 보던 저장 결과를 그대로 둔다)
-            if (!result.SoundScored || result.Releases.Count == 0)
+            // 정상 완료한 빈 결과도 저장한다. 소리 분석 실패면 보던 결과를 그대로 둔다.
+            if (!result.CanCache)
             {
                 BusyText = L.T("새로 계산하지 못해 저장된 추천을 그대로 보여 줘요");
                 return;
@@ -2109,15 +2124,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             else
             {
                 computed = true;
-                _owned ??= new OwnedLibrary(await _library.GetTracksAsync(ct));
+                _owned ??= await LoadOwnedAsync(ct);
                 var pool = await PoolAsync(progress, ct);
                 var result = await _recommender.RecommendAsync(pool, _owned, period, RecOptions.ForPeriod(period.Kind), progress, ct);
                 if (ct.IsCancellationRequested) return;
                 releases = [.. result.Releases];
-                soundScored = result.SoundScored;
+                soundScored = result.CanCache;  // 후보가 없는 기간도 정상 완료이며 소리 분석은 필요 없다.
                 fresh = soundScored;
-                // 소리 분석까지 된 결과만 저장 (소리 서비스가 늦게 뜬 경우는 다음에 다시 계산)
-                if (soundScored && releases.Count > 0)
+                // 정상 완료한 빈 기간도 저장한다. 소리 서비스가 늦게 떠 분석하지 못한 결과는 재시도한다.
+                if (result.CanCache)
                 {
                     _recResults.Set(key, releases);
                     _recHistory.Set(period.Label, new RecHistory(period.Kind, period.Start, period.End, DateTime.Now, releases.Count));
@@ -2565,7 +2580,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var r = await _sound.UpdateAsync(progress, _life.Token);
             UpdateProgressText = first ? L.F("분석 완료 · {0:N0}곡", r.Added) : L.F("새 곡 {0}곡 반영", r.Added);
             _library.Invalidate();
-            _owned = new OwnedLibrary(await _library.GetTracksAsync(_life.Token));
+            _owned = await LoadOwnedAsync(_life.Token);
             _pools.Clear();  // 많이 듣는 아티스트가 바뀌었을 수 있으니 시드부터 다시
             _mine = null;
             if (first) _ = LoadAsync();  // 이제 소리로 판정한다

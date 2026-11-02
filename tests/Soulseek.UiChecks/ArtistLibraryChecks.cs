@@ -83,6 +83,43 @@ static partial class Program
             ((TextBox)view.FindName("ArtistQuery")).Text = "";
             ((ComboBox)view.FindName("PlaylistBox")).SelectedIndex = 1;
             if (artists.Items.Count != 1) throw new Exception("Specific playlist selection failed.");
+            ((CheckBox)view.FindName("AlbumBox")).IsChecked = true;
+            ((CheckBox)view.FindName("EpBox")).IsChecked = true;
+            ((CheckBox)view.FindName("SingleBox")).IsChecked = false;
+            artists.SelectedIndex = 0;
+            await WaitFor(() => candidates.SelectedItem != null && !view.IsSearching);
+            var originalMusician = (PlaylistMusician)artists.SelectedItem;
+            ((TextBox)view.FindName("DirectArtistQuery")).Text = "Other artist";
+            var directSearch = (Button)view.FindName("DirectArtistSearchButton");
+            directSearch.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitFor(() => directSearch.IsEnabled && candidates.Items.Count == 2 && artists.SelectedItem == null);
+            candidates.SelectedIndex = 0; // 플리에서 확정했던 ID 7과 다른 동명이인
+            var keptIdentity = await discovery.ResolveArtistAsync(originalMusician, CancellationToken.None);
+            if (keptIdentity.SelectedId != 7 || ((Button)view.FindName("ResetIdentityButton")).IsEnabled)
+                throw new Exception("Direct search overwrote the playlist artist's identity.");
+            candidates.SelectedIndex = 1;
+            ((Button)view.FindName("FindButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var includeOwned = (CheckBox)view.FindName("IncludeOwnedBox");
+            await WaitFor(() => !view.IsSearching && ((Button)view.FindName("FindButton")).IsEnabled);
+            if (albums.Items.Count != 4) throw new Exception("Direct album count: " + albums.Items.Count + " · " + ((TextBlock)view.FindName("StatusText")).Text);
+            if (includeOwned.IsChecked != true || !albums.Items.Cast<DiscoveredAlbum>().Any(a => a.Ownership == CatalogOwnership.InLibrary))
+                throw new Exception("Direct artist search must include owned albums by default.");
+            includeOwned.IsChecked = false;
+            if (albums.Items.Count != 2) throw new Exception("Owned album filter did not restore missing albums only.");
+            includeOwned.IsChecked = true;
+            albums.SelectedItem = albums.Items.Cast<DiscoveredAlbum>().Single(a => a.Title == "Missing album");
+            await WaitFor(() => search.IsEnabled);
+            requested = null;
+            search.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            if (requested?.DeezerAlbumId != 2 || requested.Artist != "Test artist")
+                throw new Exception("Direct artist lookup did not forward the selected album to Soulseek.");
+            if (discovery.Musicians().Count != 1 || discovery.Musicians()[0].Tracks.Count != 1)
+                throw new Exception("Direct search modified the curated playlist artist list.");
+            Render(view, Path.Combine(output, language + "-direct-artist.png"), 1040, 950);
+            Render(view, Path.Combine(output, language + "-direct-artist-narrow.png"), 700, 950);
+            artists.SelectedIndex = 0;
+            await WaitFor(() => candidates.SelectedItem != null && !view.IsSearching);
+            if (includeOwned.IsChecked != false) throw new Exception("Returning to a playlist artist left direct-search defaults active.");
         });
         using var fallbackHttp = new HttpClient(new ArtistCatalogHandler(new Uri(coverPath).AbsoluteUri, ambiguous: true));
         var fallbackDiscovery = new ArtistAlbumDiscovery(new DeezerClient(fallbackHttp), [song, mostPlayed, secondPlayed], playlists, [], identityStore: FreshIdentityStore());
@@ -129,6 +166,14 @@ static partial class Program
             await WaitFor(() => status.Text == L.T("카탈로그에서 아티스트를 찾지 못했어요."));
             if (((StackPanel)emptyView.FindName("CandidateChoices")).Visibility != Visibility.Collapsed
                 || ((Button)emptyView.FindName("FindButton")).IsEnabled) throw new Exception("Empty ID search must not expose invalid candidates.");
+            ((TextBox)emptyView.FindName("DirectArtistQuery")).Text = "No catalog match";
+            var direct = (Button)emptyView.FindName("DirectArtistSearchButton");
+            direct.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitFor(() => direct.IsEnabled && !emptyView.IsSearching);
+            if (((ComboBox)emptyView.FindName("CandidateBox")).Items.Count != 0
+                || ((Button)emptyView.FindName("FindButton")).IsEnabled || ((Button)emptyView.FindName("SearchButton")).IsEnabled)
+                throw new Exception("Empty direct search retained a downloadable selection.");
+            Render(emptyView, Path.Combine(output, language + "-direct-artist-empty.png"), 700, 850);
         });
     }
 
@@ -174,7 +219,7 @@ static partial class Program
             if (path == "/artist/7/albums")
             {
                 json = json.Replace("\"id\":2,", "\"cover_big\":" + System.Text.Json.JsonSerializer.Serialize(cover) + ",\"id\":2,");
-                json = json.Replace("\"data\":[", "\"data\":[{\"id\":8,\"title\":\"Most played album\",\"nb_tracks\":1},{\"id\":9,\"title\":\"Second most played album\",\"nb_tracks\":1},");
+                json = json.Replace("\"data\":[", "\"data\":[{\"id\":8,\"title\":\"Most played album\",\"nb_tracks\":1,\"record_type\":\"album\",\"release_date\":\"2018-01-01\"},{\"id\":9,\"title\":\"Second most played album\",\"nb_tracks\":1,\"record_type\":\"album\",\"release_date\":\"2019-01-01\"},");
             }
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) });
         }

@@ -24,8 +24,9 @@ public sealed class LibraryTools(LibraryService library, ReleaseRecommender reco
     {
         var tracks = await library.GetTracksAsync(ct);
         var p = Periods.Parse(period, kind);
-        recommender.SetIdentityLibrary(tracks);
-        var r = await recommender.RecommendAsync(await SeedsAsync(ct), new OwnedLibrary(tracks), p, ct: ct);
+        var archives = await library.GetArchiveAlbumsAsync(ct);
+        recommender.SetIdentityLibrary(tracks, archives);
+        var r = await recommender.RecommendAsync(await SeedsAsync(ct), new OwnedLibrary(tracks, archives), p, ct: ct);
         return new
         {
             period = p.Label,

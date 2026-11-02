@@ -40,6 +40,30 @@ static partial class Program
         Render(panel, Path.Combine(output, language + "-recommendation-calculation-disabled.png"), 390, 230);
         CheckRecommendationToolbar(output, language);
         RenderRecommendationSettingsTabs(output, language);
+        RenderArchiveSettings(output, language);
+    }
+
+    static void RenderArchiveSettings(string output, string language)
+    {
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var document = XDocument.Load(Path.Combine("src", "RecipeSong.Wpf", "SettingsWindow.xaml"));
+        var root = document.Root!;
+        root.Attribute(x + "Class")!.Remove();
+        root.SetAttributeValue("Icon", "/RecipeSong.Wpf;component/Assets/logo.png");
+        root.SetAttributeValue(XNamespace.Xmlns + "local", "clr-namespace:RecipeSong.Wpf;assembly=RecipeSong.Wpf");
+        foreach (var attribute in root.Descendants().Attributes().Where(a => a.Name.LocalName is "Click" or "Checked" or "Unchecked").ToList()) attribute.Remove();
+        var window = (Window)XamlReader.Parse(root.ToString());
+        ((TextBlock)window.FindName("VersionText")).Text = "RecipeSong 0.3";
+        ((TextBlock)window.FindName("ArchiveResult")).Text = L.F("ZIP 보유 앨범 {0}개 · 취향 평가는 중립", 42);
+        var content = (FrameworkElement)window.Content;
+        window.Content = null;
+        Render(content, Path.Combine(output, language + "-archive-settings.png"), 884, 760);
+        Render(content, Path.Combine(output, language + "-archive-settings-small.png"), 784, 560);
+        ((TextBlock)window.FindName("ArchiveResult")).Text = L.T("ZIP 메타데이터를 읽는 중…") + "\n"
+            + L.F("ZIP {0}개 처리 · 앨범 {1}개 · 재사용 {2}개 · 경고 {3}개", 120, 110, 95, 2)
+            + "\n[2026.02.03] (Album) Cory Wong - Lost In The Wonder.zip";
+        Render(content, Path.Combine(output, language + "-archive-reading.png"), 884, 760);
+        window.Close();
     }
 
     static void RenderRecommendationSettingsTabs(string output, string language)

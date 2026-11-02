@@ -1,18 +1,19 @@
 // 추천 흐름 그림 원본 (shorts-deck 스킬).
 //   node ~/.claude/skills/shorts-deck/build.mjs docs/images/recommendation.mjs
 // → recommendation-flow.svg, genre-ladder.svg. 추천 방식을 바꾸면 이 파일을 고치고 다시 만든다.
-// tone "focus" 는 0.2 변경과 통합 뮤지션 ID DB (수동 우선·보유 정보 대조)를 강조한다.
+// tone "focus" 는 통합 뮤지션 ID DB와 ZIP 보유 정보의 분리 등을 강조한다.
 export default (k) => {
   const X = { l: 300, c: 800, r: 1300 };
   const Y = (i) => 90 + i * 165;
   const C = (x, i, title, line, tone) => k.card(x, Y(i), title, [line], { w: x === X.c ? 440 : 400, size: 24, tone });
 
-  const lib = C(X.c, 0, "내 아카이브 전체", "플레이리스트와 상관없이");
+  const lib = C(X.c, 0, "내 라이브러리 전체", "iTunes·플리 · ZIP 보유와 분리");
+  const archive = C(X.l, 3, "앨범 ZIP 보유 목록", "중복 제외·ID 대조만 · 취향 중립", "focus");
   const base = C(X.l, 1, "내 곡 소리 기준", "하트 1 · 90일+ 안 들은 곡 0", "focus");
   const seed = C(X.c, 1, "시드 아티스트", "곡 가중치 합 상위 80명 + 하트·팔로우", "focus");
   const similar = C(X.c, 2, "비슷한 아티스트 2단계", "Deezer 연관 + Last.fm · 상위 1,000명", "focus");
   const mine = C(X.r, 2, "내 아카이브 뮤지션", "가중치 상위 500명 · 신보 항상 앞", "focus");
-  const identity = k.card(X.r, Y(1), "뮤지션 ID · SQLite", ["수동 우선 · 보유 앨범/곡명 대조", "보유 정보 변경 · ID 다시 찾기"], { w: 400, size: 22, tone: "focus" });
+  const identity = k.card(X.r, Y(1), "뮤지션 ID · SQLite", ["라이브러리·ZIP 앨범명 대조", "수동 우선 · 보유 정보 변경 시 확인"], { w: 400, size: 22, tone: "focus" });
   const rel = C(X.c, 3, "그 기간 발매작", "가진 앨범·차단 빼고");
   const listen = C(X.c, 4, "미리듣기 소리 분석", "CLAP · 앨범당 최대 20곡");
   const ai = C(X.r, 4, "AI 커넥터 · 웹진", "Deezer에서 있는지 확인");
@@ -36,16 +37,17 @@ export default (k) => {
       down(lib, seed, "많이 듣고 좋아한"),
       down(seed, similar, "연관 아티스트"),
       down(similar, rel, "디스코그래피"),
+      A([k.edge(archive, "right"), k.edge(rel, "left")]),
       A([k.edge(mine, "bottom"), [X.r, rel.y], k.edge(rel, "right")], "항상 포함"),
       down(rel, listen, "30초 미리듣기"),
-      A([k.edge(base, "bottom"), [X.l, listen.y], k.edge(listen, "left")], "비교 기준 (가장 닮은 20곡)"),
+      A([k.edge(base, "bottom"), [X.l, 340], [40, 340], [40, listen.y], k.edge(listen, "left")], "비교 기준 (가장 닮은 20곡)"),
       A([k.edge(ai, "left"), k.edge(listen, "right")]),
       down(listen, score, "닮음 · 좋아요/별로 닮음"),
       down(score, crate, "점수 높은 순"),
       A([k.edge(ladder, "right"), k.edge(crate, "left")]),
       down(crate, screen, "칸마다 묶기"),
       A([k.edge(gate, "left"), k.edge(screen, "right")], null, { dashed: true }),
-      lib, base, seed, similar, mine, identity, rel, listen, ai, score, ladder, crate, screen, gate,
+      lib, base, seed, similar, mine, identity, archive, rel, listen, ai, score, ladder, crate, screen, gate,
     ],
   };
 

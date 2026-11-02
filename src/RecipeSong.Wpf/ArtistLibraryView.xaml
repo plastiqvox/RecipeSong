@@ -16,6 +16,15 @@
                     <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource RefreshIcon}"/>
                 </Button>
             </WrapPanel>
+            <TextBlock Text="{local:Tr '아티스트 직접 검색'}" Foreground="{StaticResource Text2}" FontSize="12" Margin="0,4,0,5"/>
+            <DockPanel MaxWidth="600" HorizontalAlignment="Left" Margin="0,0,0,10">
+                <Button x:Name="DirectArtistSearchButton" DockPanel.Dock="Right" Style="{StaticResource UtilityIconButton}" Margin="6,0,0,0" IsEnabled="False"
+                        Click="DirectArtistSearch_Click" ToolTip="{local:Tr '아티스트 직접 검색'}" AutomationProperties.Name="{local:Tr '아티스트 직접 검색'}">
+                    <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource SearchIcon}"/>
+                </Button>
+                <TextBox x:Name="DirectArtistQuery" MinWidth="240" MinHeight="36" VerticalContentAlignment="Center" KeyDown="DirectArtistQuery_KeyDown"
+                         AutomationProperties.Name="{local:Tr '직접 검색할 아티스트 이름'}" ToolTip="{local:Tr '플리에 없는 아티스트도 이름으로 찾을 수 있어요.'}"/>
+            </DockPanel>
         </StackPanel>
         <TextBlock x:Name="StatusText" Grid.Row="1" TextWrapping="Wrap" Foreground="{StaticResource Text2}" Margin="0,0,0,12"/>
         <Grid Grid.Row="2">
@@ -58,7 +67,7 @@
                             ToolTip="{local:Tr '이 아티스트의 저장된 ID를 지우고 보유 정보로 다시 대조해요.'}"/>
                     <TextBlock x:Name="ArtistTitle" Text="{local:Tr '왼쪽에서 아티스트를 골라 주세요.'}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
                 </DockPanel>
-                <Expander Grid.Row="1" Header="{local:Tr '내 플리에 담긴 곡'}" Margin="0,0,0,10"><ListBox x:Name="MySongs" MaxHeight="150" DisplayMemberPath="Title"/></Expander>
+                <Expander x:Name="PlaylistSongsPanel" Grid.Row="1" Header="{local:Tr '내 플리에 담긴 곡'}" Margin="0,0,0,10"><ListBox x:Name="MySongs" MaxHeight="150" DisplayMemberPath="Title"/></Expander>
                 <StackPanel Grid.Row="2">
                     <TextBlock Text="{local:Tr '동명이인이 아닌지 확인한 뒤 앨범을 불러오세요.'}" Foreground="{StaticResource Text2}" FontSize="12" TextWrapping="Wrap"/>
                     <DockPanel Margin="0,7,0,8">
@@ -75,6 +84,7 @@
                     </StackPanel>
                 </StackPanel>
                 <WrapPanel Grid.Row="3" Margin="0,0,0,10">
+                    <CheckBox x:Name="IncludeOwnedBox" Content="{local:Tr '보유 앨범 포함'}" Checked="Type_Changed" Unchecked="Type_Changed" Margin="0,0,14,6"/>
                     <CheckBox x:Name="AlbumBox" Content="{local:Tr '정규'}" IsChecked="True" Checked="Type_Changed" Unchecked="Type_Changed" Margin="0,0,14,6"/>
                     <CheckBox x:Name="EpBox" Content="EP" IsChecked="True" Checked="Type_Changed" Unchecked="Type_Changed" Margin="0,0,14,6"/>
                     <CheckBox x:Name="SingleBox" Content="{local:Tr '싱글'}" Checked="Type_Changed" Unchecked="Type_Changed" Margin="0,0,14,6"/>

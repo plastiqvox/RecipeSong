@@ -98,12 +98,14 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
     private readonly ArtistIdentityStore _identities = identityStore ?? new();
     private ArtistAlbumDiscovery? _identityLibrary;
     private IReadOnlyList<TrackRecord>? _identityTracks;
+    private IReadOnlyList<Library.ArchiveAlbum>? _identityArchives;
     public long IdentityVersion => _identities.Revision;
-    public void SetIdentityLibrary(IReadOnlyList<TrackRecord> tracks)
+    public void SetIdentityLibrary(IReadOnlyList<TrackRecord> tracks, IReadOnlyList<Library.ArchiveAlbum>? archives = null)
     {
-        if (ReferenceEquals(_identityTracks, tracks)) return;
+        if (ReferenceEquals(_identityTracks, tracks) && ReferenceEquals(_identityArchives, archives)) return;
         _identityTracks = tracks;
-        _identityLibrary = new(deezer, tracks, [], [], identityStore: _identities);
+        _identityArchives = archives;
+        _identityLibrary = new(deezer, tracks, [], [], identityStore: _identities, archives: archives);
     }
     public StoredArtistIdentity? KnownIdentity(string name) => _identities.FindValid(name, _identityLibrary?.EvidenceHash(name));
     private readonly JsonCache<List<DzArtist>> _related = new("deezer-related", TimeSpan.FromDays(14));
@@ -277,6 +279,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         CandidatePool pool, OwnedLibrary owned, Period period,
         RecommendOptions? options = null, IProgress<string>? progress = null, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         options ??= new RecommendOptions();
         Step(progress, RecStage.Releases);
         var inPeriod = pool.Artists
@@ -295,7 +298,11 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             .OrderByDescending(x => x.c.Score * TypeWeight(x.a.RecordType))
             .Take(options.MaxScored).ToList();
         var hits = mineHits.Concat(others).ToList();
-        if (hits.Count == 0) { Step(progress, RecStage.Done); return new RecommendationResult(period, [], false); }
+        if (hits.Count == 0)
+        {
+            Step(progress, RecStage.Done);
+            return new RecommendationResult(period, [], false) { CanCache = pool.MinePending == 0 };
+        }
 
         // 연·월 단위면 라이브러리 뮤지션 발매작이 수백 장이라 앞쪽만 소리를 듣는다
         var toScore = mineHits.Take(options.MaxMineScored).Concat(others).Select(h => h.a.Id).ToList();
@@ -458,6 +465,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                     && !(options.ExcludeInstrumental && IsRedundantInstrumental(c, a, owned)))
                 .DistinctBy(a => a.Id).Select(a => (c, a)));
         }
+        // 협업 앨범은 여러 팔로우 아티스트의 디스코그래피에 나온다. 전체에서 한 번만 분석한다.
+        hits = [.. hits.DistinctBy(h => h.a.Id)];
         SaveCaches();
         Step(progress, RecStage.Releases);
         if (hits.Count == 0) { Step(progress, RecStage.Done); return []; }
@@ -764,16 +773,25 @@ public sealed class OwnedLibrary
 {
     private readonly HashSet<string> _artists;
     private readonly HashSet<string> _albums;
+    private readonly HashSet<string> _archiveAlbums;
 
-    public OwnedLibrary(IEnumerable<TrackRecord> tracks)
+    public OwnedLibrary(IEnumerable<TrackRecord> tracks, IEnumerable<RecipeSong.Core.Library.ArchiveAlbum>? archives = null)
     {
         var list = tracks as IReadOnlyCollection<TrackRecord> ?? [.. tracks];
         _artists = ListeningAnalyzer.KnownArtists(list);
         _albums = [.. list.Select(t => Key(t.GroupArtist, t.Album))];
+        _archiveAlbums = [];
+        foreach (var album in archives ?? [])
+        {
+            _artists.Add(ListeningAnalyzer.NormalizeArtist(album.Artist));
+            _archiveAlbums.Add(Key(album.Artist, album.Album));
+        }
+        _albums.UnionWith(_archiveAlbums);
     }
 
     public bool HasArtist(string artist) => _artists.Contains(ListeningAnalyzer.NormalizeArtist(artist));
     public bool HasAlbum(string artist, string album) => _albums.Contains(Key(artist, album));
+    public bool HasArchiveAlbum(string artist, string album) => _archiveAlbums.Contains(Key(artist, album));
 
     private static string Key(string artist, string album) =>
         ListeningAnalyzer.NormalizeArtist(artist) + "|" + ListeningAnalyzer.NormalizeArtist(album);

@@ -138,7 +138,11 @@ public sealed record AiPick(string Artist, string Album, string? ReleaseDate, st
 public sealed record RecommendationResult(
     Period Period,
     IReadOnlyList<ReleaseRecommendation> Releases,
-    bool SoundScored);
+    bool SoundScored)
+{
+    /// <summary>소리 분석을 완료했거나 후보가 없어 정상 종료한 결과만 재사용한다.</summary>
+    public bool CanCache { get; init; } = SoundScored;
+}
 
 /// <summary>
 /// 소리 분석 서비스가 돌려주는 앨범 한 장의 판정 + 레이블·장르.

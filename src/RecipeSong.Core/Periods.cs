@@ -4,6 +4,17 @@ namespace RecipeSong.Core;
 
 public static class Periods
 {
+    /// <summary>월·연과 겹치는 주 전체. 앞뒤 경계는 자르지 않으며 아직 시작하지 않은 주는 제외한다.</summary>
+    public static List<Period> IntersectingWeeks(Period period, DateTime today)
+    {
+        if (period.Kind == PeriodKind.Week) return [];
+        var weeks = new List<Period>();
+        var first = Create(PeriodKind.Week, period.Start);
+        for (var start = first.Start; start < period.End && start <= today.Date; start = start.AddDays(7))
+            weeks.Add(Create(PeriodKind.Week, start));
+        return weeks;
+    }
+
     public static Period Create(PeriodKind kind, DateTime date)
     {
         date = date.Date;

@@ -11,6 +11,7 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _app;
     private readonly string? _mlDir;
     private readonly ViewModels.MainViewModel _vm;
+    private readonly CancellationTokenSource _archiveScan = new();
 
     public SettingsWindow(AppSettings app, string? mlDir, ViewModels.MainViewModel vm)
     {
@@ -31,6 +32,7 @@ public partial class SettingsWindow : Window
         DebugPipelineBox.Unchecked += (_, _) => vm.DebugPipeline = false;
         ShowLanguages();
         ShowLibrary();
+        ShowArchiveFolders();
         ShowGenreKeys();
         ShowStorage();
     }
@@ -129,6 +131,83 @@ public partial class SettingsWindow : Window
         ShowLibrary();
         LibraryResult.Text = L.T("앱을 다시 시작하면 새 라이브러리를 읽어요.");
         RestartButton.Visibility = Visibility.Visible;
+    }
+
+    private void ShowArchiveFolders()
+    {
+        ArchiveFoldersPanel.Children.Clear();
+        if (_app.ArchiveFolders.Count == 0)
+            ArchiveFoldersPanel.Children.Add(new TextBlock { Text = L.T("등록된 ZIP 경로가 없어요."), FontSize = 12,
+                Foreground = (System.Windows.Media.Brush)FindResource("Text2") });
+        foreach (var folder in _app.ArchiveFolders)
+        {
+            var row = new DockPanel { Margin = new Thickness(0, 4, 0, 0) };
+            var remove = new Button { Content = "×", Style = (Style)FindResource("Bare"), Padding = new Thickness(8, 3, 8, 3),
+                ToolTip = L.F("경로 등록 해제: {0}", folder) };
+            System.Windows.Automation.AutomationProperties.SetName(remove, L.F("경로 등록 해제: {0}", folder));
+            remove.Click += async (_, _) => { _app.ArchiveFolders.Remove(folder); _app.Save(); ShowArchiveFolders(); await RefreshArchiveAsync(); };
+            DockPanel.SetDock(remove, Dock.Right);
+            row.Children.Add(remove);
+            row.Children.Add(new TextBlock { Text = folder, ToolTip = folder, TextTrimming = TextTrimming.CharacterEllipsis,
+                FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+            ArchiveFoldersPanel.Children.Add(row);
+        }
+        ArchiveResult.Text = L.F("ZIP 보유 앨범 {0}개 · 취향 평가는 중립", _vm.ArchiveAlbumCount)
+            + (_vm.ArchiveWarnings.Count > 0 ? "\n" + string.Join("\n", _vm.ArchiveWarnings.Take(3)) : "");
+    }
+
+    private async void AddArchive_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = L.T("앨범 ZIP 보관 폴더를 고르세요") };
+        if (dialog.ShowDialog(this) != true) return;
+        var folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dialog.FolderName));
+        if (_app.ArchiveFolders.Contains(folder, StringComparer.OrdinalIgnoreCase)) return;
+        _app.ArchiveFolders.Add(folder);
+        _app.Save();
+        ShowArchiveFolders();
+        await RefreshArchiveAsync();
+    }
+
+    private async void RefreshArchive_Click(object sender, RoutedEventArgs e) => await RefreshArchiveAsync();
+    private async Task RefreshArchiveAsync()
+    {
+        ArchiveSettings.IsEnabled = false;
+        ArchiveResult.Text = L.T("ZIP 보유 정보를 읽는 중…");
+        bool reading = true;
+        var progress = new Progress<RecipeSong.Core.Library.ArchiveScanProgress>(p =>
+        {
+            if (!reading || _archiveScan.IsCancellationRequested) return;
+            var stage = p.Stage switch
+            {
+                RecipeSong.Core.Library.ArchiveScanStage.Waiting => L.T("다른 ZIP 읽기 작업을 기다리는 중…"),
+                RecipeSong.Core.Library.ArchiveScanStage.Enumerating => L.T("ZIP 경로를 확인하는 중…"),
+                RecipeSong.Core.Library.ArchiveScanStage.Saving => L.T("ZIP 색인을 저장하는 중…"),
+                RecipeSong.Core.Library.ArchiveScanStage.Completed => L.T("보유 정보를 적용하는 중…"),
+                _ => L.T("ZIP 메타데이터를 읽는 중…"),
+            };
+            var current = Path.GetFileName(Path.TrimEndingDirectorySeparator(p.CurrentPath));
+            if (current.Length == 0) current = p.CurrentPath;
+            ArchiveResult.Text = stage + "\n" + L.F("ZIP {0}개 처리 · 앨범 {1}개 · 재사용 {2}개 · 경고 {3}개", p.Processed, p.Albums, p.Reused, p.Warnings)
+                + (current.Length > 0 ? "\n" + current : "");
+            ArchiveResult.ToolTip = p.CurrentPath.Length > 0 ? p.CurrentPath : null;
+        });
+        try
+        {
+            var result = await _vm.RefreshArchiveAsync(_archiveScan.Token, progress);
+            reading = false;
+            ArchiveResult.ToolTip = null;
+            ArchiveResult.Text = L.F("ZIP 보유 앨범 {0}개 · 취향 평가는 중립", result.Count)
+                + (result.Warnings.Count > 0 ? "\n" + string.Join("\n", result.Warnings.Take(3)) : "");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { ArchiveResult.Text = ex.Message; }
+        finally { reading = false; ArchiveSettings.IsEnabled = true; }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _archiveScan.Cancel();
+        base.OnClosed(e);
     }
 
     // ---- 저장 위치와 용량 ----

@@ -86,7 +86,7 @@ public partial class MainWindow : Window
         try
         {
             var downloading = await _vm.HasPendingDownloadsAsync();
-            var searching = _vm.IsBusy || _vm.IsRefreshing || _vm.IsPrecise || _vm.AiBusy
+            var searching = _vm.IsBusy || _vm.IsRefreshing || _vm.IsPrecise || _vm.AiBusy || _vm.ArchiveBusy
                 || _soulseekWorkspace?.IsSearching == true || _artistLibrary?.IsSearching == true;
             if ((searching || downloading) && MessageBox.Show(this,
                     RecipeSong.Core.L.T("검색·추천 계산 또는 다운로드 작업이 남아 있어요. 종료하면 진행 중인 작업이 중단될 수 있어요. 종료할까요?"),

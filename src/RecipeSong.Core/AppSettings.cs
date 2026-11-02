@@ -6,6 +6,8 @@ public sealed class AppSettings
 {
     public string? ITunesLibraryPath { get; set; }
     public List<string> PlaylistFolders { get; set; } = [];
+    /// <summary>앨범 ZIP 보관 경로. 보유 판정에만 사용하며 취향 모델에는 넣지 않는다.</summary>
+    public List<string> ArchiveFolders { get; set; } = [];
     /// <summary>iTunes Search API 국가 코드 (앨범 아트 · 미리듣기 지역)</summary>
     public string Country { get; set; } = "KR";
     /// <summary>소리 분석 서비스(ml/service.py) 폴더. 비우면 실행 파일 위쪽 폴더에서 찾는다.</summary>

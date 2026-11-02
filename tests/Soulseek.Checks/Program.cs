@@ -20,6 +20,21 @@ L.Init("en");
 var root = Path.Combine(Path.GetTempPath(), "RecipeSong-soulseek-checks-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 CacheLocation.Directory = Path.Combine(root, "cache");
+if (args.FirstOrDefault() == "--period-cache")
+{
+    await PeriodCacheChecks.RunAsync();
+    return;
+}
+if (args.FirstOrDefault() == "--zip-archive")
+{
+    await ZipArchiveChecks.RunAsync(root);
+    return;
+}
+if (args.FirstOrDefault() == "--followed-duplicates")
+{
+    await FollowedDuplicateChecks.RunAsync();
+    return;
+}
 if (args.FirstOrDefault() == "--artist-discovery")
 {
     await ArtistDiscoveryChecks.RunAsync();
