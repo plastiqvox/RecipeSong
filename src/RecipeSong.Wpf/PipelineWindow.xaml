@@ -5,11 +5,27 @@
         Title="{local:Tr '작업 현황'}" Width="900" Height="1000" MinWidth="480" MinHeight="560"
         ShowActivated="False" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
         FontFamily="{StaticResource Sans}">
+    <Window.Resources>
+        <Style x:Key="NodeButton" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="10">
+                            <ContentPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <!-- 작업 현황 옵션(설정 → 고급)을 켜면 계산이 시작될 때 뜬다. 문서 흐름도와 같은 데이터 흐름을 칸·선으로 그린다. -->
     <Grid Margin="20,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -31,6 +47,8 @@
                     </StackPanel>
                     <CheckBox x:Name="FollowStep" Content="{local:Tr '진행 단계 따라가기'}" IsChecked="True" Click="FollowStep_Click"
                               Margin="0,0,16,6" VerticalAlignment="Center"/>
+                    <ToggleButton x:Name="OverviewToggle" Content="{local:Tr '전체 개요'}" Style="{StaticResource Bare}" Padding="8,2" MinWidth="112"
+                                  Click="Overview_Click" Margin="0,0,16,6" AutomationProperties.Name="{local:Tr '전체 개요'}"/>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
                         <Border Width="16" Height="11" CornerRadius="3" BorderThickness="2" BorderBrush="{StaticResource Ok}" Background="#15261C" Margin="0,0,5,0"/>
                         <TextBlock Text="{local:Tr '완료'}" FontSize="11" Foreground="{StaticResource Ok}" Margin="0,0,12,0"/>
@@ -54,7 +72,8 @@
                 </WrapPanel>
                 <StackPanel>
                     <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap"/>
-                    <TextBlock Text="{Binding Status}" Style="{StaticResource MutedText}" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="StatusSummary" Text="{Binding Status}" AutomationProperties.LiveSetting="Polite"
+                               Style="{StaticResource MutedText}" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
             </Grid>
             <!-- 지금 도는 계산: 색 점 = 흐름도에서 그 계산의 색 (주 계산은 칸 테두리, 다른 계산은 점선 고리·알약) -->
@@ -83,6 +102,17 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            <Border x:Name="RecoveryPanel" Visibility="Collapsed" Background="{StaticResource Surface2}" Padding="10,6" Margin="0,8,0,0" CornerRadius="6">
+                <StackPanel>
+                    <TextBlock x:Name="RecoveryMessage" TextWrapping="Wrap" Foreground="{StaticResource Text2}" FontSize="12"/>
+                    <WrapPanel Margin="0,6,0,0">
+                        <Button x:Name="RetryArchiveButton" Content="{local:Tr '다시 읽기'}" Style="{StaticResource Bare}" Padding="10,4"
+                                Click="RetryArchive_Click" Margin="0,0,8,0"/>
+                        <Button x:Name="ArchiveSettingsButton" Content="{local:Tr '설정 열기'}" Style="{StaticResource Bare}" Padding="10,4"
+                                Click="ArchiveSettings_Click"/>
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
         </StackPanel>
 
         <ScrollViewer x:Name="ChartViewport" Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
@@ -96,8 +126,62 @@
                 </Canvas.LayoutTransform>
             </Canvas>
         </ScrollViewer>
+        <ListBox x:Name="OverviewList" Grid.Row="1" Visibility="Collapsed" Background="{StaticResource Surface}" Foreground="{StaticResource Text}"
+                 BorderThickness="0" SelectionChanged="Overview_SelectionChanged" KeyDown="Overview_KeyDown" HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="{local:Tr '전체 개요'}">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding Label}"/>
+                    <Setter Property="AutomationProperties.ItemStatus" Value="{Binding StateLabel}"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                                    <ContentPresenter/>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{StaticResource AccentDeep}"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <DockPanel Margin="6,4">
+                        <TextBlock Text="{Binding StateLabel}" DockPanel.Dock="Right" FontSize="12" Margin="12,0,0,0" Foreground="{StaticResource Muted}"/>
+                        <TextBlock Text="{Binding Label}" FontSize="13" TextWrapping="Wrap"/>
+                    </DockPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
 
-        <ToggleButton x:Name="LogToggle" Grid.Row="2" Style="{StaticResource Bare}" HorizontalAlignment="Left" Padding="8,4" Margin="0,8,0,4"
+        <Border x:Name="NodeDetailPanel" Grid.Row="2" Visibility="Collapsed" Padding="10,6" Margin="0,8,0,0"
+                Background="{StaticResource Surface2}" CornerRadius="6">
+            <StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="×" Style="{StaticResource Bare}" Padding="7,0" Click="CloseNodeDetail_Click"
+                            AutomationProperties.Name="{local:Tr '상세 정보 닫기'}" ToolTip="{local:Tr '상세 정보 닫기'}"/>
+                    <TextBlock x:Name="NodeDetailTitle" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"/>
+                </DockPanel>
+                <TextBox x:Name="NodeDetailText" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="110" VerticalScrollBarVisibility="Auto"
+                         Background="Transparent" Foreground="{StaticResource Text2}" BorderThickness="0" FontSize="12"
+                         AutomationProperties.Name="{local:Tr '노드 상세 정보'}"/>
+            </StackPanel>
+        </Border>
+
+        <ToggleButton x:Name="LogToggle" Grid.Row="3" Style="{StaticResource Bare}" HorizontalAlignment="Left" Padding="8,4" Margin="0,8,0,4"
                       AutomationProperties.Name="{local:Tr '진행 기록 펼치기/접기'}" ToolTip="{local:Tr '진행 기록 펼치기/접기'}">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Margin="0,0,6,0">
@@ -115,7 +199,7 @@
                 <TextBlock Text="{local:Tr '진행 기록'}"/>
             </StackPanel>
         </ToggleButton>
-        <Border Grid.Row="3" Height="200" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="6" Background="{StaticResource Surface}"
+        <Border Grid.Row="4" Height="200" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="6" Background="{StaticResource Surface}"
                 Visibility="{Binding IsChecked, ElementName=LogToggle, Converter={StaticResource BoolVis}}">
             <ListBox ItemsSource="{Binding Log}" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text2}"
                      FontFamily="{StaticResource Mono}" FontSize="11" ScrollViewer.HorizontalScrollBarVisibility="Disabled"

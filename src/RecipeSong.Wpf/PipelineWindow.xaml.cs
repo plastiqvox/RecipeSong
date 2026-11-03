@@ -4,6 +4,9 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Automation;
+using System.Windows.Automation.Peers;
+using System.Windows.Input;
 using RecipeSong.Core;
 using RecipeSong.Wpf.ViewModels;
 
@@ -32,10 +35,22 @@ public partial class PipelineWindow : Window
     private readonly Dictionary<string, Node> _nodes = [];
     private readonly List<(StageEdge Edge, Shape[] Parts)> _edges = [];
     private string? _followedNode;
+    private string? _selectedKey;
+    private string? _announcementKey;
+    private readonly Func<CancellationToken, Task>? _retryArchive;
+    private readonly Action? _openSettings;
+    private CancellationTokenSource? _retryCancellation;
+    private bool _recoveryBusy, _closed;
+    private string? _recoveryError;
+    private DateTime _recoveryErrorScan;
 
-    public PipelineWindow()
+    public PipelineWindow() : this(null, null) { }
+
+    public PipelineWindow(Func<CancellationToken, Task>? retryArchive, Action? openSettings)
     {
         InitializeComponent();
+        _retryArchive = retryArchive;
+        _openSettings = openSettings;
         DarkTitleBar.Apply(this);
         var m = PipelineMonitor.Instance;
         DataContext = m;
@@ -44,6 +59,7 @@ public partial class PipelineWindow : Window
         foreach (var e in m.Edges) DrawEdge(e, m.Stages.First(s => s.Key == e.From), m.Stages.First(s => s.Key == e.To));
         foreach (var s in m.Stages) DrawNode(s);
         DrawQueue();
+        OverviewList.ItemsSource = m.Stages;
         Paint();
         // 다른 계산의 위치·시간은 칸 상태가 아니라서 따로 알린다
         m.Changed += Paint;
@@ -51,8 +67,8 @@ public partial class PipelineWindow : Window
         var clock = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         clock.Tick += (_, _) => Paint();
         clock.Start();
-        Closed += (_, _) => { m.Changed -= Paint; clock.Stop(); };
-        Loaded += (_, _) => FollowCurrent(force: true);
+        Closed += (_, _) => { _closed = true; _retryCancellation?.Cancel(); m.Changed -= Paint; clock.Stop(); };
+        Loaded += (_, _) => { FollowCurrent(force: true); AnnounceStatus(force: true); };
         ChartViewport.SizeChanged += (_, _) => { if (IsLoaded) FollowCurrent(force: true); };
     }
 
@@ -60,6 +76,107 @@ public partial class PipelineWindow : Window
     private void ZoomIn_Click(object sender, RoutedEventArgs e) => SetZoom(ChartScale.ScaleX + 0.25);
     private void ZoomReset_Click(object sender, RoutedEventArgs e) => SetZoom(1);
     private void FollowStep_Click(object sender, RoutedEventArgs e) => FollowCurrent(force: true);
+
+    private void Overview_Click(object sender, RoutedEventArgs e)
+    {
+        bool overview = OverviewToggle.IsChecked == true;
+        var label = overview ? L.T("상세 흐름도") : L.T("전체 개요");
+        OverviewToggle.Content = label;
+        AutomationProperties.SetName(OverviewToggle, label);
+        OverviewList.Visibility = overview ? Visibility.Visible : Visibility.Collapsed;
+        ChartViewport.Visibility = overview ? Visibility.Collapsed : Visibility.Visible;
+        UpdateZoomButtons();
+        if (overview)
+        {
+            if (_selectedKey != null)
+            {
+                OverviewList.SelectedItem = PipelineMonitor.Instance.Stages.First(s => s.Key == _selectedKey);
+                OverviewList.ScrollIntoView(OverviewList.SelectedItem);
+            }
+            OverviewList.Focus();
+        }
+        else if (_selectedKey != null)
+        {
+            ChartViewport.UpdateLayout();
+            _nodes[_selectedKey].Body.BringIntoView();
+        }
+        else FollowCurrent(force: true);
+    }
+
+    private void Overview_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (OverviewList.SelectedItem is StageItem item) SelectNode(item.Key);
+    }
+
+    private void Overview_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && OverviewList.SelectedItem != null)
+        {
+            NodeDetailText.Focus();
+            e.Handled = true;
+        }
+    }
+
+    private void SelectNode(string key)
+    {
+        _selectedKey = key;
+        FollowStep.IsChecked = false;
+        Paint();
+        if (ChartViewport.Visibility == Visibility.Visible)
+        {
+            ChartViewport.UpdateLayout();
+            _nodes[key].Body.BringIntoView();
+        }
+    }
+
+    private void CloseNodeDetail_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = _selectedKey;
+        _selectedKey = null;
+        OverviewList.SelectedItem = null;
+        Paint();
+        if (OverviewToggle.IsChecked == true) OverviewList.Focus();
+        else if (selected != null) ChartViewport.Focus();
+    }
+
+    private async void RetryArchive_Click(object sender, RoutedEventArgs e)
+    {
+        if (_recoveryBusy || _retryArchive == null) return;
+        using var cancel = new CancellationTokenSource();
+        _retryCancellation = cancel;
+        _recoveryBusy = true;
+        _recoveryError = null;
+        Paint();
+        try { await _retryArchive(cancel.Token); }
+        catch (OperationCanceledException) { SetRecoveryError(L.T("ZIP 읽기 취소")); }
+        catch (Exception ex) { SetRecoveryError(L.F("ZIP 읽기 실패: {0}", ex.Message)); }
+        finally
+        {
+            _recoveryBusy = false;
+            _retryCancellation = null;
+            if (!_closed) Paint();
+        }
+    }
+
+    private void ArchiveSettings_Click(object sender, RoutedEventArgs e) => _openSettings?.Invoke();
+
+    private void SetRecoveryError(string message)
+    {
+        _recoveryError = message;
+        _recoveryErrorScan = PipelineMonitor.Instance.Stages.First(s => s.Key == "archive").LastNews;
+    }
+
+    private void UpdateZoomButtons()
+    {
+        bool detail = OverviewToggle.IsChecked != true;
+        ZoomOutButton.IsEnabled = detail && ChartScale.ScaleX > 0.75;
+        ZoomInButton.IsEnabled = detail && ChartScale.ScaleX < 2;
+        ZoomResetButton.IsEnabled = detail;
+        FollowStep.IsEnabled = detail;
+        FollowStep.Opacity = detail ? 1 : 0.45;
+        ZoomOutButton.Opacity = ZoomOutButton.IsEnabled ? 1 : 0.45;
+        ZoomInButton.Opacity = ZoomInButton.IsEnabled ? 1 : 0.45;
+    }
 
     private void SetZoom(double value)
     {
@@ -69,10 +186,7 @@ public partial class PipelineWindow : Window
         var scale = Math.Clamp(Math.Round(value, 2), 0.75, 2);
         ChartScale.ScaleX = ChartScale.ScaleY = scale;
         ZoomResetButton.Content = (scale * 100).ToString("0", CultureInfo.CurrentCulture) + "%";
-        ZoomOutButton.IsEnabled = scale > 0.75;
-        ZoomInButton.IsEnabled = scale < 2;
-        ZoomOutButton.Opacity = ZoomOutButton.IsEnabled ? 1 : 0.45;
-        ZoomInButton.Opacity = ZoomInButton.IsEnabled ? 1 : 0.45;
+        UpdateZoomButtons();
         ChartViewport.UpdateLayout();
         ChartViewport.ScrollToHorizontalOffset(x * scale - ChartViewport.ViewportWidth / 2);
         ChartViewport.ScrollToVerticalOffset(y * scale - ChartViewport.ViewportHeight / 2);
@@ -81,7 +195,7 @@ public partial class PipelineWindow : Window
 
     private void FollowCurrent(bool force = false)
     {
-        if (FollowStep.IsChecked != true || (!force && !IsLoaded) || ChartViewport.ViewportWidth <= 0) return;
+        if (OverviewToggle.IsChecked == true || FollowStep.IsChecked != true || (!force && !IsLoaded) || ChartViewport.ViewportWidth <= 0) return;
         var m = PipelineMonitor.Instance;
         var node = _nodes.Values.FirstOrDefault(n => n.Item.State == StageState.Current && n.Item.Stage == m.Primary?.Current)
             ?? _nodes.Values.FirstOrDefault(n => n.Item.State == StageState.Current)
@@ -115,7 +229,9 @@ public partial class PipelineWindow : Window
             return;
         }
         var main = Application.Current.MainWindow;
-        _shared = new PipelineWindow { Owner = main, ShowActivated = activate };
+        var vm = main?.DataContext as MainViewModel;
+        _shared = new PipelineWindow(vm == null ? null : async ct => { await vm.RefreshArchiveAsync(ct, trackInPipeline: true); },
+            vm == null ? null : () => vm.OpenSettingsCommand.Execute(null)) { Owner = main, ShowActivated = activate };
         if (main != null)
         {
             _shared.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -140,9 +256,9 @@ public partial class PipelineWindow : Window
     /// <summary>
     /// 칸 하나에 그리는 것: 테두리(점선이 되므로 Rectangle) · 바탕 · 제목 · 상태 알약 · 설명 · 진행 문구,
     /// 그리고 주 계산이 아닌 계산이 이 칸에 있을 때의 바깥 고리(Ring)와 위쪽 알약 줄(Markers).
-    /// 단계가 아닌 칸(데이터·규칙)은 테두리 없이 순서도 기호 아이콘(Icon) + 이름
+    /// 데이터·규칙은 각 도형 안에 이름을 넣고 모든 칸은 키보드로 선택할 수 있다.
     /// </summary>
-    private sealed record Node(StageItem Item, Rectangle Frame, Border Body, TextBlock Title, Border Chip, TextBlock ChipText, TextBlock Detail,
+    private sealed record Node(StageItem Item, Rectangle Frame, Button Body, TextBlock Title, Border Chip, TextBlock ChipText, TextBlock Detail,
         Rectangle Ring, StackPanel Markers, Rectangle Bar, Path? Contour);
 
     // 단계는 사각형, 데이터는 원통, 규칙은 접힌 메모. 이름·설명을 기호 안에 넣는다.
@@ -186,17 +302,22 @@ public partial class PipelineWindow : Window
             name.Children.Add(title);
             content = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { name, sub, detail } };
         }
-        var body = new Border
+        var body = new Button
         {
-            Width = r.Width, Height = r.Height, CornerRadius = new CornerRadius(10),
+            Width = r.Width, Height = r.Height, Style = (Style)Resources["NodeButton"], Tag = s.Key,
             Padding = s.Kind switch
             {
                 NodeKind.Step => new Thickness(13, 8, 10, 6),
                 NodeKind.Data => new Thickness(10, 18, 10, 7),
                 _ => new Thickness(12, 10, 18, 8),
             },
-            Child = content, ToolTip = s.Sub,
+            Content = content, ToolTip = s.Sub,
         };
+        AutomationProperties.SetName(body, s.Label);
+        AutomationProperties.SetHelpText(body, L.T("Enter 키로 상세 정보 보기"));
+        System.Windows.Input.KeyboardNavigation.SetTabIndex(body, s.Row * 4 + s.Col + 10);
+        body.GotKeyboardFocus += (_, _) => SelectNode(s.Key);
+        body.Click += (_, _) => { SelectNode(s.Key); NodeDetailText.Focus(); };
         var frame = new Rectangle { Width = r.Width, Height = r.Height, RadiusX = 10, RadiusY = 10, IsHitTestVisible = false };
         var ring = new Rectangle { Width = r.Width + 12, Height = r.Height + 12, RadiusX = 14, RadiusY = 14, StrokeThickness = 2.5, StrokeDashArray = [3, 2], IsHitTestVisible = false };
         Canvas.SetLeft(ring, r.Left - 6);
@@ -328,6 +449,7 @@ public partial class PipelineWindow : Window
     /// </summary>
     private void Paint()
     {
+        if (_closed) return;
         var m = PipelineMonitor.Instance;
         var primary = m.Primary;
         var analysis = m.Runs.FirstOrDefault(r => r.Kind == RunKind.Analysis && !r.Ended);
@@ -429,8 +551,11 @@ public partial class PipelineWindow : Window
 
             // 다른 계산이 이 칸에 있다: 바깥 고리 + 알약
             var here = n.Item.Stage is { } stage ? others.Where(r => r.Current == stage).ToList() : [];
-            n.Ring.Visibility = here.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            if (here.Count > 0) n.Ring.Stroke = here[0].Brush;
+            bool selected = _selectedKey == n.Item.Key;
+            n.Ring.Visibility = selected || here.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            n.Ring.StrokeDashArray = selected ? null : [3, 2];
+            if (selected) n.Ring.Stroke = Res("Accent");
+            else if (here.Count > 0) n.Ring.Stroke = here[0].Brush;
             n.Markers.Children.Clear();
             foreach (var r in here)
                 n.Markers.Children.Add(new Border
@@ -440,6 +565,8 @@ public partial class PipelineWindow : Window
                 });
         }
         PaintQueue();
+        RefreshDetailsAndRecovery();
+        AnnounceStatus();
         FollowCurrent();
         foreach (var (e, parts) in _edges)
         {
@@ -456,6 +583,52 @@ public partial class PipelineWindow : Window
                 p.Stroke = brush;
                 p.Opacity = toNode.State == StageState.Skipped || fromNode.State == StageState.Skipped ? 0.35 : 1;
             }
+        }
+    }
+
+    private void RefreshDetailsAndRecovery()
+    {
+        var m = PipelineMonitor.Instance;
+        var selected = _selectedKey == null ? null : m.Stages.FirstOrDefault(s => s.Key == _selectedKey);
+        NodeDetailPanel.Visibility = selected == null ? Visibility.Collapsed : Visibility.Visible;
+        if (selected != null)
+        {
+            NodeDetailTitle.Text = selected.Label + " · " + selected.StateLabel;
+            var text = selected.Sub + (selected.Detail.Length > 0 ? "\n" + selected.Detail : "");
+            if (NodeDetailText.Text != text && (!NodeDetailText.IsKeyboardFocusWithin || NodeDetailText.SelectionLength == 0))
+                NodeDetailText.Text = text;
+        }
+        var archive = m.Stages.First(s => s.Key == "archive");
+        if (_recoveryError != null && archive.State == StageState.Done && archive.LastNews != _recoveryErrorScan)
+            _recoveryError = null;
+        bool recovery = _recoveryBusy || _recoveryError != null || archive.State is StageState.Failed or StageState.Cancelled;
+        RecoveryPanel.Visibility = recovery ? Visibility.Visible : Visibility.Collapsed;
+        RecoveryMessage.Text = _recoveryBusy ? L.T("ZIP 보유 정보를 다시 읽는 중…")
+            : _recoveryError ?? L.T("ZIP 읽기를 완료하지 못했어요. 다시 읽거나 설정에서 경로를 확인하세요.");
+        RetryArchiveButton.IsEnabled = !_recoveryBusy && _retryArchive != null;
+        ArchiveSettingsButton.IsEnabled = !_recoveryBusy && _openSettings != null;
+        RetryArchiveButton.Opacity = RetryArchiveButton.IsEnabled ? 1 : 0.45;
+        ArchiveSettingsButton.Opacity = ArchiveSettingsButton.IsEnabled ? 1 : 0.45;
+    }
+
+    private void AnnounceStatus(bool force = false)
+    {
+        var m = PipelineMonitor.Instance;
+        var archive = m.Stages.First(s => s.Key == "archive");
+        var result = archive.State is StageState.Failed or StageState.Cancelled ? archive.Detail : "";
+        var key = m.Status + "|" + _recoveryBusy + "|" + _recoveryError + "|" + result + "|" + string.Join("|", m.Runs.Select(r => $"{r.Id}:{r.Current}:{r.Ended}"));
+        if (!force && key == _announcementKey) return;
+        _announcementKey = key;
+        var text = m.Status + " " + string.Join(" · ", m.Runs.Where(r => !r.Ended).Select(r => r.KindLabel + ": " + r.StageLabel));
+        if (_recoveryError != null) text += " " + _recoveryError;
+        else if (result.Length > 0) text += " " + result;
+        if (_recoveryBusy) text += " " + L.T("ZIP 보유 정보를 다시 읽는 중…");
+        StatusSummary.GetBindingExpression(TextBlock.TextProperty)?.UpdateTarget();
+        AutomationProperties.SetName(StatusSummary, text.Trim());
+        if (IsLoaded)
+        {
+            var peer = FrameworkElementAutomationPeer.FromElement(StatusSummary) ?? FrameworkElementAutomationPeer.CreatePeerForElement(StatusSummary);
+            peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
         }
     }
 

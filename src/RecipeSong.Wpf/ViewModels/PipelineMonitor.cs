@@ -26,7 +26,7 @@ public enum NodeKind { Step, Data, Rule }
 
 /// <summary>
 /// 순서도 창의 칸 하나. 배치(Col 0 왼쪽 · 1 가운데 · 2 오른쪽, Row)는 docs/images/recommendation.mjs 흐름도와 같다.
-/// Stage 가 없으면 고정 칸, Follows 가 있으면 그 단계 칸의 상태를 따라간다. Kind 가 Step 이 아니면 상자 대신 아이콘 + 이름으로 그린다.
+    /// Stage 가 없으면 고정 칸, Follows 가 있으면 그 단계 칸의 상태를 따라간다. Kind 에 따라 처리·데이터·규칙 도형으로 그린다.
 /// State·Detail·Time 은 '주 계산'(가장 나중에 시작한 추천 계산) 기준. 다른 계산이 있는 자리는 창이 RunInfo 로 따로 그린다.
 /// </summary>
 public sealed partial class StageItem(string key, int col, int row, string label, string sub, RecStage? stage = null, RecStage? follows = null,
@@ -41,7 +41,13 @@ public sealed partial class StageItem(string key, int col, int row, string label
     public RecStage? Stage { get; } = stage;
     public RecStage? Follows { get; } = follows;
     // 내 곡 소리 기준(Analyze)은 추천과 따로 도는 분석이라 평소엔 고정 칸 (분석 중·끝만 따로 표시)
-    [ObservableProperty] private StageState _state = (stage is null or RecStage.Analyze) && follows == null ? StageState.Fixed : StageState.Todo;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(StateLabel))] private StageState _state = (stage is null or RecStage.Analyze) && follows == null ? StageState.Fixed : StageState.Todo;
+    public string StateLabel => State switch
+    {
+        StageState.Current => L.T("진행 중"), StageState.Done => L.T("완료"), StageState.Reused => L.T("재사용"),
+        StageState.Skipped => L.T("안 함"), StageState.Failed => L.T("실패"), StageState.Cancelled => L.T("취소됨"),
+        StageState.Fixed => Kind == NodeKind.Rule ? L.T("규칙") : L.T("데이터"), _ => L.T("대기"),
+    };
     /// <summary>이 단계에서 마지막으로 온 진행 문구</summary>
     [ObservableProperty] private string _detail = "";
     /// <summary>걸린 시간 (끝나면 고정, 진행 중이면 매초 갱신)</summary>

@@ -941,5 +941,14 @@
  "추천 흐름도": "Recommendation flowchart",
  "진행 기록 펼치기/접기": "Show/hide log",
  "{0} · ZIP 읽기 실패": "{0} · ZIP scan failed",
- "{0} · ZIP 읽기 취소": "{0} · ZIP scan cancelled"
+ "{0} · ZIP 읽기 취소": "{0} · ZIP scan cancelled",
+ "전체 개요": "Overview",
+ "상세 흐름도": "Detailed flow",
+ "다시 읽기": "Read again",
+ "설정 열기": "Open settings",
+ "상세 정보 닫기": "Close details",
+ "노드 상세 정보": "Node details",
+ "Enter 키로 상세 정보 보기": "Press Enter to read full details",
+ "ZIP 보유 정보를 다시 읽는 중…": "Reading owned ZIP albums again…",
+ "ZIP 읽기를 완료하지 못했어요. 다시 읽거나 설정에서 경로를 확인하세요.": "ZIP scanning did not finish. Read again or check the folders in Settings."
 }

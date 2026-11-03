@@ -49,7 +49,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _archiveLoaded;
 
     private async Task<IReadOnlyList<ArchiveAlbum>> ReadArchivesAsync(CancellationToken ct, bool refresh = false,
-        IProgress<ArchiveScanProgress>? progress = null)
+        IProgress<ArchiveScanProgress>? progress = null, bool trackInPipeline = false)
     {
         progress?.Report(new(ArchiveScanStage.Waiting, "", 0, 0, 0, 0));
         await _archiveReadLock.WaitAsync(ct);
@@ -57,7 +57,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             // 메모리에 있는 목록을 쓰는 호출은 새 읽기 작업으로 표시하지 않는다.
-            if (DebugPipeline && (refresh || !_archiveLoaded) && (_settings.ArchiveFolders.Count > 0 || refresh))
+            if ((DebugPipeline || trackInPipeline) && (refresh || !_archiveLoaded) && (_settings.ArchiveFolders.Count > 0 || refresh))
             {
                 monitor = new StageProgress(L.F("ZIP 경로 {0}개", _settings.ArchiveFolders.Count), _ => { }, RunKind.Archive, primary: false);
                 monitor.Start();
@@ -99,12 +99,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public int ArchiveAlbumCount => _library.ArchiveCount;
     public IReadOnlyList<string> ArchiveWarnings => _library.ArchiveWarnings;
     public async Task<(int Count, IReadOnlyList<string> Warnings)> RefreshArchiveAsync(CancellationToken ct,
-        IProgress<RecipeSong.Core.Library.ArchiveScanProgress>? progress = null)
+        IProgress<RecipeSong.Core.Library.ArchiveScanProgress>? progress = null, bool trackInPipeline = false)
     {
         ArchiveBusy = true;
         try
         {
-            var albums = await ReadArchivesAsync(ct, refresh: true, progress: progress);
+            var albums = await ReadArchivesAsync(ct, refresh: true, progress: progress, trackInPipeline: trackInPipeline);
             _owned = await LoadOwnedAsync(ct);
             _recommender.SetIdentityLibrary(await _library.GetTracksAsync(ct), albums);
             await _poolLock.WaitAsync(ct);

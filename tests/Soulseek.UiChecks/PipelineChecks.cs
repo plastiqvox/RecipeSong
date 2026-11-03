@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Polyline = System.Windows.Shapes.Polyline;
 using RecipeSong.Core;
 using RecipeSong.Wpf;
@@ -32,11 +33,13 @@ static partial class Program
         if (monitor.Primary?.Id != recommendation || Node("listen").State != StageState.Current
             || Node("archive").State != StageState.Current || Node("archive").Detail != detail)
             throw new Exception("ZIP scanning must not replace the recommendation or reset its stage.");
+        CheckPipelineAccessibility(output, recommendation, reading, detail);
 
         var window = new PipelineWindow();
         var chart = (Canvas)window.FindName("Chart");
         // 선이 입력 데이터 칸을 관통하지 않는지 실제 Canvas 좌표로 확인한다.
-        var boxes = chart.Children.OfType<Border>().Select(b => new Rect(Canvas.GetLeft(b), Canvas.GetTop(b), b.Width, b.Height)).ToArray();
+        var boxes = chart.Children.OfType<FrameworkElement>().Where(b => b is Border || b is Button { Tag: string })
+            .Select(b => new Rect(Canvas.GetLeft(b), Canvas.GetTop(b), b.Width, b.Height)).ToArray();
         foreach (var line in chart.Children.OfType<Polyline>())
             for (var i = 1; i < line.Points.Count; i++)
             {
@@ -98,6 +101,7 @@ static partial class Program
         var retry = monitor.Begin(L.T("ZIP 보유 읽기"), RunKind.Archive, primary: false);
         monitor.CompleteArchive(retry, completed);
         if (monitor.Status != L.T("끝")) throw new Exception("A successful ZIP retry must clear the failure summary.");
+        CheckPipelineRecovery(output);
     }
 
     static void RenderPipeline(PipelineWindow window, string path, int width, int height, bool checkControls = false)
@@ -105,11 +109,31 @@ static partial class Program
         var content = (FrameworkElement)window.Content;
         content.DataContext = window.DataContext;
         window.Content = null;
+        var frame = new Border { Background = (Brush)Application.Current.FindResource("Bg"), Child = content, Width = width, Height = height };
+        void Capture(string file)
+        {
+            static void Invalidate(DependencyObject element)
+            {
+                if (element is UIElement ui) ui.InvalidateVisual();
+                for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
+                    Invalidate(VisualTreeHelper.GetChild(element, i));
+            }
+            frame.Measure(new Size(width, height));
+            frame.Arrange(new Rect(0, 0, width, height));
+            Invalidate(frame);
+            frame.UpdateLayout();
+            var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(frame);
+            var png = new PngBitmapEncoder();
+            png.Frames.Add(BitmapFrame.Create(bitmap));
+            using var stream = File.Create(file);
+            png.Save(stream);
+        }
         var viewport = (ScrollViewer)window.FindName("ChartViewport");
         var scale = (ScaleTransform)window.FindName("ChartScale");
         var follow = (CheckBox)window.FindName("FollowStep");
         var log = (ToggleButton)window.FindName("LogToggle");
-        Render(content, path, width, height);
+        Capture(path);
         if (scale.ScaleX != 1 || viewport.ScrollableWidth <= 0 || log.IsChecked == true)
             throw new Exception("The chart must retain readable size with scrolling and a collapsed log, even in narrow windows.");
         if (checkControls)
@@ -126,19 +150,20 @@ static partial class Program
             if (scale.ScaleX != 1) throw new Exception("Actual size must restore 100%.");
             var heightBefore = viewport.ViewportHeight;
             log.IsChecked = true;
-            Render(content, Path.Combine(Path.GetDirectoryName(path)!, "pipeline-log.png"), width, height);
+            Capture(Path.Combine(Path.GetDirectoryName(path)!, "pipeline-log.png"));
             if (viewport.ViewportHeight >= heightBefore) throw new Exception("Expanding the log must leave a scrollable chart above it.");
             log.IsChecked = false;
             follow.IsChecked = false;
             viewport.ScrollToVerticalOffset(0);
             follow.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-            Render(content, path, width, height);
+            Capture(path);
             if (viewport.VerticalOffset != 0) throw new Exception("Turning follow off must allow manual inspection.");
             follow.IsChecked = true;
         }
         follow.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-        Render(content, path, width, height);
+        Capture(path);
         if (viewport.VerticalOffset <= 0) throw new Exception("Follow active step must reveal progress without shrinking the chart.");
         window.Close();
+        frame.Child = null;
     }
 }
