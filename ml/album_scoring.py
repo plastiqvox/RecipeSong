@@ -29,12 +29,25 @@ def fit_threshold(lib: np.ndarray, weights: np.ndarray, neighbors: int = 20) -> 
     return float(np.quantile(scores, 0.25))
 
 
-def aggregate(base: float, scores: list[float], threshold: float) -> dict:
-    values = np.asarray([s for s in scores if np.isfinite(s)], dtype=np.float64)
+def negative_feedback(embeddings: np.ndarray, positives: np.ndarray | None, negatives: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+    if positives is None or negatives is None or not len(positives) or not len(negatives):
+        return np.zeros(len(embeddings)), np.zeros(len(embeddings), dtype=bool)
+    positive = (embeddings @ positives.T).max(axis=1)
+    negative = (embeddings @ negatives.T).max(axis=1)
+    # 정규화 코사인을 같은 기준으로 비교한다. 작은 차이는 불호로 확정하지 않는다.
+    margin = np.maximum(0, negative - positive - 0.03)
+    return 0.5 * margin, margin > 0
+
+
+def aggregate(base: float, scores: list[float], threshold: float, rejected: list[bool] | None = None) -> dict:
+    finite = np.isfinite(scores)
+    values = np.asarray(scores, dtype=np.float64)[finite]
     if not len(values):
         return {"taste": base}
-    top = float(np.sort(values)[-3:].mean())
-    coverage = float((values >= threshold).mean())
+    rejected_values = np.asarray(rejected, dtype=bool)[finite] if rejected is not None else np.zeros(len(values), dtype=bool)
+    eligible = values[~rejected_values]
+    top = float(np.sort(eligible if len(eligible) else values)[-3:].mean())
+    coverage = float(((values >= threshold) & ~rejected_values).mean())
     # 한 곡만 들은 앨범의 100% 적합을 전곡 적합처럼 보상하지 않는다.
     confidence = min(1.0, len(values) / 3)
     taste = base + confidence * (0.35 * (top - base) + 0.04 * (coverage - 0.5))

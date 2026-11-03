@@ -79,6 +79,8 @@ class Service:
         # 별로 표시한 앨범: 이와 닮은 신보는 점수를 깎는다
         self.dis_keys: list[str] = []
         self.dis_x: np.ndarray | None = None
+        self.dis_track_x: np.ndarray | None = None
+        self.disliked_track_names: set[tuple[str, str]] = set()
         self.reload()
 
     # ---- 상태 -------------------------------------------------------------
@@ -122,13 +124,26 @@ class Service:
         # 라이브러리에서 지운 곡도 0
         self.lib_w = np.array([self.tracks[k].taste_weight() if k in self.tracks else 0.0 for k in keys], np.float32)
         # 내 곡을 자기 자신을 제외한 이웃과 비교한 분포로 적합 기준을 정한다.
-        self.track_fit_threshold = album_scoring.fit_threshold(self.lib, self.lib_w, KNN)
+        self.refresh_feedback_weights()
         self.xml_mtime = os.path.getmtime(self.xml)
         log(f"[service] 라이브러리 {len(self.tracks)}곡, 임베딩 {len(keys)}곡 ({self.model['embeddings']}), "
             f"닮음 비교 {int((self.lib_w > 0).sum())}곡, 기준 {self.model['trained_at']}")
 
     def failed(self) -> set[str]:
         return set(json.loads(FAILED.read_text(encoding="utf-8"))) if FAILED.exists() else set()
+
+    @staticmethod
+    def feedback_name(value: str) -> str:
+        return re.sub(r"\W+", "", (value or "").casefold())
+
+    def refresh_feedback_weights(self) -> None:
+        self.feedback_w = self.lib_w.copy()
+        for i, (artist, title) in enumerate(self.meta):
+            if (self.feedback_name(artist), self.feedback_name(title)) in self.disliked_track_names:
+                self.feedback_w[i] = 0
+        self.track_fit_threshold = album_scoring.fit_threshold(self.lib, self.feedback_w, KNN)
+        refs = self.lib[self.feedback_w >= 0.8] if np.any(self.feedback_w >= 0.8) else self.lib[self.feedback_w > 0]
+        self.positive_track_x = np.concatenate([refs, self.fav_x]) if self.fav_x is not None else refs
 
     def new_tracks(self, include_failed: bool = False) -> list:
         skip = self.keyset if include_failed else self.keyset | self.failed()
@@ -221,7 +236,7 @@ class Service:
         if r:
             old = self.album_info.get(album_id, {})
             self.album_info[album_id] = {**old, "label": r.get("label"), "genre": genres[0]["name"] if genres else None,
-                                         "with": collaborators(r)}
+                                         "with": collaborators(r), "total_tracks": r.get("nb_tracks")}
         tracks = [t for t in (r.get("tracks") or {}).get("data", []) if t.get("preview")]
         if self.track_mode == "top":
             tracks = sorted(tracks, key=lambda t: -(t.get("rank") or 0))[:HIT_TRACKS]
@@ -252,8 +267,12 @@ class Service:
     def nearest(self, e: np.ndarray) -> tuple[str, float]:
         """곡(앨범) 임베딩 하나 → 가장 닮은 내 곡 ("아티스트 – 곡명", 곡 가중치를 곱한 유사도)"""
         x = train.preprocess(e[None, :], self.mean)[0]
-        sims = (self.lib @ x) * self.lib_w
-        j = int(np.argmax(sims))
+        weights = getattr(self, "feedback_w", self.lib_w)
+        active = np.flatnonzero(weights > 0)
+        if not len(active):
+            return "", 0.0
+        sims = (self.lib @ x) * weights
+        j = int(active[np.argmax(sims[active])])
         return f"{self.meta[j][0]} – {self.meta[j][1]}", round(float(sims[j]), 4)
 
     def analyze_albums(self, ids: list[str], pool: ThreadPoolExecutor) -> None:
@@ -292,6 +311,7 @@ class Service:
                 info["pairs"] = top
                 info["tracks_mode"] = self.track_mode
                 info["track_ids"] = [str(tid) for tid, _, _ in items if tid is not None]
+                info["track_titles"] = {str(tid): title for tid, title, _ in items if tid is not None}
                 # 예전 EffNet 장르 태그는 지운다 (장르 배지는 앱이 Last.fm 태그로 붙인다)
                 info.pop("genres", None)
                 info.pop("effnet", None)
@@ -302,7 +322,8 @@ class Service:
         def stale(k: str) -> bool:
             info = self.album_info.get(k, {})
             return k not in self.album_cache or (not k.startswith("t") and
-                (info.get("tracks_mode") != self.track_mode or "track_ids" not in info))
+                (info.get("tracks_mode") != self.track_mode or "track_ids" not in info or "track_titles" not in info
+                 or (len(info.get("track_ids", [])) < 3 and "total_tracks" not in info)))
         todo = [a for a in albums if stale(str(a["id"]))]
         done = 0
         # 처음 보는 앨범만 듣는다는 걸 알린다 (전체 장수만 보이면 전부 다시 듣는 것처럼 보였다)
@@ -341,10 +362,17 @@ class Service:
                 continue
             description = self.describe(e, key)
             if not key.startswith("t") and self.track_fit_threshold is not None:
-                tracks = [self.album_cache[f"t{tid}"] for tid in info.get("track_ids", [])
-                          if f"t{tid}" in self.album_cache]
-                scores = album_scoring.taste_scores(train.preprocess(np.stack(tracks), self.mean), self.lib, self.lib_w).tolist() if tracks else []
-                description.update(album_scoring.aggregate(description["taste"], scores, self.track_fit_threshold))
+                ids = [tid for tid in info.get("track_ids", []) if f"t{tid}" in self.album_cache]
+                tracks = [self.album_cache[f"t{tid}"] for tid in ids]
+                weights = getattr(self, "feedback_w", self.lib_w)
+                vectors = train.preprocess(np.stack(tracks), self.mean) if tracks else np.empty((0, self.lib.shape[1]))
+                scores = album_scoring.taste_scores(vectors, self.lib, weights)
+                penalties, rejected = album_scoring.negative_feedback(vectors, getattr(self, "positive_track_x", None), getattr(self, "dis_track_x", None))
+                scores = scores - penalties
+                description.update(album_scoring.aggregate(description["taste"], scores.tolist(), self.track_fit_threshold, rejected.tolist()))
+                description["scored_tracks"] = [{"id": int(tid), "title": info.get("track_titles", {}).get(str(tid)),
+                                                  "taste": round(float(value), 4), "fits": bool(value >= self.track_fit_threshold and not bad),
+                                                  "matches_dislike": bool(bad)} for tid, value, bad in zip(ids, scores, rejected)]
             results.append({"id": a["id"], "ok": True, **info, **description})
         if self.fav_x is not None:
             log(f"[service] 점수 {len(results)}장 (저장함 {len(self.fav_keys)}장과 비교)")
@@ -355,16 +383,21 @@ class Service:
         """좋아요 목록을 받는다: [{id, name}] — 앨범 하트는 앨범 id, 곡 하트는 "t곡id". 소리를 모르면 미리듣기로 분석한다."""
         if self.model is None:
             return {"count": 0, "dislikes": 0}
-        items = args.get("albums") or []
+        disliked_tracks = args.get("disliked_tracks") or []
+        track_keys = {str(t["id"]) for t in disliked_tracks}
+        items = [a for a in (args.get("albums") or []) if str(a["id"]) not in track_keys]
         self.ensure_embedded(items, rid, "저장한 앨범 소리 분석 중")
         self.fav_names = {str(a["id"]): a.get("name", "") for a in items}
         self.fav_keys = [str(a["id"]) for a in items if str(a["id"]) in self.album_cache]
         self.fav_x = self.stack(self.fav_keys)
-        dislikes = args.get("dislikes") or []
+        dislikes = list(args.get("dislikes") or []) + disliked_tracks
         if dislikes:
             self.ensure_embedded(dislikes, rid, "별로 표시한 앨범 소리 분석 중")
         self.dis_keys = [str(a["id"]) for a in dislikes if str(a["id"]) in self.album_cache]
         self.dis_x = self.stack(self.dis_keys)
+        self.dis_track_x = self.stack([key for key in self.dis_keys if key in track_keys])
+        self.disliked_track_names = {(self.feedback_name(t.get("artist", "")), self.feedback_name(t.get("title", ""))) for t in disliked_tracks}
+        self.refresh_feedback_weights()
         log(f"[service] 좋아요 {len(self.fav_keys)}/{len(items)}개, 별로 {len(self.dis_keys)}/{len(dislikes)}장 반영")
         return {"count": len(self.fav_keys), "dislikes": len(self.dis_keys)}
 
@@ -475,8 +508,9 @@ class Service:
     def describe(self, e: np.ndarray, key: str | None = None) -> dict:
         x = train.preprocess(e[None, :], self.mean)[0]
         res = {}
-        sims = (self.lib @ x) * self.lib_w
-        active = np.flatnonzero(self.lib_w > 0)
+        weights = getattr(self, "feedback_w", self.lib_w)
+        sims = (self.lib @ x) * weights
+        active = np.flatnonzero(weights > 0)
         count = min(KNN, len(active))
         near = active[np.argpartition(-sims[active], count - 1)[:count]] if count else active
         near = near[np.argsort(-sims[near])]

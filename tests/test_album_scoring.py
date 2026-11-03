@@ -13,6 +13,21 @@ import album_scoring
 
 
 class AlbumScoringChecks(unittest.TestCase):
+    def test_negative_feedback_compares_same_scale_and_handles_unknown(self):
+        vectors = np.array([[1., 0.], [0., 1.]])
+        penalties, rejected = album_scoring.negative_feedback(vectors, np.array([[1., 0.]]), np.array([[0., 1.]]))
+        self.assertEqual(rejected.tolist(), [False, True])
+        self.assertEqual(penalties[0], 0)
+        self.assertGreater(penalties[1], 0)
+        equal, ambiguous = album_scoring.negative_feedback(vectors, vectors, vectors)
+        self.assertFalse(ambiguous.any())
+        self.assertEqual(equal.sum(), 0)
+        empty, unknown = album_scoring.negative_feedback(vectors, None, vectors)
+        self.assertFalse(unknown.any())
+        self.assertEqual(empty.sum(), 0)
+        result = album_scoring.aggregate(.5, [.8, .8, .8], .6, [False, True, True])
+        self.assertAlmostEqual(result["fit_ratio"], 1 / 3, places=3)
+
     def test_batch_scores_exclude_inactive_and_support_small_libraries(self):
         lib = np.array([[1., 0.], [0., 1.]])
         actual = album_scoring.taste_scores(np.array([[1., 0.], [0., 1.]]), lib, np.array([0., 1.]))
@@ -44,9 +59,9 @@ class AlbumScoringChecks(unittest.TestCase):
         # 서비스 생성자는 모델·캐시를 저장할 수 있어 호출하지 않는다. 실제 두 메서드만 격리 실행.
         tree = ast.parse((ROOT / "ml/service.py").read_text(encoding="utf-8"))
         methods = [n for c in tree.body if isinstance(c, ast.ClassDef) for n in c.body
-                   if isinstance(n, ast.FunctionDef) and n.name in ("describe", "score_albums", "embed_clips")]
+                   if isinstance(n, ast.FunctionDef) and n.name in ("describe", "score_albums", "embed_clips", "favorites", "stack", "feedback_name", "refresh_feedback_weights")]
         module = ast.Module(body=[ast.ClassDef(name="Scorer", bases=[], keywords=[], body=methods, decorator_list=[])], type_ignores=[])
-        namespace = {"np": np, "KNN": 20, "album_scoring": album_scoring, "log": lambda *_: None,
+        namespace = {"np": np, "re": __import__("re"), "KNN": 20, "album_scoring": album_scoring, "log": lambda *_: None,
                      "train": SimpleNamespace(preprocess=lambda x, mean: x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-8))}
         exec(compile(ast.fix_missing_locations(module), "service-scoring", "exec"), namespace)
         scorer = namespace["Scorer"]()
@@ -65,8 +80,22 @@ class AlbumScoringChecks(unittest.TestCase):
         self.assertGreater(result["taste"], result["mean_taste"])
         self.assertEqual(result["fit_ratio"], 1)
         self.assertEqual(result["analyzed_tracks"], 3)
+        self.assertEqual([t["id"] for t in result["scored_tracks"]], [0, 1, 2])
+        scorer.track_fit_threshold = 1.0
+        boundary = scorer.score_albums({"albums": [{"id": 1}]}, 1)["albums"][0]
+        self.assertEqual(boundary["scored_tracks"][0]["taste"], 1.0)
+        self.assertFalse(boundary["scored_tracks"][0]["fits"])
         scorer.lib_w[:] = 0
         self.assertEqual(scorer.describe(np.array([1., 0.]))["taste"], 0)
+        scorer.lib_w[:] = 1
+        feedback = scorer.favorites({"albums": [{"id": "t0", "name": "Fixture – One"}],
+                                     "disliked_tracks": [{"id": "t0", "artist": "Fixture", "title": "One"}]}, 2)
+        self.assertEqual(feedback["count"], 0)
+        self.assertEqual(scorer.feedback_w.tolist(), [0., 1.])
+        self.assertEqual(len(scorer.dis_track_x), 1)
+        scorer.favorites({"albums": []}, 3)
+        self.assertIsNone(scorer.dis_track_x)
+        self.assertEqual(scorer.feedback_w.tolist(), [1., 1.])
 
 
 if __name__ == "__main__":

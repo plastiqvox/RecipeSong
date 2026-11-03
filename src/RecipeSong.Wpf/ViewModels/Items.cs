@@ -113,6 +113,11 @@ public sealed partial class ReleaseItem : ObservableObject
         : Rec.BecauseOf.Where(b => b is not ("웹진" or "AI 제안")).ToList() is { Count: > 0 } bs ? L.F("{0}에서 출발", string.Join(", ", bs.Select(L.T))) : "");
 
     public IAsyncRelayCommand ToggleTracksCommand { get; }
+    [ObservableProperty] private int _detailTabIndex;
+    internal Task<bool>? TracksLoadTask;
+    public Action<ReleaseItem>? OpenEvidenceAction { get; init; }
+    [RelayCommand]
+    private void OpenEvidence() => OpenEvidenceAction?.Invoke(this);
     public IRelayCommand ToggleSaveCommand { get; }
 
     [ObservableProperty] private bool _isPlaying;
@@ -141,11 +146,14 @@ public sealed partial class ReleaseItem : ObservableObject
     /// <summary>곡 하트: VM이 채운다 (곡 ID → 하트 여부, 하트 토글)</summary>
     public Func<long, bool>? IsTrackLiked { get; init; }
     public Action<TrackItem>? ToggleTrackLikeAction { get; init; }
+    public Func<long, bool>? IsTrackDisliked { get; init; }
+    public Action<TrackItem>? ToggleTrackDislikeAction { get; init; }
+    [ObservableProperty] private string? _tasteReviewReason;
 
     /// <summary>별로: 추천에서 숨기고 학습에 반영 (저장함 탭 아래에서 되돌릴 수 있다)</summary>
     public Action<ReleaseItem>? ToggleDislikeAction { get; init; }
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DislikeTip))] private bool _isDisliked;
-    public string DislikeTip => IsDisliked ? L.T("관심 없음 취소 (다시 추천에 나와요)") : L.T("관심 없음 · 추천에서 숨기고 비슷한 소리·이 아티스트는 덜 추천");
+    public string DislikeTip => IsDisliked ? L.T("관심 없음 취소 (다시 추천에 나와요)") : L.T("관심 없음 · 이 앨범을 숨기고 비슷한 소리는 덜 추천");
 
     [RelayCommand]
     private void ToggleDislike() => ToggleDislikeAction?.Invoke(this);
@@ -179,8 +187,10 @@ public sealed partial class ReleaseItem : ObservableObject
             foreach (var t in tracks)
                 Tracks.Add(new TrackItem(this, t, Artist, maxRank, singleTop, _play)
                 {
-                    IsLiked = t.Id != 0 && IsTrackLiked?.Invoke(t.Id) == true,
+                    IsLiked = t.Id != 0 && IsTrackLiked?.Invoke(t.Id) == true && IsTrackDisliked?.Invoke(t.Id) != true,
+                    IsDisliked = t.Id != 0 && IsTrackDisliked?.Invoke(t.Id) == true,
                     ToggleLikeAction = ToggleTrackLikeAction,
+                    ToggleDislikeAction = ToggleTrackDislikeAction,
                 });
         }
         TracksLoadedAt = DateTime.Now;
@@ -294,6 +304,11 @@ public sealed partial class TrackItem : ObservableObject
 
     [RelayCommand]
     private void ToggleLike() => ToggleLikeAction?.Invoke(this);
+    public Action<TrackItem>? ToggleDislikeAction { get; init; }
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DislikeTip))] private bool _isDisliked;
+    public string DislikeTip => IsDisliked ? L.T("이 곡 별로 취소") : L.T("이 곡 별로 · 비슷한 소리를 덜 추천");
+    [RelayCommand]
+    private void ToggleDislike() => ToggleDislikeAction?.Invoke(this);
     public double PopWidth { get; }
     public bool HasPopularity { get; }
     public bool IsTop { get; }

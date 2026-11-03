@@ -192,7 +192,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private RecommendOptions RecOptions => RecommendOptions.Create(_recPrefs.Amount, _recPrefs.Adventure, _recPrefs.ExcludeKnown)
         with
         {
-            DislikedArtists = DislikedArtists, LabelAffinity = _labelAffinity,
+            LabelAffinity = _labelAffinity,
             BlockedArtists = _blocked.ArtistKeys, BlockedLabels = _blocked.LabelKeys, BlockedArtistIds = _blocked.ArtistIds,
             ExcludeInstrumental = _recPrefs.ExcludeInstrumental, HitsOnly = _recPrefs.Tracks == 1,
             LikedArtists = _likedArtists, TypeBonus = _typeBonus,
@@ -451,7 +451,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public void MoveCrateTo(string key, string target, bool after)
     {
         if (key == target) return;
-        var order = CrateChips.Select(c => c.Key).Where(k => k != Labels.All && k != AiChip && k != Labels.Unsorted)
+        var order = CrateChips.Select(c => c.Key).Where(k => k != Labels.All && k != AiChip && k != WebzineChip && k != ReviewChip && k != Labels.Unsorted)
             .Concat(CrateOrder).Distinct().ToList();
         if (!order.Remove(key)) return;
         int t = order.IndexOf(target);
@@ -470,7 +470,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (where == "reset") _userOrder = [];
         else
         {
-            var order = CrateChips.Select(c => c.Key).Where(k => k != Labels.All && k != AiChip && k != Labels.Unsorted)
+            var order = CrateChips.Select(c => c.Key).Where(k => k != Labels.All && k != AiChip && k != WebzineChip && k != ReviewChip && k != Labels.Unsorted)
                 .Concat(CrateOrder).Distinct().ToList();
             int i = order.IndexOf(key);
             if (i < 0) return;
@@ -494,12 +494,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>좋아요: 앨범 하트(liked-albums.json)와 곡 하트(liked-tracks.json). 취향 학습에 쓴다.</summary>
     private readonly SavedReleases _likedAlbums = new(Path.Combine(JsonCache<object>.Dir, "liked-albums.json"));
     private readonly LikedTracks _likedTracks = new();
-    /// <summary>별로 표시한 앨범: 추천에서 숨기고, 닮은 소리는 점수를 깎고, 그 아티스트는 추가 제안에서 뺀다</summary>
+    private readonly DislikedTracks _dislikedTracks = new();
+    /// <summary>별로 표시한 앨범만 숨기고 닮은 소리는 점수를 낮춘다. 아티스트 전체 제외는 명시적 차단만 쓴다.</summary>
     private readonly SavedReleases _disliked = new(Path.Combine(JsonCache<object>.Dir, "disliked.json"));
-
-    /// <summary>별로 표시한 앨범의 아티스트 (내 라이브러리 뮤지션은 빼지 않는다)</summary>
-    private HashSet<string> DislikedArtists =>
-        [.. _disliked.All.Where(d => d.Rec.FromPlaylist == null).Select(d => ListeningAnalyzer.NormalizeArtist(d.Rec.Artist))];
 
     public MainViewModel(AppSettings settings)
     {
@@ -1192,6 +1189,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         new(r, PlayReleaseAsync, ToggleTracksAsync, ToggleSave, _saved.Contains(r.DeezerAlbumId))
         {
             SavedNote = savedNote,
+            OpenEvidenceAction = item => { item.DetailTabIndex = 1; Detail = item; },
             FoundCover = _foundCovers.GetValueOrDefault(r.DeezerAlbumId),
             // 카드의 비슷한 내 곡: 곡마다 들은 결과(수록곡 목록과 같은 곡) — 수록곡 목록에서 다시 계산한 것 → 점수 때 낸 곡 짝 → (예전 결과) 앨범 전체 기준
             NearItems = [.. (_trackNear.TryGet(r.DeezerAlbumId.ToString(), out var tp) && tp.Count > 0 ? tp.Select(p => p.Near)
@@ -1207,6 +1205,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             IsLiked = _likedAlbums.Contains(r.DeezerAlbumId),
             IsTrackLiked = _likedTracks.Contains,
             ToggleTrackLikeAction = ToggleTrackLike,
+            IsTrackDisliked = _dislikedTracks.Contains,
+            ToggleTrackDislikeAction = ToggleTrackDislike,
         };
 
     /// <summary>앨범 하트 ↔ 해제 (별로였으면 별로는 푼다)</summary>
@@ -1231,8 +1231,35 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (track.Id == 0) return;
         var rec = track.Release.Rec;
+        if (_dislikedTracks.Contains(track.Id)) { _dislikedTracks.Remove(track.Id); _likedTracks.Remove(track.Id); }
         track.IsLiked = _likedTracks.Toggle(new LikedTrack(track.Id, rec.DeezerAlbumId, track.Artist, track.Title, DateTime.Now));
+        RefreshTrackFeedback(track);
+        ApplyFilters();
         _ = SyncFavoritesAsync();
+    }
+
+    private void ToggleTrackDislike(TrackItem track)
+    {
+        if (track.Id == 0) return;
+        var rec = track.Release.Rec;
+        bool dislike = _dislikedTracks.Toggle(new(track.Id, rec.DeezerAlbumId, track.Artist, track.Title, DateTime.Now));
+        if (dislike) _likedTracks.Remove(track.Id);
+        RefreshTrackFeedback(track);
+        if (dislike && Player.NowRelease?.Current?.Id == track.Id) Player.Stop();
+        ApplyFilters();
+        SyncText = L.T("곡별 별로를 반영했어요. 비슷한 소리의 점수 보정은 다시 계산하면 적용돼요.");
+        _ = SyncFavoritesAsync();
+    }
+
+    private void RefreshTrackFeedback(TrackItem source)
+    {
+        var copies = _all.SelectMany(i => i.Tracks).Concat(Detail?.Tracks ?? [])
+            .Concat(Player.NowRelease?.Tracks ?? []).Append(source).Where(t => t.Id == source.Id).Distinct();
+        foreach (var item in copies)
+        {
+            item.IsDisliked = _dislikedTracks.Contains(item.Id);
+            item.IsLiked = !item.IsDisliked && _likedTracks.Contains(item.Id);
+        }
     }
 
     /// <summary>별로 ↔ 되돌리기. 별로로 하면 저장함에서는 뺀다 (둘 다일 수는 없으니)</summary>
@@ -1416,7 +1443,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 await _sound.SetFavoritesAsync(favs, _life.Token,
                     _disliked.All.Select(d => d.Rec.DeezerAlbumId).Concat(_blocked.AlbumIds)
-                        .Concat(ImplicitSkips().Where(id => !_likedAlbums.Contains(id))).Distinct());
+                        .Concat(ImplicitSkips().Where(id => !_likedAlbums.Contains(id))).Distinct(), _dislikedTracks.All);
             }
             finally { side?.Stage(RecStage.Done); }
         }
@@ -1425,7 +1452,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>저장함이 바뀌면 추천 결과·후보 풀 저장 키가 바뀐다 (저장 앨범이 점수와 시드에 들어가니까)</summary>
     private string FavoritesVersion =>
-        $"{_likedAlbums.All.Count}-{_likedAlbums.All.Sum(s => s.Rec.DeezerAlbumId % 100_000):x}-{_likedTracks.All.Count}-{_follows.All.Count}";
+        $"{_likedAlbums.All.Count}-{_likedAlbums.All.Sum(s => s.Rec.DeezerAlbumId % 100_000):x}-{_likedTracks.All.Count}-{_follows.All.Count}-{string.Join(",", _dislikedTracks.All.Select(t => t.TrackId).Order())}";
 
     private void RebuildSaved()
     {
@@ -1497,11 +1524,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string FilterSummary =>
         _types.Count == 0 ? L.T("모든 형식") : string.Join("·", TypeChips.Where(c => c.IsSelected).Select(c => c.Label));
 
-    private IEnumerable<ReleaseItem> FilteredBase()
+    private IEnumerable<ReleaseItem> FilteredBase(TasteDecision? decision = TasteDecision.Recommended)
     {
-        var dislikedArtists = DislikedArtists;
-        var floor = OutsideTasteFloor();
-        // 별로 표시한 앨범은 숨기고, 그 아티스트의 추가 제안도 숨긴다 (내 라이브러리 뮤지션 신보는 그대로)
+        // 앨범 별로와 뮤지션 차단을 분리한다.
         // 인스트루멘털 버전: 같은 아티스트의 원래 앨범이 결과나 내 라이브러리에 있으면 뺀다 (저장된 예전 결과에도)
         var titles = _recPrefs.ExcludeInstrumental
             ? _all.Select(i => ListeningAnalyzer.NormalizeArtist(i.Artist) + "|" + ListeningAnalyzer.NormalizeArtist(i.Album)).ToHashSet() : null;
@@ -1512,25 +1537,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         bool live = _recPrefs.ExcludeLive, remix = _recPrefs.ExcludeRemix;
         return _all.Where(i => !_blocked.IsBlocked(i.Rec) && !RedundantInstrumental(i) && _owned?.HasArchiveAlbum(i.Artist, i.Album) != true)
             .Where(i => !(live && AlbumVariants.IsLive(i.Album)) && !(remix && AlbumVariants.IsRemix(i.Album)))
-            .Where(i => !i.IsDisliked
-            && !(i.Rec.FromPlaylist == null && dislikedArtists.Contains(ListeningAnalyzer.NormalizeArtist(i.Rec.Artist))))
-            // AI·웹진이 찾은 앨범도 내 곡과 닮지 않았으면 숨긴다 (내 라이브러리·팔로우 뮤지션 것은 그대로)
-            .Where(i => !(i.IsAi && !i.IsMine && i.Rec.Taste is { } t && t < floor))
+            .Where(i => !i.IsDisliked)
+            .Where(i => decision == null || TasteGate.Assess(i.Rec, _dislikedTracks.Contains) == decision)
             .Where(i => _types.Count == 0 || _types.Contains(i.Rec.RecordType));
-    }
-
-    /// <summary>
-    /// AI·웹진 앨범을 보여 줄 닮음 기준: 이 기간 일반 추천(이미 점수 상위)의 하위 25% 선. 일반 추천이 적으면 기본값.
-    /// 라이브러리마다 닮음 값의 크기가 달라서 고정값 대신 그 기간 추천과 견준다
-    /// </summary>
-    private double OutsideTasteFloor()
-    {
-        var ts = _all.Where(i => !i.IsAi && !i.IsMine && i.Rec.Taste != null).Select(i => i.Rec.Taste!.Value).OrderBy(t => t).ToList();
-        return ts.Count >= 20 ? ts[ts.Count / 4] : new RecommendOptions().MinOutsideTaste;
     }
 
     /// <summary>크레이트 칩 옆 "AI 제안" 칩: AI 커넥터가 찾은 것만 모아 본다</summary>
     private const string AiChip = "AI 제안";
+    private const string ReviewChip = "확인 필요";
+    [ObservableProperty] private string _tasteFilterSummary = "";
     /// <summary>"웹진" 칩: 웹진 RSS에서 가져온 것만</summary>
     private const string WebzineChip = "웹진";
 
@@ -1605,37 +1620,51 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void ApplyFilters()
     {
         Player.StopIfExcluded(IsPlaybackExcluded);
-        var items = FilteredBase().ToList();
-        int aiCount = items.Count(i => i.IsAiConnector);
-        int webzineCount = items.Count(i => i.IsWebzine);
+        var pool = FilteredBase(null).ToList();
+        var recommended = new List<ReleaseItem>();
+        var review = new List<ReleaseItem>();
+        foreach (var item in pool)
+        {
+            var decision = TasteGate.Assess(item.Rec, _dislikedTracks.Contains);
+            item.TasteReviewReason = decision == TasteDecision.NeedsReview
+                ? L.T("곡별 분석 기록이 없거나 분석한 곡이 적어 확인이 필요해요.") : null;
+            if (decision == TasteDecision.Recommended) recommended.Add(item);
+            else if (decision == TasteDecision.NeedsReview) review.Add(item);
+        }
+        TasteFilterSummary = L.F("취향 기준 통과 {0}장 · 확인 필요 {1}장 · 기준 미달 {2}장", recommended.Count, review.Count, pool.Count - recommended.Count - review.Count);
+        int aiCount = recommended.Count(i => i.IsAiConnector);
+        int webzineCount = recommended.Count(i => i.IsWebzine);
 
         // 크레이트 칩: 전체 · (AI 제안) · 장르 칸 순서 · 미분류
-        var names = CrateOrder.Concat(items.Select(i => i.CrateName)).Distinct().ToList();
+        var names = CrateOrder.Concat(pool.Select(i => i.CrateName)).Distinct().ToList();
         var keys = new List<string> { Labels.All };
         if (aiCount > 0) keys.Add(AiChip);
         if (webzineCount > 0) keys.Add(WebzineChip);
+        if (review.Count > 0) keys.Add(ReviewChip);
         keys.AddRange(names);
         if (!CrateChips.Select(c => c.Key).SequenceEqual(keys))
         {
             CrateChips.Clear();
             // 키(크레이트 이름·칩 이름)는 순서 저장·비교에 쓰니 그대로, 보이는 이름만 번역
             foreach (var k in keys)
-                CrateChips.Add(new FilterChip(k, L.T(k), SelectCrate) { Mover = k == Labels.All || k == AiChip || k == WebzineChip || k == Labels.Unsorted ? null : MoveCrate });
+                CrateChips.Add(new FilterChip(k, k == ReviewChip ? L.T("확인 필요") : L.T(k), SelectCrate) { Mover = k == Labels.All || k == AiChip || k == WebzineChip || k == ReviewChip || k == Labels.Unsorted ? null : MoveCrate });
         }
         if (!keys.Contains(_crate)) _crate = Labels.All;
         foreach (var c in CrateChips)
-            c.Count = c.Key == Labels.All ? items.Count : c.Key == AiChip ? aiCount : c.Key == WebzineChip ? webzineCount
-                : items.Count(i => i.CrateName == c.Key);
+            c.Count = c.Key == Labels.All ? recommended.Count : c.Key == AiChip ? aiCount : c.Key == WebzineChip ? webzineCount
+                : c.Key == ReviewChip ? review.Count : recommended.Count(i => i.CrateName == c.Key);
         SyncChips();
 
         bool aiOnly = _crate == AiChip;
         bool webzineOnly = _crate == WebzineChip;
         bool all = _crate == Labels.All;
+        bool reviewOnly = _crate == ReviewChip;
+        var items = reviewOnly ? review : recommended;
         Sections.Clear();
         foreach (var g in items.Where(i => (!aiOnly || i.IsAiConnector) && (!webzineOnly || i.IsWebzine)).GroupBy(i => i.CrateName)
                      .OrderBy(g => g.Key == Labels.Unsorted ? 99 : names.IndexOf(g.Key)))
         {
-            if (!all && !aiOnly && !webzineOnly && g.Key != _crate) continue;
+            if (!all && !aiOnly && !webzineOnly && !reviewOnly && g.Key != _crate) continue;
             // 라이브러리 뮤지션 → AI 제안 → 추가 제안 순
             var list = g.OrderBy(i => i.IsMine ? 0 : i.IsAi ? 1 : 2).ToList();
             int mine = list.Count(i => i.IsMine);
@@ -1661,9 +1690,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
             Sections.Add(new CrateSection(g.Key, shown, list.Count, mine, all && list.Count > 6, SelectCrate, hidden, ShowMoreCards));
         }
-        RecCount = items.Count;
+        RecCount = recommended.Count;
         EmptyText = IsBusy ? "" : items.Count == 0
-            ? (_all.Count == 0 ? L.T("이 기간에 찾은 발매작이 없어요.") : L.T("이 조건에 맞는 발매작이 없어요. 형식·지역 필터를 넓혀 보세요."))
+            ? (_all.Count == 0 ? L.T("이 기간에 찾은 발매작이 없어요.")
+                : review.Count > 0 && !reviewOnly ? L.T("취향 기준을 통과한 추천이 없어요. ‘확인 필요’에서 미분석·근거 부족 앨범을 볼 수 있어요.")
+                : L.T("이 조건에 맞는 발매작이 없어요. 형식·지역 필터를 넓혀 보세요."))
             : "";
         _ = FillCoversAsync(Sections.SelectMany(s => s.Items));
     }
@@ -2277,6 +2308,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (IsPlaybackExcluded(item.Rec)) return;
         var target = track ?? item.Current;
+        if (track == null && target?.IsDisliked == true) target = null;
         if (target != null && Player.IsCurrent(target.SetPlaying))
         {
             Player.Toggle();
@@ -2284,7 +2316,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         Detail = item;  // 재생하면 상세 패널에 수록곡을 연다 (지금 어느 곡인지 보이게)
         if (!await EnsureTracksAsync(item) || IsPlaybackExcluded(item.Rec)) return;
-        target ??= item.Tracks.FirstOrDefault(t => t.HasPreview);
+        if (track == null && target?.IsDisliked == true) target = null;
+        target ??= item.Tracks.FirstOrDefault(t => t.HasPreview && !t.IsDisliked);
         if (target?.Preview is not { } url)
         {
             Player.Subtitle = $"{item.Album}: {(target == null ? L.T("미리듣기가 없는 앨범이에요") : L.T("이 곡은 미리듣기가 없어요"))}";
@@ -2299,7 +2332,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     // 30초 미리듣기가 끝나면 같은 앨범의 다음 곡으로 (앨범 훑어보기)
     private void PlayNextTrack(ReleaseItem item, TrackItem done)
     {
-        var next = item.Tracks.SkipWhile(t => t != done).Skip(1).FirstOrDefault(t => t.HasPreview);
+        var next = item.Tracks.SkipWhile(t => t != done).Skip(1).FirstOrDefault(t => t.HasPreview && !t.IsDisliked);
         if (next != null) _ = PlayReleaseAsync(item, next);
     }
 
@@ -2379,7 +2412,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (Player.NowRelease is not { Current: { } cur } item) return;
         var tracks = step > 0 ? item.Tracks.SkipWhile(t => t != cur).Skip(1) : item.Tracks.TakeWhile(t => t != cur).Reverse();
-        if (tracks.FirstOrDefault(t => t.HasPreview) is { } next) _ = PlayReleaseAsync(item, next);
+        if (tracks.FirstOrDefault(t => t.HasPreview && !t.IsDisliked) is { } next) _ = PlayReleaseAsync(item, next);
     }
 
     /// <summary>Space: 듣던 것이 있으면 재생/일시정지, 없으면 열린 앨범을 튼다</summary>
@@ -2391,14 +2424,24 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task ToggleTracksAsync(ReleaseItem item)
     {
-        if (Detail == item) { Detail = null; return; }
+        if (Detail == item && item.DetailTabIndex == 0) { Detail = null; return; }
+        item.DetailTabIndex = 0;
         Detail = item;
         await EnsureTracksAsync(item);
     }
 
     /// <summary>수록곡을 받는다. 미리듣기 URL은 몇 시간 뒤 만료되므로 30분이 지났으면 새로 받는다.</summary>
-    private async Task<bool> EnsureTracksAsync(ReleaseItem item)
+    public async Task EnsureDetailTracksAsync()
     {
+        if (Detail is { DetailTabIndex: 0 } item) await EnsureTracksAsync(item);
+    }
+
+    private Task<bool> EnsureTracksAsync(ReleaseItem item) => item.TracksLoadTask is { IsCompleted: false } pending
+        ? pending : item.TracksLoadTask = LoadTracksAsync(item);
+
+    private async Task<bool> LoadTracksAsync(ReleaseItem item)
+    {
+        foreach (var track in item.Tracks) RefreshTrackFeedback(track);
         // 30분 안이면 그대로. 단 미리듣기가 빈 곡이 있으면 다시 열 때마다(1분 간격) 다시 받아 본다 (발매 직후에는 곡마다 미리듣기가 늦게 붙는다)
         var age = DateTime.Now - item.TracksLoadedAt;
         if (item.Tracks.Count > 0 && age < TimeSpan.FromMinutes(30)

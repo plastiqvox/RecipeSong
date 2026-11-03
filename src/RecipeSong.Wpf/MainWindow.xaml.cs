@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using RecipeSong.Wpf.ViewModels;
@@ -295,6 +296,12 @@ public partial class MainWindow : Window
     }
 
     // 수록곡 창의 스피커 아이콘: 휠 한 칸에 5%
+    private async void DetailTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.RemovedItems.Count > 0 && ReferenceEquals(e.Source, sender) && sender is TabControl { SelectedIndex: 0 })
+            await _vm.EnsureDetailTracksAsync();
+    }
+
     private void Volume_Wheel(object sender, MouseWheelEventArgs e)
     {
         _vm.Player.Volume = Math.Clamp(_vm.Player.Volume + Math.Sign(e.Delta) * 0.05, 0, 1);

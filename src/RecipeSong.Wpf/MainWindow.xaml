@@ -27,6 +27,7 @@
                 <ColumnDefinition/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <!-- 곡 하트: 학습에 반영 -->
             <Button Grid.Column="1" Style="{StaticResource Bare}" BorderThickness="0" Padding="5,4" VerticalAlignment="Center"
@@ -36,7 +37,14 @@
                       Stroke="{StaticResource Muted}" StrokeThickness="1.4" Fill="Transparent"/>
             </Button>
             <!-- YouTube: 미리듣기가 없는 곡도 누를 수 있게 줄 버튼 바깥에 둔다. 평소엔 회색(Line3 은 꺼진 버튼처럼 보여서 Muted), 줄에 올리면 빨강 -->
-            <Button Grid.Column="2" Style="{StaticResource Bare}" BorderThickness="0" Padding="6,4" VerticalAlignment="Center"
+            <Button x:Name="trackDislikeButton" Grid.Column="2" Style="{StaticResource Bare}" BorderThickness="0" Padding="5,4" VerticalAlignment="Center"
+                    Command="{Binding ToggleDislikeCommand}" ToolTip="{Binding DislikeTip}"
+                    Visibility="{Binding CanLike, Converter={StaticResource BoolVis}}"
+                    AutomationProperties.Name="{Binding Title, Converter={StaticResource TrFmt}, ConverterParameter='곡 별로: {0}'}">
+                <Path x:Name="trackDislike" Data="{StaticResource ThumbDownIcon}" Width="12" Height="11" Stretch="Uniform"
+                      Stroke="{StaticResource Muted}" StrokeThickness="1.4" Fill="Transparent"/>
+            </Button>
+            <Button Grid.Column="3" Style="{StaticResource Bare}" BorderThickness="0" Padding="6,4" VerticalAlignment="Center"
                     Command="{Binding OpenYouTubeCommand}" ToolTip="{local:Tr 'YouTube에서 이 곡 찾기 (전곡)'}"
                     AutomationProperties.Name="{Binding Title, Converter={StaticResource TrFmt}, ConverterParameter='YouTube 곡: {0}'}">
                 <Path x:Name="yt" Data="{StaticResource YouTubeIcon}" Fill="{StaticResource Muted}" Width="14" Height="10" Stretch="Uniform"/>
@@ -99,6 +107,10 @@
             </Button>
             </Grid>
             <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsDisliked}" Value="True">
+                    <Setter TargetName="trackDislike" Property="Fill" Value="#E06A6A"/>
+                    <Setter TargetName="trackDislike" Property="Stroke" Value="#E06A6A"/>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsClosest}" Value="True">
                     <Setter TargetName="near" Property="Foreground" Value="{StaticResource AccentText}"/>
                 </DataTrigger>
@@ -323,9 +335,16 @@
                     <TextBlock Text="{Binding TracksStatus}" Style="{StaticResource MutedText}" FontSize="12" Margin="4,4"
                                Visibility="{Binding TracksStatus, Converter={StaticResource EmptyCollapsed}}"/>
                 </StackPanel>
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{Binding Tracks}" ItemTemplate="{StaticResource TrackRow}" Margin="0,0,6,0"/>
-                </ScrollViewer>
+                <TabControl Style="{StaticResource WorkspaceTabs}" SelectedIndex="{Binding DetailTabIndex, Mode=TwoWay}" SelectionChanged="DetailTabs_SelectionChanged">
+                    <TabItem Header="{local:Tr '수록곡'}" Style="{StaticResource WorkspaceTab}" FontSize="12">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding Tracks}" ItemTemplate="{StaticResource TrackRow}" Margin="0,0,6,0"/>
+                        </ScrollViewer>
+                    </TabItem>
+                    <TabItem Header="{local:Tr '추천 근거'}" Style="{StaticResource WorkspaceTab}" FontSize="12">
+                        <local:RecommendationEvidenceView/>
+                    </TabItem>
+                </TabControl>
             </DockPanel>
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsSaved}" Value="True">
@@ -354,6 +373,7 @@
                 <Border.ContextMenu>
                     <!-- 컨텍스트 메뉴는 시각 트리 밖이라 컨테이너가 재사용되면 예전 카드를 가리킬 수 있다 → 열 때마다 지금 카드를 본다 -->
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="{local:Tr '추천 근거 보기'}" Command="{Binding OpenEvidenceCommand}"/>
                         <MenuItem Header="{local:Tr 'Soulseek 검색·다운로드'}" Click="Soulseek_Click">
                             <MenuItem.Icon><Path Data="{StaticResource DownloadIcon}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource Text2}" StrokeThickness="1.6" StrokeLineJoin="Round"/></MenuItem.Icon>
                         </MenuItem>
@@ -389,6 +409,11 @@
                     <!-- 버튼 줄은 아래에 붙인다: 한 줄의 카드는 높이가 같아서 버튼 줄 높이가 카드마다 맞는다 -->
                     <DockPanel Grid.Column="2">
                         <StackPanel DockPanel.Dock="Bottom">
+                            <TextBlock Text="{Binding TasteReviewReason}" FontSize="11" Foreground="{StaticResource AccentText}" TextWrapping="Wrap"
+                                       Visibility="{Binding TasteReviewReason, Converter={StaticResource EmptyCollapsed}}" Margin="2,4"/>
+                            <Button Content="{local:Tr '추천 근거 보기'}" Command="{Binding OpenEvidenceCommand}" Style="{StaticResource Bare}"
+                                    BorderThickness="0" Padding="2,4" HorizontalAlignment="Left" FontSize="11" Foreground="{StaticResource AccentText}"
+                                    AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='추천 근거: {0}'}"/>
                             <!-- 어디서 출발한 추천인지 (버튼 줄 위에 따로 한 줄, 길면 두 줄까지. 아래에 두면 버튼 줄 높이가 카드마다 달라졌다) -->
                             <TextBlock Text="{Binding Because}" Style="{StaticResource MutedText}" FontSize="11" Margin="2,6,0,0" TextWrapping="Wrap"
                                        TextTrimming="CharacterEllipsis" MaxHeight="32" ToolTip="{Binding Because}"
@@ -994,6 +1019,8 @@
                 </ItemsControl>
 
                 <!-- 탭 -->
+                <TextBlock Text="{Binding TasteFilterSummary}" FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,16,0"
+                           Visibility="{Binding IsRecsTab, Converter={StaticResource BoolVis}}"/>
                 <!-- 오른쪽 16: 밑줄이 카드 오른쪽 끝에서 멈추게 -->
                 <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Margin="0,14,16,0">
                     <DockPanel>

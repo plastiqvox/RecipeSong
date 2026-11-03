@@ -18,6 +18,18 @@ static partial class Program
         var app = new App();
         app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (args.Length > 1 && args[1] == "--taste-feedback")
+        {
+            CheckTasteFeedback(output);
+            Console.WriteLine("Track feedback UI checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--evidence")
+        {
+            CheckEvidence(output);
+            Console.WriteLine("Recommendation evidence checks passed.");
+            return 0;
+        }
         if (args.Length > 1 && args[1] == "--playback")
         {
             CheckExcludedPlayback(output);
@@ -427,6 +439,12 @@ static partial class Program
         var canvas = new Border { Background = (Brush)Application.Current.FindResource("Bg"), Child = content, Width = width, Height = height };
         canvas.Measure(new Size(width, height));
         canvas.Arrange(new Rect(0, 0, width, height));
+        void Invalidate(DependencyObject visual)
+        {
+            if (visual is UIElement element) element.InvalidateVisual();
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(visual); i++) Invalidate(VisualTreeHelper.GetChild(visual, i));
+        }
+        Invalidate(canvas);
         canvas.UpdateLayout();
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(canvas);

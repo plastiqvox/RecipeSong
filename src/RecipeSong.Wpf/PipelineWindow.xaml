@@ -67,7 +67,7 @@
                                    ToolTip="{local:Tr '추천에 쓰는 데이터 (라이브러리·ZIP 보유·뮤지션 ID·기간별 저장 결과·소리 기준). 읽기·분석·재사용 상태도 함께 표시해요'}"/>
                         <Path Data="M1,1 L10,1 L14,5 L14,13 L1,13 Z M10,1 L10,5 L14,5" Width="16" Height="14" Stretch="Fill" StrokeThickness="1.2" Stroke="{StaticResource Text2}" Fill="{StaticResource Surface2}" Margin="0,0,5,0" VerticalAlignment="Center"/>
                         <TextBlock Text="{local:Tr '규칙'}" FontSize="11" Foreground="{StaticResource Text2}"
-                                   ToolTip="{local:Tr '계산 단계가 아니라 단계가 따르는 규칙 (장르 정하는 순서 · AI·웹진 거르기). 색이 바뀌지 않아요'}"/>
+                                   ToolTip="{local:Tr '계산 단계가 아니라 단계가 따르는 규칙 (장르 정하는 순서 · 공통 취향 기준). 색이 바뀌지 않아요'}"/>
                     </StackPanel>
                 </WrapPanel>
                 <StackPanel>

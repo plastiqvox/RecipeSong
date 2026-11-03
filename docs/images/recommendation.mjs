@@ -12,23 +12,24 @@ export default (k) => {
   const base = C(X.l, 1, "내 곡 소리 기준", "하트 1 · 90일+ 안 들은 곡 0", "focus");
   const seed = C(X.c, 1, "시드 아티스트", "곡 가중치 합 상위 80명 + 하트·팔로우", "focus");
   const similar = C(X.c, 2, "비슷한 아티스트 2단계", "Deezer 연관 + Last.fm · 상위 1,000명", "focus");
-  const mine = C(X.r, 2, "내 아카이브 뮤지션", "가중치 상위 500명 · 신보 항상 앞", "focus");
+  const mine = C(X.r, 2, "내 아카이브 뮤지션", "가중치 상위 500명 · 후보에 포함", "focus");
   const identity = k.card(X.r, Y(1), "뮤지션 ID · SQLite", ["라이브러리·ZIP 앨범명 대조", "수동 우선 · 보유 정보 변경 시 확인"], { w: 400, size: 22, tone: "focus" });
   const rel = C(X.c, 3, "그 기간 발매작", "가진 앨범·차단 빼고");
-  const listen = C(X.c, 4, "곡별 취향 집계", "평균 + 상위 3곡 + 적합 곡 비율", "focus");
+  const listen = C(X.c, 4, "곡별 취향·불호 집계", "평균 · 상위곡 · 불호 곡 유사도", "focus");
   const ai = C(X.r, 4, "AI 커넥터 · 웹진", "Deezer에서 있는지 확인");
   const score = C(X.c, 5, "점수 · 메타데이터 보완", "소리 중심 · 태그+제작진 최대 0.35", "focus");
   const ladder = C(X.l, 6, "장르 정하는 순서", "Last.fm → Discogs → Deezer …", "focus");
   const crate = C(X.c, 6, "장르 칸", "국적과 상관없이 6칸", "focus");
   const screen = C(X.c, 7, "화면", "인디·록 · 일렉트로닉 · 힙합·R&B …");
-  const gate = C(X.r, 7, "AI·웹진 거르기", "일반 추천 하위 25% 선 미만 숨김", "focus");
+  const gate = C(X.r, 7, "공통 취향 기준", "모든 출처 · 적합 곡수로 판정", "focus");
+  const review = C(X.r, 6, "확인 필요", "미분석 · 곡별 근거 부족", "focus");
 
   const A = (pts, label, o = {}) => k.arrow(pts, { width: 3, head: 15, label, labelSize: 17, ...o });
   const down = (a, b, label) => A([k.edge(a, "bottom"), k.edge(b, "top")], label, { side: "right" });
 
   const flow = {
     kind: "figure", name: "recommendation-flow", w: 1600, h: Y(7) + 95,
-    title: "라이브러리 전체에서 시드와 내 곡 소리 기준을 만들고, Deezer로 후보를 모아 미리듣기 소리를 비교해 점수를 매긴 뒤 장르 칸으로 나눠 보여 주는 흐름. AI와 웹진 앨범은 닮음 기준을 넘어야 보인다.",
+    title: "라이브러리 전체에서 시드와 내 곡 소리 기준을 만들고, 곡별 불호를 반영해 점수를 매긴다. 모든 출처에 공통 취향 기준을 적용하고 미분석·근거 부족은 확인 필요로 분리한다.",
     items: [
       A([k.edge(lib, "left"), [X.l, lib.y], k.edge(base, "top")], "전 곡 소리 (처음 한 번)"),
       A([k.edge(lib, "right"), [X.r, lib.y], k.edge(identity, "top")], "보유 정보"),
@@ -47,7 +48,8 @@ export default (k) => {
       A([k.edge(ladder, "right"), k.edge(crate, "left")]),
       down(crate, screen, "칸마다 묶기"),
       A([k.edge(gate, "left"), k.edge(screen, "right")], null, { dashed: true }),
-      lib, base, seed, similar, mine, identity, archive, rel, listen, ai, score, ladder, crate, screen, gate,
+      A([k.edge(gate, "top"), k.edge(review, "bottom")], "근거 부족", { side: "right" }),
+      lib, base, seed, similar, mine, identity, archive, rel, listen, ai, score, ladder, crate, screen, gate, review,
     ],
   };
 

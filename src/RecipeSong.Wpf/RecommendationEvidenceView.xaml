@@ -1,0 +1,71 @@
+<UserControl x:Class="RecipeSong.Wpf.RecommendationEvidenceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:RecipeSong.Wpf">
+    <UserControl.Resources>
+        <Style x:Key="Heading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,20,0,8"/><Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <DataTemplate x:Key="Rows">
+            <StackPanel Margin="0,0,0,9">
+                <TextBlock Text="{Binding Label}" FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding Value}" FontSize="12.5" Foreground="{StaticResource Text}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CompactRows">
+            <Grid Margin="0,5">
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Label}" FontSize="12" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,0,12,0"/>
+                <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="12" TextWrapping="Wrap" MaxWidth="110" Foreground="{StaticResource Text}"/>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0"
+                  AutomationProperties.Name="{local:Tr '추천 근거 상세'}">
+        <StackPanel x:Name="Body" Margin="2,10,0,16">
+            <TextBlock Text="{Binding Score}" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding Notice}" FontSize="12" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+            <TextBlock Text="{Binding Scope}" FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+            <TextBlock Text="{local:Tr '이 앨범을 고른 근거'}" Style="{StaticResource Heading}"/>
+            <ItemsControl ItemsSource="{Binding Reasons}" ItemTemplate="{StaticResource Rows}"/>
+            <TextBlock Text="{local:Tr '태그·제작진 근거가 없으면 자료가 없거나 일치가 확인되지 않은 경우예요.'}"
+                       FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+            <StackPanel Visibility="{Binding HasContributions, Converter={StaticResource BoolVis}}">
+                <TextBlock Text="{local:Tr '점수 구성'}" Style="{StaticResource Heading}"/>
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="{local:Tr '실제로 더한 값이에요. 음수는 순위를 낮추는 방향이에요.'}" FontSize="11"
+                               Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                    <ItemsControl ItemsSource="{Binding Contributions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="82"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Label}" FontSize="12" TextWrapping="Wrap" Margin="0,0,8,0"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="12" FontFamily="{StaticResource Mono}" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+            <TextBlock Text="{local:Tr '곡별 취향 분석'}" Style="{StaticResource Heading}"/>
+            <ItemsControl ItemsSource="{Binding Analysis}" ItemTemplate="{StaticResource CompactRows}"/>
+            <TextBlock Text="{local:Tr '비율은 분석한 곡 기준이에요. 미리듣기가 없는 곡은 불호로 세지 않아요.'}"
+                       FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+            <TextBlock Text="{local:Tr '점수는 반올림해 표시하지만 기준 판정은 원래 값으로 계산해요.'}"
+                       FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+            <StackPanel Visibility="{Binding HasTracks, Converter={StaticResource BoolVis}}">
+                <TextBlock Text="{local:Tr '취향에 가까운 수록곡'}" Style="{StaticResource Heading}"/>
+                <ItemsControl ItemsSource="{Binding Tracks}" ItemTemplate="{StaticResource Rows}" Margin="0,10,0,0"/>
+            </StackPanel>
+            <TextBlock Text="{local:Tr '곡별 점수 기록이 없어요. 다시 계산하면 확인할 수 있어요.'}"
+                       Visibility="{Binding HasTracks, Converter={StaticResource NotBoolVis}}" TextWrapping="Wrap" FontSize="12"
+                       Foreground="{StaticResource Muted}" Margin="0,12,0,0"/>
+            <StackPanel Visibility="{Binding HasPairs, Converter={StaticResource BoolVis}}">
+                <TextBlock Text="{local:Tr '닮은 내 곡'}" Style="{StaticResource Heading}"/>
+                <ItemsControl ItemsSource="{Binding Pairs}" ItemTemplate="{StaticResource Rows}" Margin="0,10,0,0"/>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

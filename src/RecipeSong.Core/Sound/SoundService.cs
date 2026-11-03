@@ -149,7 +149,15 @@ public sealed class SoundService : IAsyncDisposable
                     ? [.. with.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null,
                 Pairs(a),
                 a.TryGetProperty("fit_ratio", out var fit) ? fit.GetDouble() : null,
-                a.TryGetProperty("analyzed_tracks", out var analyzed) ? analyzed.GetInt32() : null);
+                a.TryGetProperty("analyzed_tracks", out var analyzed) ? analyzed.GetInt32() : null,
+                a.TryGetProperty("mean_taste", out var mean) ? mean.GetDouble() : null,
+                a.TryGetProperty("top_taste", out var top) ? top.GetDouble() : null,
+                a.TryGetProperty("fit_threshold", out var threshold) ? threshold.GetDouble() : null,
+                a.TryGetProperty("scored_tracks", out var scored) ? [.. scored.EnumerateArray().Select(t =>
+                    new ScoredTrack(t.GetProperty("id").GetInt64(), Str(t, "title"), t.GetProperty("taste").GetDouble(),
+                        t.TryGetProperty("fits", out var fits) ? fits.GetBoolean() : null,
+                        t.TryGetProperty("matches_dislike", out var bad) ? bad.GetBoolean() : null))] : null,
+                a.TryGetProperty("total_tracks", out var total) && total.ValueKind == JsonValueKind.Number ? total.GetInt32() : null);
         }
         return map;
     }
@@ -160,12 +168,13 @@ public sealed class SoundService : IAsyncDisposable
     /// </summary>
     /// <param name="likes">앨범 하트는 앨범 ID, 곡 하트는 "t곡ID"</param>
     public async Task<int> SetFavoritesAsync(IEnumerable<(string Key, string Name)> likes, CancellationToken ct = default,
-        IEnumerable<long>? dislikes = null)
+        IEnumerable<long>? dislikes = null, IEnumerable<DislikedTrack>? dislikedTracks = null)
     {
         var args = new
         {
             albums = likes.Select(a => new { id = a.Key, name = a.Name }).ToList(),
             dislikes = (dislikes ?? []).Select(id => new { id }).ToList(),
+            disliked_tracks = (dislikedTracks ?? []).Select(t => new { id = $"t{t.TrackId}", artist = t.Artist, title = t.Title }).ToList(),
         };
         var r = await CallAsync("favorites", args, null, ct);
         return r.GetProperty("count").GetInt32();

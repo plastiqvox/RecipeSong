@@ -120,7 +120,16 @@ public sealed record ReleaseRecommendation(
     string? FavNear = null, string? LikedLabel = null, string? WithLiked = null, int Fans = 0,
     string? SourceUrl = null, long ArtistId = 0, IReadOnlyList<TrackPair>? Pairs = null, IReadOnlyList<string>? Genres = null,
     bool ViaLastFm = false, string? MatchedTag = null, string? MatchedCrew = null,
-    double? FitRatio = null, int? AnalyzedTracks = null);
+    double? FitRatio = null, int? AnalyzedTracks = null, RankingEvidence? Evidence = null);
+
+/// <summary>계산 당시 실제로 더한 점수. Kind는 저장용 식별자이며 화면에서만 번역한다.</summary>
+public sealed record ScoreContribution(string Kind, double Value);
+public sealed record ScoredTrack(long Id, string? Title, double Taste, bool? MeetsThreshold = null, bool? MatchesDislike = null);
+public sealed record RankingEvidence(IReadOnlyList<ScoreContribution> Contributions, double? MeanTaste,
+    double? TopTaste, double? FitThreshold, bool HitsOnly, IReadOnlyList<ScoredTrack>? Tracks = null, int? TotalTracks = null)
+{
+    public double Total => Math.Round(Contributions.Sum(c => c.Value), 3);
+}
 
 /// <summary>이 앨범의 곡 ≈ 가장 닮은 내 곡 ("아티스트 – 곡명"), 소리 서비스가 미리듣기 곡마다 매긴다</summary>
 public sealed record TrackPair(string Track, string Near, double Sim);
@@ -152,7 +161,8 @@ public sealed record RecommendationResult(
 public sealed record AlbumSound(
     double? Taste, IReadOnlyList<string> Near, string? Label, string? Genre,
     double? Fav = null, string? FavNear = null, double? Dis = null, IReadOnlyList<string>? With = null,
-    IReadOnlyList<TrackPair>? Pairs = null, double? FitRatio = null, int? AnalyzedTracks = null)
+    IReadOnlyList<TrackPair>? Pairs = null, double? FitRatio = null, int? AnalyzedTracks = null,
+    double? MeanTaste = null, double? TopTaste = null, double? FitThreshold = null, IReadOnlyList<ScoredTrack>? ScoredTracks = null, int? TotalTracks = null)
 {
     /// <summary>Fav: 저장함 앨범과 닮은 정도, FavNear: 가장 닮은 저장 앨범 ("아티스트 – 앨범")</summary>
     public bool Heard => Taste != null;

@@ -23,6 +23,10 @@ public sealed class LikedTracks
     public IReadOnlyList<LikedTrack> All => _items;
     public bool Contains(long trackId) => trackId != 0 && _items.Any(t => t.TrackId == trackId);
     public int CountInAlbum(long albumId) => _items.Count(t => t.AlbumId == albumId);
+    public void Remove(long id)
+    {
+        if (_items.RemoveAll(t => t.TrackId == id) > 0) File.WriteAllText(_file, JsonSerializer.Serialize(_items));
+    }
 
     /// <summary>하트 ↔ 해제. 하트가 됐으면 true</summary>
     public bool Toggle(LikedTrack track)

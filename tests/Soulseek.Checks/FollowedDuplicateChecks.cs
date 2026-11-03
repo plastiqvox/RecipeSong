@@ -22,6 +22,8 @@ static class FollowedDuplicateChecks
         var result = await recommender.FollowedAsync(follows, new OwnedLibrary([]),
             Periods.Create(PeriodKind.Month, new(2000, 5, 1)), new RecommendOptions());
         var indexed = result.ToDictionary(r => r.DeezerAlbumId);
+        if (result.Any(r => r.Evidence == null || r.Evidence.Total != r.Score))
+            throw new Exception("Stored score contributions do not add up to the actual ranking score.");
         if (indexed.Count != 3 || result.Count(r => r.DeezerAlbumId == shared.Id) != 1
             || result.Any(r => r.FromPlaylist != FollowList.Tag) || handler.Requests != 3)
             throw new Exception("A shared followed album was duplicated, scored repeatedly, or displaced a solo release.");
