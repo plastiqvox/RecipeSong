@@ -234,8 +234,8 @@
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="Slider">
-                                <!-- 세로는 아래가 0 (IsDirectionReversed) -->
-                                <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True">
+                                <!-- 기본 방향은 아래가 최소, 위가 최대. 클릭·드래그 방향을 Slider와 맞춘다. -->
+                                <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="{TemplateBinding IsDirectionReversed}">
                                     <Track.DecreaseRepeatButton>
                                         <RepeatButton x:Name="done" Style="{StaticResource SliderPartV}" Background="{StaticResource Text2}" Command="Slider.DecreaseLarge"/>
                                     </Track.DecreaseRepeatButton>
