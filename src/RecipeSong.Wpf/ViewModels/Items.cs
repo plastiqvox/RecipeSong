@@ -254,12 +254,14 @@ public sealed partial class TrackItem : ObservableObject
     public TrackItem(ReleaseItem release, AlbumTrack t, string albumArtist, int albumMaxRank, bool singleTop,
         Func<ReleaseItem, TrackItem?, Task> play)
     {
-        // 인기도: 앨범 안에서 가장 인기 있는 곡 대비 (Deezer rank). 신보는 아직 낮고 비슷할 수 있다.
-        int level = albumMaxRank > 0 ? Math.Clamp((int)Math.Ceiling(5.0 * t.Rank / albumMaxRank), t.Rank > 0 ? 1 : 0, 5) : 0;
-        PopBars = [.. Enumerable.Range(0, 5).Select(i => i < level)];
+        // 앨범 최고점 대비 비율을 그대로 그린다. 칸 단위로 올림하면 비슷한 점수가 모두 꽉 차 보인다.
+        double popularity = albumMaxRank > 0 ? Math.Clamp((double)t.Rank / albumMaxRank, 0, 1) : 0;
+        PopWidth = 36 * popularity;
         HasPopularity = albumMaxRank > 0;
         IsTop = albumMaxRank > 0 && singleTop && t.Rank == albumMaxRank;
-        PopTip = t.Rank > 0 ? L.F("Deezer 인기 {0:N0}", t.Rank) + (IsTop ? " · " + L.T("앨범에서 가장 인기") : "") : L.T("인기 정보 없음");
+        PopTip = t.Rank > 0 ? L.F("Deezer 인기 점수 {0:N0}", t.Rank) + (IsTop ? " · " + L.T("앨범에서 가장 인기") : "") : L.T("인기 정보 없음");
+        if (HasPopularity) PopTip += "\n" + L.F("앨범 최고점 대비 {0:P1}", popularity);
+        if (t.Rank > 0) PopTip += "\n" + L.T("재생 횟수가 아닌 인기 지표예요.");
         Release = release;
         Number = t.Number;
         Title = t.Title;
@@ -285,7 +287,7 @@ public sealed partial class TrackItem : ObservableObject
 
     [RelayCommand]
     private void ToggleLike() => ToggleLikeAction?.Invoke(this);
-    public bool[] PopBars { get; }
+    public double PopWidth { get; }
     public bool HasPopularity { get; }
     public bool IsTop { get; }
     public string PopTip { get; }

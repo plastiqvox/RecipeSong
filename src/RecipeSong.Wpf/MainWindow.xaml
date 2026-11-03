@@ -87,20 +87,11 @@
                                 Visibility="{Binding IsTop, Converter={StaticResource BoolVis}}">
                             <TextBlock Text="{local:Tr '인기'}" FontSize="10" Foreground="{StaticResource AccentText}"/>
                         </Border>
-                        <ItemsControl ItemsSource="{Binding PopBars}" VerticalAlignment="Center"
-                                      Visibility="{Binding HasPopularity, Converter={StaticResource BoolVis}}">
-                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Rectangle x:Name="bar" Width="3" Height="9" Margin="0,0,2,0" RadiusX="1" RadiusY="1" Fill="{StaticResource Line3}"/>
-                                    <DataTemplate.Triggers>
-                                        <DataTrigger Binding="{Binding}" Value="True">
-                                            <Setter TargetName="bar" Property="Fill" Value="{StaticResource Text2}"/>
-                                        </DataTrigger>
-                                    </DataTemplate.Triggers>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <Border Width="36" Height="4" CornerRadius="2" Background="{StaticResource Line3}"
+                                VerticalAlignment="Center" AutomationProperties.Name="{Binding PopTip}"
+                                Visibility="{Binding HasPopularity, Converter={StaticResource BoolVis}}">
+                            <Border Width="{Binding PopWidth}" HorizontalAlignment="Left" CornerRadius="2" Background="{StaticResource Text2}"/>
+                        </Border>
                         <TextBlock x:Name="dur" Text="{Binding DurationText}" FontFamily="{StaticResource Mono}" FontSize="11"
                                    Foreground="{StaticResource Muted}" Margin="8,0,4,0" VerticalAlignment="Center"/>
                     </StackPanel>
