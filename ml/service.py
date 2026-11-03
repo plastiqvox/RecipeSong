@@ -33,6 +33,7 @@ import torch  # noqa: E402
 import effnet  # noqa: E402
 import embed  # noqa: E402
 import library  # noqa: E402
+import album_scoring  # noqa: E402
 import train  # noqa: E402
 
 PROTO = sys.stdout
@@ -120,6 +121,8 @@ class Service:
         # 곡 가중치: 많이 듣고 좋아한 곡과 닮을수록 더 쳐준다 (0.3~1배, 하트는 1). 오래 안 들은 곡은 0 → 비교에서 빠진다.
         # 라이브러리에서 지운 곡도 0
         self.lib_w = np.array([self.tracks[k].taste_weight() if k in self.tracks else 0.0 for k in keys], np.float32)
+        # 내 곡을 자기 자신을 제외한 이웃과 비교한 분포로 적합 기준을 정한다.
+        self.track_fit_threshold = album_scoring.fit_threshold(self.lib, self.lib_w, KNN)
         self.xml_mtime = os.path.getmtime(self.xml)
         log(f"[service] 라이브러리 {len(self.tracks)}곡, 임베딩 {len(keys)}곡 ({self.model['embeddings']}), "
             f"닮음 비교 {int((self.lib_w > 0).sum())}곡, 기준 {self.model['trained_at']}")
@@ -163,6 +166,8 @@ class Service:
 
     def embed_clips(self, groups: list[list[np.ndarray]]) -> list[np.ndarray | None]:
         """곡(앨범)마다 클립 묶음 → 평균 임베딩 (L2 정규화)."""
+        if not groups:
+            return []  # 곡 ID 목록만 보완할 때는 소리 모델도 불러오지 않는다.
         if self.is_effnet:
             if self._effnet is None:
                 self._effnet = effnet.EffNet()
@@ -286,6 +291,7 @@ class Service:
                 info = self.album_info.setdefault(aid, {})
                 info["pairs"] = top
                 info["tracks_mode"] = self.track_mode
+                info["track_ids"] = [str(tid) for tid, _, _ in items if tid is not None]
                 # 예전 EffNet 장르 태그는 지운다 (장르 배지는 앱이 Last.fm 태그로 붙인다)
                 info.pop("genres", None)
                 info.pop("effnet", None)
@@ -295,7 +301,8 @@ class Service:
         """아직 소리를 모르는 앨범, 또는 다른 모드(전곡·인기곡, 예전의 앞 3곡)로 들은 앨범만 다시 임베딩한다 (album_emb.npz 캐시)."""
         def stale(k: str) -> bool:
             info = self.album_info.get(k, {})
-            return k not in self.album_cache or (not k.startswith("t") and info.get("tracks_mode") != self.track_mode)
+            return k not in self.album_cache or (not k.startswith("t") and
+                (info.get("tracks_mode") != self.track_mode or "track_ids" not in info))
         todo = [a for a in albums if stale(str(a["id"]))]
         done = 0
         # 처음 보는 앨범만 듣는다는 걸 알린다 (전체 장수만 보이면 전부 다시 듣는 것처럼 보였다)
@@ -332,7 +339,13 @@ class Service:
             if e is None:
                 results.append({"id": a["id"], "ok": False, **info})
                 continue
-            results.append({"id": a["id"], "ok": True, **info, **self.describe(e, key)})
+            description = self.describe(e, key)
+            if not key.startswith("t") and self.track_fit_threshold is not None:
+                tracks = [self.album_cache[f"t{tid}"] for tid in info.get("track_ids", [])
+                          if f"t{tid}" in self.album_cache]
+                scores = album_scoring.taste_scores(train.preprocess(np.stack(tracks), self.mean), self.lib, self.lib_w).tolist() if tracks else []
+                description.update(album_scoring.aggregate(description["taste"], scores, self.track_fit_threshold))
+            results.append({"id": a["id"], "ok": True, **info, **description})
         if self.fav_x is not None:
             log(f"[service] 점수 {len(results)}장 (저장함 {len(self.fav_keys)}장과 비교)")
         return {"albums": results}
@@ -463,9 +476,11 @@ class Service:
         x = train.preprocess(e[None, :], self.mean)[0]
         res = {}
         sims = (self.lib @ x) * self.lib_w
-        near = np.argpartition(-sims, KNN)[:KNN]
+        active = np.flatnonzero(self.lib_w > 0)
+        count = min(KNN, len(active))
+        near = active[np.argpartition(-sims[active], count - 1)[:count]] if count else active
         near = near[np.argsort(-sims[near])]
-        res["taste"] = round(float(sims[near].mean()), 4)
+        res["taste"] = round(float(sims[near].mean()), 4) if count else 0.0
         res["near"] = [f"{self.meta[j][0]} – {self.meta[j][1]}" for j in near[:3]]
         # 저장한 앨범과 닮은 정도: 가장 닮은 3장 평균 (자기 자신은 뺀다)
         if self.fav_x is not None:

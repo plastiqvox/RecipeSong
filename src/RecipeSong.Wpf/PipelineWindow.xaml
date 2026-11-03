@@ -77,7 +77,10 @@
                 </StackPanel>
             </Grid>
             <!-- 지금 도는 계산: 색 점 = 흐름도에서 그 계산의 색 (주 계산은 칸 테두리, 다른 계산은 점선 고리·알약) -->
-            <ItemsControl ItemsSource="{Binding Runs}" Margin="0,8,0,0" Focusable="False">
+            <ScrollViewer x:Name="RunsViewport" MaxHeight="144" Margin="0,8,0,0"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          AutomationProperties.Name="{local:Tr '진행·대기 작업 목록'}">
+            <ItemsControl ItemsSource="{Binding Runs}" Focusable="False">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <DockPanel x:Name="row" Margin="0,2">
@@ -102,6 +105,7 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            </ScrollViewer>
             <Border x:Name="RecoveryPanel" Visibility="Collapsed" Background="{StaticResource Surface2}" Padding="10,6" Margin="0,8,0,0" CornerRadius="6">
                 <StackPanel>
                     <TextBlock x:Name="RecoveryMessage" TextWrapping="Wrap" Foreground="{StaticResource Text2}" FontSize="12"/>

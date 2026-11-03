@@ -147,7 +147,9 @@ public sealed class SoundService : IAsyncDisposable
                 a.TryGetProperty("dis", out var dis) ? dis.GetDouble() : null,
                 a.TryGetProperty("with", out var with) && with.ValueKind == JsonValueKind.Array
                     ? [.. with.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null,
-                Pairs(a));
+                Pairs(a),
+                a.TryGetProperty("fit_ratio", out var fit) ? fit.GetDouble() : null,
+                a.TryGetProperty("analyzed_tracks", out var analyzed) ? analyzed.GetInt32() : null);
         }
         return map;
     }

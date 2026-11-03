@@ -563,7 +563,7 @@
                         </TextBlock>
                         <!-- 비슷한 내 곡: 누르면 내 파일로 바로 재생 -->
                         <StackPanel Margin="0,6,0,0" Visibility="{Binding HasNear, Converter={StaticResource BoolVis}}">
-                            <TextBlock Text="{local:Tr '비슷한 내 곡'}" FontSize="11" Foreground="{StaticResource Muted}"/>
+                            <TextBlock Text="{local:Tr '비슷한 내 곡'}" FontSize="11" Foreground="{StaticResource Muted}" ToolTip="{Binding MetadataTip}"/>
                             <ItemsControl ItemsSource="{Binding NearItems}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>

@@ -101,6 +101,13 @@ public sealed partial class ReleaseItem : ObservableObject
     /// <summary>비슷한 내 곡 — 수록곡을 곡마다 분석했으면 그 결과(수록곡 목록과 같은 곡), 아니면 앨범 전체와 닮은 곡</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNear))] private IReadOnlyList<NearTrackItem> _nearItems = [];
     public string Near => string.Join("  /  ", Rec.NearTracks.Take(2).Select(Shorten));
+    public string MetadataTip => string.Join("\n", new[]
+    {
+        Rec.MatchedTag is { } tag ? L.F("취향과 겹치는 스타일: {0}", tag) : null,
+        Rec.MatchedCrew is { } crew ? L.F("좋아하는 앨범과 같은 제작진: {0}", crew) : null,
+        Rec.FitRatio is { } ratio && Rec.AnalyzedTracks is { } count
+            ? L.F("분석한 {0}곡 중 취향 기준 이상 {1:P0} (분석 가능한 곡 기준)", count, ratio) : null
+    }.Where(s => s != null));
     // BecauseOf는 아티스트 이름 또는 "웹진"·"AI 제안" → 표시할 때만 번역. 웹진·AI 제안은 배지가 이미 말해 줘서 뺀다
     public string Because => SavedNote ?? (IsMine ? ""
         : Rec.BecauseOf.Where(b => b is not ("웹진" or "AI 제안")).ToList() is { Count: > 0 } bs ? L.F("{0}에서 출발", string.Join(", ", bs.Select(L.T))) : "");

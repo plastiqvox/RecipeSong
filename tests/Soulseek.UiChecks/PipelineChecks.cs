@@ -67,6 +67,9 @@ static partial class Program
                 throw new Exception("The sound baseline label must not cross the ZIP-to-ID connection.");
         RenderPipeline(window, Path.Combine(output, "pipeline-active.png"), 900, 1000, checkControls: true);
         RenderPipeline(new PipelineWindow(), Path.Combine(output, "pipeline-narrow.png"), 480, 700);
+        var crowded = Enumerable.Range(0, 160).Select(i => monitor.Begin("Fixture queued task " + i, RunKind.Taste, primary: false)).ToArray();
+        RenderPipeline(new PipelineWindow(), Path.Combine(output, "pipeline-many-runs.png"), 480, 700);
+        foreach (var id in crowded) monitor.Finish(id, "fixture complete");
 
         monitor.Stage(recommendation, RecStage.Score);
         if (Node("archive").State != StageState.Current || Node("archive").Detail != detail)
@@ -134,6 +137,10 @@ static partial class Program
         var follow = (CheckBox)window.FindName("FollowStep");
         var log = (ToggleButton)window.FindName("LogToggle");
         Capture(path);
+        var runsViewport = (ScrollViewer)window.FindName("RunsViewport");
+        var chartViewport = (ScrollViewer)window.FindName("ChartViewport");
+        if (runsViewport.ActualHeight > 144.1 || chartViewport.ActualHeight < 120)
+            throw new Exception("Queued tasks must scroll without consuming the flowchart area.");
         if (scale.ScaleX != 1 || viewport.ScrollableWidth <= 0 || log.IsChecked == true)
             throw new Exception("The chart must retain readable size with scrolling and a collapsed log, even in narrow windows.");
         if (checkControls)

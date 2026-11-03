@@ -1398,7 +1398,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// 즐겨찾기 학습: 저장함 앨범을 소리 분석 서비스에 알린다. 이후 신보는 "저장한 앨범과 닮은 정도"도 점수에 들어가고,
     /// 저장한 앨범의 아티스트는 비슷한 아티스트를 찾는 출발점(시드)이 된다 (다음 분석부터).
     /// </summary>
-    private async Task SyncFavoritesAsync()
+    private LatestAsyncAction? _favoritesSync;
+    private Task SyncFavoritesAsync() => (_favoritesSync ??= new(SendFavoritesAsync)).RequestAsync();
+
+    private async Task SendFavoritesAsync()
     {
         if (_sound == null) return;
         try

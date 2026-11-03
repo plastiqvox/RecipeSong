@@ -151,9 +151,9 @@ public sealed partial class PipelineMonitor : ObservableObject
         new("archive", 0, 4, L.T("앨범 ZIP 보유 목록"), L.T("보유 제외·ID 대조만 · 취향 중립"), kind: NodeKind.Data),
         new("saved", 2, 4, L.T("기간별 추천 저장"), L.T("경계 주 포함 · 빈 결과도 재사용"), kind: NodeKind.Data),
         new("aisearch", 3, 4, L.T("AI 웹 검색 · 웹진 글"), L.T("커넥터별 웹 검색 · 웹진 RSS"), RecStage.AiSearch),
-        new("listen", 1, 5, L.T("미리듣기 소리 분석"), L.T("CLAP · 내 곡과 비교"), RecStage.Listen),
+        new("listen", 1, 5, L.T("미리듣기 소리 분석"), L.T("평균 · 상위곡 · 적합 비율"), RecStage.Listen),
         new("aicheck", 3, 5, L.T("Deezer에서 확인"), L.T("실제로 있는 앨범만"), RecStage.AiCheck),
-        new("score", 1, 6, L.T("점수"), L.T("닮음 + 연결 + 좋아요 − 별로"), RecStage.Score),
+        new("score", 1, 6, L.T("점수"), L.T("소리 · 연결 · 태그 · 제작진"), RecStage.Score),
         new("ladder", 0, 7, L.T("장르 정하는 순서"), L.T("Last.fm → Deezer → 소리가 닮은 앨범"), kind: NodeKind.Rule),
         new("crate", 1, 7, L.T("장르 칸"), L.T("국적과 상관없이 6칸"), RecStage.Genre),
         new("screen", 1, 8, L.T("화면"), L.T("저장하고 칸마다 묶어 보여 줌"), RecStage.Done),
@@ -451,7 +451,7 @@ public sealed partial class PipelineMonitor : ObservableObject
             return;
         }
         Status = _note != null && running == 0 ? _note
-            : running > 1 ? L.F("{0}개 계산이 함께 진행 중 · 미리듣기·분석은 소리 서비스가 하나씩 처리해요", running)
+            : running > 1 ? L.F("{0}개 작업 진행·대기 중 · 소리 분석은 하나씩 처리해요", running)
             : running == 1 ? L.T("진행 중") : L.T("끝");
         if (Primary != null && Archive.State == StageState.Failed) Status = L.F("{0} · ZIP 읽기 실패", Status);
         else if (Primary != null && Archive.State == StageState.Cancelled) Status = L.F("{0} · ZIP 읽기 취소", Status);

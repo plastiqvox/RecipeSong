@@ -69,7 +69,7 @@ public sealed record RecommendOptions
     /// <summary>추천 중에 장르 DB(Last.fm·Discogs)에 새로 물어볼 최대 앨범 수 (점수 높은 순, 나머지는 WarmGenresAsync 로 뒤에서)</summary>
     public int MaxGenreLookups { get; init; } = 60;
     /// <summary>
-    /// AI·웹진이 찾은 앨범도 이만큼은 내 곡과 닮아야 보여 준다 (소리 서비스의 taste: 가장 닮은 내 곡 20곡 유사도 평균, 곡 가중치를 곱한 값).
+    /// AI·웹진이 찾은 앨범도 이만큼은 내 곡과 닮아야 보여 준다 (소리 서비스의 taste: 앨범 평균·상위곡·적합 비율 집계).
     /// 0.48 은 만든 사람 라이브러리에서 일반 추천(이미 점수 상위)의 하위 25% 선 (2026-10, 일반 추천 9천 장 중앙값 0.52).
     /// 화면은 그 기간 일반 추천의 하위 25% 선이 있으면 그것을 쓴다 (라이브러리마다 값의 크기가 달라서)
     /// </summary>
@@ -96,6 +96,7 @@ public sealed record PoolArtist(long Id, string Name, double Score, IReadOnlyLis
 public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres = null, SoundService? sound = null, ArtistIdentityStore? identityStore = null)
 {
     private readonly ArtistIdentityStore _identities = identityStore ?? new();
+    private readonly MetadataAffinity _metadata = new(genres);
     private ArtistAlbumDiscovery? _identityLibrary;
     private IReadOnlyList<TrackRecord>? _identityTracks;
     private IReadOnlyList<Library.ArchiveAlbum>? _identityArchives;
@@ -563,6 +564,22 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             scores[i] = score;
         }
 
+        // 소리 중심 순위의 상위 12장에만 메타데이터를 보완한다. 자료 없음·조회 실패는 감점하지 않는다.
+        IReadOnlyDictionary<long, MetadataAffinity.Match> metadata = new Dictionary<long, MetadataAffinity.Match>();
+        try
+        {
+            progress?.Report(L.T("세부 장르·제작진 연결 확인 중…"));
+            var candidates = hits.Select((h, i) => (h, i)).OrderByDescending(x => scores[x.i]).Take(12)
+                .Select(x => (x.h.a.Id, x.h.c.Name, x.h.a.Title)).ToArray();
+            metadata = await _metadata.ScoreAsync(_identityTracks ?? [], candidates, ct);
+            for (int i = 0; i < hits.Count; i++)
+                if (metadata.TryGetValue(hits[i].a.Id, out var match)) scores[i] += match.Bonus;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or System.Text.Json.JsonException)
+        {
+            progress?.Report(L.T("메타데이터 보완을 건너뛰고 소리 점수를 사용해요."));
+        }
+
         // 5) 칸 (장르 묶음)
         Step(progress, RecStage.Genre);
         var groups = await GroupsAsync(hits, infos, heard, scores, options, progress, ct);
@@ -587,7 +604,10 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                 Fans: c.Fans,
                 Pairs: snd?.Pairs,
                 Genres: genres?.CachedTags(c.Name, a.Title),
-                ViaLastFm: c.ViaLastFm && c.Mine == null));
+                ViaLastFm: c.ViaLastFm && c.Mine == null,
+                MatchedTag: metadata.GetValueOrDefault(a.Id)?.Tag,
+                MatchedCrew: metadata.GetValueOrDefault(a.Id)?.Crew,
+                FitRatio: snd?.FitRatio, AnalyzedTracks: snd?.AnalyzedTracks));
         }
         return (recs, heard.Any(s => s != null));
     }

@@ -20,6 +20,16 @@ L.Init("en");
 var root = Path.Combine(Path.GetTempPath(), "RecipeSong-soulseek-checks-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 CacheLocation.Directory = Path.Combine(root, "cache");
+if (args.FirstOrDefault() == "--latest-action")
+{
+    await LatestAsyncActionChecks.RunAsync();
+    return;
+}
+if (args.FirstOrDefault() == "--metadata")
+{
+    await MetadataAffinityChecks.RunAsync();
+    return;
+}
 if (args.FirstOrDefault() == "--period-cache")
 {
     await PeriodCacheChecks.RunAsync();
