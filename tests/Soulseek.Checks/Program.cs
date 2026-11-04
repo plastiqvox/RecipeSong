@@ -40,6 +40,11 @@ if (args.FirstOrDefault() == "--latest-action")
     await LatestAsyncActionChecks.RunAsync();
     return;
 }
+if (args.FirstOrDefault() == "--artist-stats")
+{
+    await ArtistStatsChecks.RunAsync();
+    return;
+}
 if (args.FirstOrDefault() == "--metadata")
 {
     await MetadataAffinityChecks.RunAsync();

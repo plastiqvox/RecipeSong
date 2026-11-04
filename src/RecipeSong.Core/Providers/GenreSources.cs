@@ -124,6 +124,8 @@ public sealed class GenreSources
     private readonly JsonCache<List<string>> _discogs = new("genre-discogs", TimeSpan.FromDays(365));
     // Last.fm 비슷한 아티스트 (후보 모으기에 Deezer 연관과 같이 쓴다). Deezer 연관 캐시와 같은 14일
     private readonly JsonCache<List<SimilarArtist>> _similar = new("lastfm-similar", TimeSpan.FromDays(14));
+    // Last.fm 아티스트 청취자 수·MBID (작은 아티스트 우대). 청취자 수는 천천히 변해 30일. 못 찾은 아티스트는 null 로 기억한다
+    private readonly JsonCache<ArtistStats?> _artistStats = new("lastfm-artist-stats", TimeSpan.FromDays(30));
     private readonly Throttle _lastFmGate = new(TimeSpan.FromMilliseconds(250));
     private readonly Throttle _discogsGate = new(TimeSpan.FromMilliseconds(1100));
 
@@ -171,6 +173,39 @@ public sealed class GenreSources
         }
         catch (HttpRequestException) { return []; }
         catch (JsonException) { return []; }
+    }
+
+    /// <summary>캐시에 있는 Last.fm 아티스트 통계 (묻지 않는다). 물어봤는데 없던 아티스트는 true 에 stats=null</summary>
+    public bool TryCachedArtistStats(string artist, out ArtistStats? stats) => _artistStats.TryGet(ArtistKey(artist), out stats);
+
+    /// <summary>
+    /// Last.fm 아티스트 청취자 수 (artist.getInfo). Deezer 팬 수는 절반 넘게 0 으로 오고, 오래된·아시아 아티스트는 크게 적게 센다.
+    /// 키가 없거나 실패하면 null (네트워크 실패는 캐시하지 않는다)
+    /// </summary>
+    public async Task<ArtistStats?> ArtistStatsAsync(string artist, CancellationToken ct)
+    {
+        if (Settings.LastFmKey is not { } key) return null;
+        var k = ArtistKey(artist);
+        if (k.Length == 0) return null;
+        if (_artistStats.TryGet(k, out var hit)) return hit;
+        await _lastFmGate.WaitAsync(ct);
+        try
+        {
+            var r = await _http.GetFromJsonAsync<LastFmArtistInfo>(
+                $"https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={Esc(artist)}&autocorrect=1&api_key={key}&format=json", ct);
+            if (r == null) return null;
+            if (r.Error != null)
+            {
+                if (r.Error == 6) _artistStats.Set(k, null);  // 6: 그런 아티스트 없음
+                return null;
+            }
+            ArtistStats? stats = long.TryParse(r.Artist?.Stats?.Listeners, out var listeners)
+                ? new(listeners, string.IsNullOrEmpty(r.Artist!.Mbid) ? null : r.Artist.Mbid) : null;
+            _artistStats.Set(k, stats);
+            return stats;
+        }
+        catch (HttpRequestException) { return null; }
+        catch (JsonException) { return null; }
     }
 
     /// <summary>
@@ -223,6 +258,7 @@ public sealed class GenreSources
         _artistTags.Save();
         _discogs.Save();
         _similar.Save();
+        _artistStats.Save();
     }
 
     /// <summary>Last.fm 태그 (많이 붙은 순). count 가 10 미만인 태그는 몇 사람만 붙인 것이라 뺀다. 실패하면 null</summary>
@@ -300,6 +336,15 @@ public sealed class GenreSources
     // match 는 "0.81" 처럼 문자열로 온다
     private sealed record LastFmSimilarItem([property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("match")] string? Match);
 
+    private sealed record LastFmArtistInfo(
+        [property: JsonPropertyName("artist")] LastFmArtist? Artist,
+        [property: JsonPropertyName("error")] int? Error);
+    private sealed record LastFmArtist(
+        [property: JsonPropertyName("mbid")] string? Mbid,
+        [property: JsonPropertyName("stats")] LastFmArtistCounts? Stats);
+    // listeners 도 "12345" 처럼 문자열로 온다
+    private sealed record LastFmArtistCounts([property: JsonPropertyName("listeners")] string? Listeners);
+
     private sealed record DiscogsSearch([property: JsonPropertyName("results")] List<DiscogsResult>? Results);
     private sealed record DiscogsResult(
         [property: JsonPropertyName("genre")] List<string>? Genre,
@@ -308,3 +353,6 @@ public sealed class GenreSources
 
 /// <summary>Last.fm 비슷한 아티스트 하나 (Match: 0~1, 1이 가장 닮음)</summary>
 public sealed record SimilarArtist(string Name, double Match);
+
+/// <summary>Last.fm 아티스트 통계. Mbid 는 Last.fm 이 아는 경우만 (빠지거나 틀릴 때가 있어 아직 ID 대조에는 쓰지 않는다)</summary>
+public sealed record ArtistStats(long Listeners, string? Mbid);

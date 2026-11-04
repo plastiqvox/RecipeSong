@@ -1089,5 +1089,7 @@
  "최근 26주": "Last 26 weeks",
  "최근 4주": "Last 4 weeks",
  "추천 계산 준비 중…": "Preparing to calculate recommendations…",
- "추천을 불러오는 중…": "Loading recommendations…"
+ "추천을 불러오는 중…": "Loading recommendations…",
+ "Last.fm 청취자 수 확인 중… {0}/{1}": "Checking Last.fm listeners… {0}/{1}",
+ "Last.fm 청취자 수 {0}/{1}": "Last.fm listeners {0}/{1}"
 }
