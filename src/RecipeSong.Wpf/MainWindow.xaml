@@ -411,9 +411,6 @@
                         <StackPanel DockPanel.Dock="Bottom">
                             <TextBlock Text="{Binding TasteReviewReason}" FontSize="11" Foreground="{StaticResource AccentText}" TextWrapping="Wrap"
                                        Visibility="{Binding TasteReviewReason, Converter={StaticResource EmptyCollapsed}}" Margin="2,4"/>
-                            <Button Content="{local:Tr '추천 근거 보기'}" Command="{Binding OpenEvidenceCommand}" Style="{StaticResource Bare}"
-                                    BorderThickness="0" Padding="2,4" HorizontalAlignment="Left" FontSize="11" Foreground="{StaticResource AccentText}"
-                                    AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='추천 근거: {0}'}"/>
                             <!-- 어디서 출발한 추천인지 (버튼 줄 위에 따로 한 줄, 길면 두 줄까지. 아래에 두면 버튼 줄 높이가 카드마다 달라졌다) -->
                             <TextBlock Text="{Binding Because}" Style="{StaticResource MutedText}" FontSize="11" Margin="2,6,0,0" TextWrapping="Wrap"
                                        TextTrimming="CharacterEllipsis" MaxHeight="32" ToolTip="{Binding Because}"
@@ -444,6 +441,12 @@
                                     <!-- 목록 아이콘: 펼쳐져 있으면 주황 -->
                                     <Path x:Name="tracksIcon" Data="{StaticResource TracklistIcon}" Stroke="{StaticResource Text2}" StrokeThickness="1.8"
                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="16" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
+                                </Button>
+                                <Button Style="{StaticResource Bare}" Command="{Binding OpenEvidenceCommand}" Padding="9,5" Margin="0,0,6,0"
+                                        ToolTip="{local:Tr '추천 근거 보기'}"
+                                        AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='추천 근거: {0}'}">
+                                    <Path Data="{StaticResource InfoIcon}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource Text2}"
+                                          StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" VerticalAlignment="Center"/>
                                 </Button>
                                 <Button Style="{StaticResource Bare}" Command="{Binding OpenAppleMusicCommand}" Padding="9,5" ToolTip="{local:Tr 'Apple Music에서 열기 (iTunes)'}"
                                         AutomationProperties.Name="{Binding Album, StringFormat=Apple Music: {0}}">

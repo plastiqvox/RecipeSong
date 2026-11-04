@@ -18,6 +18,12 @@ static partial class Program
         var app = new App();
         app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (args.Length > 1 && args[1] == "--search-confirmation")
+        {
+            CheckSearchConfirmation(output);
+            Console.WriteLine("Search confirmation checks passed.");
+            return 0;
+        }
         if (args.Length > 1 && args[1] == "--taste-feedback")
         {
             CheckTasteFeedback(output);

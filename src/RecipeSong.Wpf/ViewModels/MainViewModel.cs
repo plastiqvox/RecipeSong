@@ -431,13 +431,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _recPrefsStore.Save();
         OnPropertyChanged(nameof(UsePrecise));
         if (filterOnly) { ApplyFilters(); return; }
-        // 추천 양이 바뀌면 후보 아티스트부터 다시 모은다
-        if (poolChanged)
-        {
-            await _poolLock.WaitAsync(_life.Token);
-            try { _pools.Clear(); } finally { _poolLock.Release(); }
-        }
-        await Reanalyze();
+        await ConfirmReanalyzeAsync(poolChanged);
     }
 
     // ---- 크레이트 순서 (칩 우클릭으로 바꾼다) ----
@@ -1003,9 +997,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (!AiReady) { OpenConnector(); if (!AiReady) return; }
         bool replace = mode == "replace" || AiReplace && HasAiSaved;
         bool weekly = mode == "weekly" || AiWeekly && CanAiWeekly;
-        AiReplace = false;
         if (weekly) await FindWithAiWeeklyAsync(replace);
-        else await AiSearchAsync(CurrentPeriod, replace);
+        else
+        {
+            var body = CurrentPeriod.Display + "\n\n" + SearchEstimate.Ai(1).Describe(_sound?.Queue.Count ?? 0);
+            if (replace) body += "\n\n" + L.T("저장된 AI 결과를 지우고 새 결과로 바꿔요.");
+            if (!ConfirmWindow.Ask(Application.Current.MainWindow, L.T("AI로 다시 찾을까요?"), body, L.T("찾기 시작"))) return;
+            AiReplace = false;
+            await AiSearchAsync(CurrentPeriod, replace);
+        }
     }
 
     /// <summary>
@@ -1022,8 +1022,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // 예상 비용: 최근 검색 한 번 비용 × 주 수 (기록이 없으면 Sonnet 기준 $0.15)
         double per = _aiLedger.Recent(5) is { Count: > 0 } r ? r.Average() : 0.15;
         if (!ConfirmWindow.Ask(Application.Current.MainWindow, L.T("AI 주마다 나눠 찾기"),
-                L.F("{0}을(를) 주 {1}번으로 나눠 AI로 찾을까요?\n한 번에 찾을 때보다 촘촘하지만 비용이 주 수만큼 들어요 (예상 약 ${2:0.00}).", month.Display, weeks.Count, per * weeks.Count),
+                L.F("{0}을(를) 주 {1}번으로 나눠 AI로 찾을까요?\n한 번에 찾을 때보다 촘촘하지만 비용이 주 수만큼 들어요 (예상 약 ${2:0.00}).", month.Display, weeks.Count, per * weeks.Count)
+                    + "\n\n" + SearchEstimate.Ai(weeks.Count).Describe(_sound?.Queue.Count ?? 0)
+                    + (replace ? "\n\n" + L.T("저장된 AI 결과를 지우고 새 결과로 바꿔요.") : ""),
                 L.F("약 ${0:0.00} 쓰고 찾기", per * weeks.Count))) return;
+        AiReplace = false;
         var start = DateTime.Now;
         for (int i = 0; i < weeks.Count; i++)
         {
@@ -1693,7 +1696,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         RecCount = recommended.Count;
         EmptyText = IsBusy ? "" : items.Count == 0
             ? (_all.Count == 0 ? L.T("이 기간에 찾은 발매작이 없어요.")
-                : review.Count > 0 && !reviewOnly ? L.T("취향 기준을 통과한 추천이 없어요. ‘확인 필요’에서 미분석·근거 부족 앨범을 볼 수 있어요.")
+                : review.Count > 0 && !reviewOnly ? L.T("곡별 근거가 부족한 앨범이 있어요. ‘확인 필요’에서 보거나 ‘다시 계산’으로 근거를 갱신해 주세요.")
                 : L.T("이 조건에 맞는 발매작이 없어요. 형식·지역 필터를 넓혀 보세요."))
             : "";
         _ = FillCoversAsync(Sections.SelectMany(s => s.Items));
@@ -2024,7 +2027,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _preciseCts = CancellationTokenSource.CreateLinkedTokenSource(_life.Token);
         var ct = _preciseCts.Token;
         IsPrecise = true;
-        int done = 0, skipped = 0;
+        int done = 0, failed = 0;
         try
         {
             _owned ??= await LoadOwnedAsync(ct);
@@ -2036,7 +2039,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 var part = parts[i];
                 var key = RecKey(part);
-                if (TryGetSavedRecs(key, part, out _, out _)) { skipped++; continue; }
+                // 수동 재계산은 저장된 주도 새 점수·근거로 갱신한다. 소리 벡터 캐시는 서비스에서 재사용한다.
                 var head = $"{title} {i + 1}/{parts.Count} · {part.Display}";
                 PreciseText = head;
                 var progress = Tracked(head, msg => PreciseText = $"{head} · {msg}", RunKind.Precise);
@@ -2051,18 +2054,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                     _recHistory.Set(part.Label, new RecHistory(part.Kind, part.Start, part.End, DateTime.Now, result.Releases.Count));
                     _recResults.Save();
                     _recHistory.Save();
+                    done++;
                 }
-                done++;
+                else failed++;
                 UpdateAiMarks();
             }
-            PreciseText = L.F("{0} 완료 · 새로 {1}주", title, done)
-                + (skipped > 0 ? " " + L.F("(이미 있던 {0}주는 건너뜀)", skipped) : "");
+            PreciseText = failed > 0 ? L.F("{0} 종료 · {1}주 저장 · {2}주 갱신 못함", title, done, failed)
+                : L.F("{0} 완료 · 새로 {1}주", title, done);
             // 지금 그 기간을 보고 있으면 합친 결과로 다시 그린다
             if (CurrentPeriod.Label == period.Label) await LoadAsync();
         }
         catch (OperationCanceledException)
         {
-            PreciseText = L.F("{0} 멈춤 · {1}주 저장됨 (다시 누르면 이어서)", title, done);
+            PreciseText = L.F("{0} 멈춤 · {1}주 저장됨", title, done);
         }
         catch (Exception ex) { PreciseText = L.F("{0} 실패: {1}", title, ex.Message); }
         finally { IsPrecise = false; }
@@ -2070,7 +2074,30 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>"다시 계산": 월·연은 선택한 방식으로, 주는 일반 방식으로 계산한다.</summary>
     [RelayCommand]
-    private Task Reanalyze() => UsePrecise && CanPrecise ? PreciseAsync() : LoadAsync(force: true);
+    private Task Reanalyze() => ConfirmReanalyzeAsync();
+
+    private async Task ConfirmReanalyzeAsync(bool resetPool = false)
+    {
+        // 진행 중에는 기존 중단 동작을 유지한다.
+        if (IsPrecise) { _preciseCts?.Cancel(); return; }
+        var period = CurrentPeriod;
+        var precise = UsePrecise && CanPrecise;
+        int units = precise ? PartsOf(period).Count
+            : Math.Clamp((int)Math.Ceiling((period.End - period.Start).TotalDays / 31), 1, 3);
+        var body = period.Display + " · " + (precise ? L.T("주별로 촘촘히 계산") : L.T("일반 계산"));
+        if (precise) body += "\n" + L.F("선택 기간의 {0}주를 모두 다시 계산해요. 이미 분석한 소리는 재사용해요.", units);
+        var soundJobs = units > 0 ? _sound?.Queue.Count ?? 0 : 0;
+        body += "\n\n" + SearchEstimate.Calculate(_recPrefs.Amount, units, _recPrefs.Tracks == 1).Describe(soundJobs);
+        if (!ConfirmWindow.Ask(Application.Current.MainWindow, L.T("추천을 다시 계산할까요?"), body, L.T("계산 시작"))) return;
+        // 추천 양이 바뀌면 확인을 받은 뒤 후보 아티스트부터 다시 모은다.
+        if (resetPool)
+        {
+            await _poolLock.WaitAsync(_life.Token);
+            try { _pools.Clear(); } finally { _poolLock.Release(); }
+        }
+        if (precise) await PreciseAsync();
+        else await LoadAsync(force: true);
+    }
 
     /// <summary>AI 결과 + 웹진 추천 (같은 앨범이면 배지를 합친다)</summary>
     private List<ReleaseRecommendation> SavedPicksFor(Period period) =>

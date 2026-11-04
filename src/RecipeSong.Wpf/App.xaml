@@ -66,6 +66,7 @@
         <Geometry x:Key="ChevronRight">M9,18 L15,12 L9,6</Geometry>
         <!-- 보조 작업: 기존 아이콘과 같은 24 단위 벡터 -->
         <Geometry x:Key="SearchIcon">M17,10 A7,7 0 1 1 3,10 A7,7 0 1 1 17,10 M15,15 L21,21</Geometry>
+        <Geometry x:Key="InfoIcon">M21,12 A9,9 0 1 1 3,12 A9,9 0 1 1 21,12 M12,10 V17 M12,7 H12.01</Geometry>
         <Geometry x:Key="RefreshIcon">M20,5 V11 H14 M20,11 A8,8 0 1 0 18,18</Geometry>
         <Geometry x:Key="BackIcon">M21,12 H3 M10,5 L3,12 L10,19</Geometry>
         <Geometry x:Key="StopIcon">M5,5 H19 V19 H5 Z</Geometry>
