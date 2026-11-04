@@ -7,7 +7,7 @@
                 <Button DockPanel.Dock="Right" Style="{StaticResource UtilityIconButton}" Click="Settings_Click" ToolTip="{local:Tr 'Soulseek 설정'}" AutomationProperties.Name="{local:Tr 'Soulseek 설정'}">
                     <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource GearIcon}" StrokeThickness="0" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                 </Button>
-                <Button Style="{StaticResource UtilityIconButton}" Click="Back_Click" HorizontalAlignment="Left" ToolTip="{local:Tr '추천으로'}" AutomationProperties.Name="{local:Tr '추천으로'}">
+                <Button x:Name="BackButton" Style="{StaticResource UtilityIconButton}" Click="Back_Click" HorizontalAlignment="Left" ToolTip="{local:Tr '추천으로'}" AutomationProperties.Name="{local:Tr '추천으로'}">
                     <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource BackIcon}"/>
                 </Button>
             </DockPanel>

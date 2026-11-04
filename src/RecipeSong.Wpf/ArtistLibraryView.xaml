@@ -26,7 +26,7 @@
     <Grid Margin="20">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
         <StackPanel>
-            <TextBlock Text="{local:Tr '내 플리 아티스트'}" FontSize="23" FontWeight="SemiBold"/>
+            <TextBlock Text="{local:Tr '아티스트·앨범'}" FontSize="23" FontWeight="SemiBold"/>
             <TextBlock Text="{local:Tr '좋아하는 곡에서 아티스트를 찾고, 전체 라이브러리와 비교해 놓친 앨범을 찾아요.'}" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,6,0,12"/>
             <WrapPanel>
                 <ComboBox x:Name="PlaylistBox" Style="{StaticResource SoulseekFormatBox}" Width="240" DisplayMemberPath="Name" SelectionChanged="Playlist_Changed" AutomationProperties.Name="{local:Tr '플레이리스트 선택'}" Margin="0,0,12,8"/>
@@ -35,7 +35,7 @@
                     <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource RefreshIcon}"/>
                 </Button>
             </WrapPanel>
-            <TextBlock Text="{local:Tr '아티스트 직접 검색'}" Foreground="{StaticResource Text2}" FontSize="12" Margin="0,4,0,5"/>
+            <TextBlock Text="{local:Tr '새 아티스트 찾기'}" Foreground="{StaticResource Text2}" FontSize="12" Margin="0,4,0,5"/>
             <DockPanel MaxWidth="600" HorizontalAlignment="Left" Margin="0,0,0,10">
                 <Button x:Name="DirectArtistSearchButton" DockPanel.Dock="Right" Style="{StaticResource UtilityIconButton}" Margin="6,0,0,0" IsEnabled="False"
                         Click="DirectArtistSearch_Click" ToolTip="{local:Tr '아티스트 직접 검색'}" AutomationProperties.Name="{local:Tr '아티스트 직접 검색'}">
@@ -49,6 +49,7 @@
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions><ColumnDefinition Width="240" MinWidth="180"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*" MinWidth="270"/></Grid.ColumnDefinitions>
             <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="{local:Tr '내 목록에서 찾기'}" Foreground="{StaticResource Text2}" FontSize="12" Margin="0,0,0,5"/>
                 <TextBox x:Name="ArtistQuery" DockPanel.Dock="Top" TextChanged="Query_Changed" AutomationProperties.Name="{local:Tr '아티스트 이름 필터'}" ToolTip="{local:Tr '아티스트 이름 필터'}" Margin="0,0,0,8"/>
                 <ListBox x:Name="Artists" SelectionChanged="Artist_Changed" AutomationProperties.Name="{local:Tr '내 플리 아티스트'}"
                          ItemContainerStyle="{StaticResource CatalogItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">

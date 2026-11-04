@@ -2,7 +2,7 @@ namespace RecipeSong.Core;
 
 public enum LibrarySource { ITunes, Winamp }
 
-public enum PeriodKind { Year, Month, Week }
+public enum PeriodKind { Year, Month, Week, Range }
 
 /// <summary>한 곡의 청취 기록. 소스마다 채워지는 필드가 다르다.</summary>
 public sealed record TrackRecord
@@ -75,6 +75,7 @@ public readonly record struct Period(PeriodKind Kind, DateTime Start, DateTime E
     {
         PeriodKind.Year => L.F("{0}년", Start.Year),
         PeriodKind.Month => L.F("{0}년 {1}월", Start.Year, Start.Month, Start),
+        PeriodKind.Range => L.F("{0:yyyy.M.d} – {1:yyyy.M.d} · {2}주", Start, End.AddDays(-1), (End - Start).Days / 7),
         _ => L.F("{0}년 {1}주차 ({2:M.d} – {3:M.d})",
             System.Globalization.ISOWeek.GetYear(Start), System.Globalization.ISOWeek.GetWeekOfYear(Start), Start, Start.AddDays(6)),
     };

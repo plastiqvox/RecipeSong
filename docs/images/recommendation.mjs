@@ -4,10 +4,11 @@
 // tone "focus" 는 통합 뮤지션 ID DB와 ZIP 보유 정보의 분리 등을 강조한다.
 export default (k) => {
   const X = { l: 300, c: 800, r: 1300 };
-  const Y = (i) => 90 + i * 165;
+  const Y = (i) => 255 + i * 165;
   const C = (x, i, title, line, tone) => k.card(x, Y(i), title, [line], { w: x === X.c ? 440 : 400, size: 24, tone });
 
   const lib = C(X.c, 0, "내 라이브러리 전체", "iTunes·플리 · ZIP 보유와 분리");
+  const period = k.card(X.c, 90, "추천 기간 · 주 단위 범위", ["적용: 저장된 주만 합쳐 보기", "재계산: 확인 후 모든 주 갱신"], { w: 440, size: 21, tone: "focus" });
   const archive = C(X.l, 3, "앨범 ZIP 보유 목록", "중복 제외·ID 대조만 · 취향 중립", "focus");
   const base = C(X.l, 1, "내 곡 소리 기준", "하트 1 · 90일+ 안 들은 곡 0", "focus");
   const seed = C(X.c, 1, "시드 아티스트", "곡 가중치 합 상위 80명 + 하트·팔로우", "focus");
@@ -31,6 +32,7 @@ export default (k) => {
     kind: "figure", name: "recommendation-flow", w: 1600, h: Y(7) + 95,
     title: "라이브러리 전체에서 시드와 내 곡 소리 기준을 만들고, 곡별 불호를 반영해 점수를 매긴다. 모든 출처에 공통 취향 기준을 적용하고 미분석·근거 부족은 확인 필요로 분리한다.",
     items: [
+      A([k.edge(period, "right"), [1560, period.y], [1560, rel.y], k.edge(rel, "right")]),
       A([k.edge(lib, "left"), [X.l, lib.y], k.edge(base, "top")], "전 곡 소리 (처음 한 번)"),
       A([k.edge(lib, "right"), [X.r, lib.y], k.edge(identity, "top")], "보유 정보"),
       down(identity, mine, "ID 공유"),
@@ -41,7 +43,7 @@ export default (k) => {
       A([k.edge(archive, "right"), k.edge(rel, "left")]),
       A([k.edge(mine, "bottom"), [X.r, rel.y], k.edge(rel, "right")], "항상 포함"),
       down(rel, listen, "30초 미리듣기"),
-      A([k.edge(base, "bottom"), [X.l, 340], [40, 340], [40, listen.y], k.edge(listen, "left")], "비교 기준 (가장 닮은 20곡)"),
+      A([k.edge(base, "bottom"), [X.l, Y(1) + 85], [40, Y(1) + 85], [40, listen.y], k.edge(listen, "left")], "비교 기준 (가장 닮은 20곡)", { side: "right" }),
       A([k.edge(ai, "left"), k.edge(listen, "right")]),
       down(listen, score, "닮음 · 좋아요/별로 닮음"),
       down(score, crate, "점수 높은 순"),
@@ -49,7 +51,7 @@ export default (k) => {
       down(crate, screen, "칸마다 묶기"),
       A([k.edge(gate, "left"), k.edge(screen, "right")], null, { dashed: true }),
       A([k.edge(gate, "top"), k.edge(review, "bottom")], "근거 부족", { side: "right" }),
-      lib, base, seed, similar, mine, identity, archive, rel, listen, ai, score, ladder, crate, screen, gate, review,
+      period, lib, base, seed, similar, mine, identity, archive, rel, listen, ai, score, ladder, crate, screen, gate, review,
     ],
   };
 

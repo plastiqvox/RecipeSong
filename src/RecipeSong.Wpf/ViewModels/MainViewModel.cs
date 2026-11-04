@@ -95,7 +95,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         finally { _archiveReadLock.Release(); }
     }
 
-    [ObservableProperty] private bool _archiveBusy;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(WorkspaceTaskText))] private bool _archiveBusy;
     public int ArchiveAlbumCount => _library.ArchiveCount;
     public IReadOnlyList<string> ArchiveWarnings => _library.ArchiveWarnings;
     public async Task<(int Count, IReadOnlyList<string> Warnings)> RefreshArchiveAsync(CancellationToken ct,
@@ -158,6 +158,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_albumDownloads == null) return;
         var jobs = await _albumDownloads.SnapshotAsync();
+        ActiveTransferCount = _albumDownloads.Session.Transfers.Count(t => !t.IsFinished);
         foreach (var item in _all.Concat(SavedSections.SelectMany(s => s.Items)).Append(Detail).OfType<ReleaseItem>())
         {
             var job = jobs.LastOrDefault(j => j.Artist == item.Artist && j.Album == item.Album);
@@ -166,6 +167,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
     private readonly LibraryService _library;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(SoulseekTabTitle))] private int _activeTransferCount;
+    public string SoulseekTabTitle => ActiveTransferCount > 0 ? L.F("Soulseek · {0}", ActiveTransferCount) : "Soulseek";
     private readonly DeezerClient _deezer;
     private readonly ReleaseRecommender _recommender;
     private readonly LibraryReleases _libraryReleases;
@@ -545,6 +548,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private PeriodKind _mode = PeriodKind.Week;
     [ObservableProperty] private DateTime _selectedDate;
     [ObservableProperty] private DateTime _navMonth;
+    private readonly JsonCache<Period> _periodRanges = new("period-range", TimeSpan.FromDays(36500));
+    private Period? _customPeriod;
+    public bool IsCustomPeriod => Mode == PeriodKind.Range;
+    public bool ShowStandardCalendar => !IsCustomPeriod;
+    public string CustomPeriodSummary => _customPeriod?.Display ?? "";
+
+    [RelayCommand]
+    private void SelectPeriodRange()
+    {
+        Period? previous = _customPeriod;
+        if (previous == null && _periodRanges.TryGet("last", out var saved)) previous = saved;
+        var window = new PeriodRangeWindow(previous) { Owner = Application.Current.MainWindow };
+        if (window.ShowDialog() != true || window.Result is not { } range) return;
+        _customPeriod = range;
+        _periodRanges.Set("last", range);
+        _periodRanges.Save();
+        Mode = PeriodKind.Range;
+        SelectedDate = range.Start;
+        OnPeriodChanged();
+    }
 
     public ObservableCollection<DayCell> Days { get; } = [];
     public ObservableCollection<MonthCell> Months { get; } = [];
@@ -554,11 +577,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsYearModeChecked { get => Mode == PeriodKind.Year; set { if (value) SetMode(PeriodKind.Year); } }
     public string NavLabel => IsYearMode ? L.F("{0}년", NavMonth.Year) : L.F("{0}년 {1}월", NavMonth.Year, NavMonth.Month, NavMonth);
 
-    public Period CurrentPeriod => Periods.Create(Mode, SelectedDate);
+    public Period CurrentPeriod => IsCustomPeriod && _customPeriod is { } custom ? custom : Periods.Create(Mode, SelectedDate);
     public string PeriodTitle => Mode switch
     {
         PeriodKind.Year => L.F("{0}년", SelectedDate.Year),
         PeriodKind.Month => L.F("{0}년 {1}월", SelectedDate.Year, SelectedDate.Month, SelectedDate),
+        PeriodKind.Range => L.F("직접 선택 · {0}주", (CurrentPeriod.End - CurrentPeriod.Start).Days / 7),
         _ => L.F("{0}년 {1}주차", System.Globalization.ISOWeek.GetYear(SelectedDate), System.Globalization.ISOWeek.GetWeekOfYear(SelectedDate))
     };
     public string PeriodRange
@@ -625,7 +649,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ScrollTopRequested?.Invoke();
         NavMonth = new DateTime(SelectedDate.Year, SelectedDate.Month, 1);
         foreach (var n in new[] { nameof(CanPrecise), nameof(IsYearMode), nameof(IsWeekMode), nameof(IsMonthMode), nameof(IsYearModeChecked), nameof(CanAiWeekly),
-                                  nameof(NavLabel), nameof(PeriodTitle), nameof(PeriodRange) })
+                                  nameof(NavLabel), nameof(PeriodTitle), nameof(PeriodRange), nameof(IsCustomPeriod), nameof(ShowStandardCalendar), nameof(CustomPeriodSummary) })
             OnPropertyChanged(n);
         BuildCalendar();
         _loadTask = LoadAsync();
@@ -793,8 +817,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private int _selectedTab;
     [ObservableProperty] private int _recCount;
     [ObservableProperty] private int _libraryCount;
-    [ObservableProperty] private bool _isBusy;
-    [ObservableProperty] private string _busyText = "";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(WorkspaceTaskText))] private bool _isBusy;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(WorkspaceTaskText))] private string _busyText = "";
+    public string WorkspaceTaskText => string.Join(" · ", new[]
+    {
+        IsPrecise ? PreciseText.Length > 0 ? PreciseText : L.T("추천 계산 준비 중…")
+            : ShowProgress ? BusyText.Length > 0 ? BusyText : L.T("추천을 불러오는 중…") : "",
+        AiBusy ? AiText.Length > 0 ? AiText : L.T("AI로 찾는 중…") : "",
+        ArchiveBusy ? L.T("ZIP 아카이브를 읽는 중…") : ""
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
     [ObservableProperty] private string _emptyText = "";
 
     public bool IsRecsTab { get => SelectedTab == 0; set { if (value) SelectedTab = 0; } }
@@ -810,8 +841,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly JsonCache<List<ReleaseRecommendation>> _aiPicks = new("ai-picks", TimeSpan.FromDays(3650));
     [ObservableProperty] private string _aiStatus = "";
     [ObservableProperty] private bool _aiReady;
-    [ObservableProperty] private bool _aiBusy;
-    [ObservableProperty] private string _aiText = "";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(WorkspaceTaskText))] private bool _aiBusy;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(WorkspaceTaskText))] private string _aiText = "";
 
     /// <summary>AI 결과는 기간별로 모은다 (지역 칩은 화면 필터로만 쓴다)</summary>
     private static string AiKey(Period p) => p.Label;
@@ -996,7 +1027,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (AiBusy) return;
         if (!AiReady) { OpenConnector(); if (!AiReady) return; }
         bool replace = mode == "replace" || AiReplace && HasAiSaved;
-        bool weekly = mode == "weekly" || AiWeekly && CanAiWeekly;
+        bool weekly = IsCustomPeriod || mode == "weekly" || AiWeekly && CanAiWeekly;
         if (weekly) await FindWithAiWeeklyAsync(replace);
         else
         {
@@ -1009,16 +1040,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>
-    /// AI 주별로 찾기 (월·연): 한 달(1년)을 한 번에 찾으면 검색 8회로 한 달을 훑어 주마다 몇 장씩만 건진다 → 주마다 따로 찾는다.
-    /// 결과는 주 키로 저장되고, 월 화면은 그 주들의 결과를 합쳐 보여 준다 (AiPicksFor). 비용은 주 수만큼.
+    /// AI 주별로 찾기 (월·연·직접 선택 범위): 기간 전체를 한 번에 훑는 대신 겹치는 주마다 따로 찾는다.
+    /// 결과는 주 키로 저장되고, 기간 화면은 그 주들의 결과를 합쳐 보여 준다 (AiPicksFor). 비용은 주 수만큼.
     /// </summary>
     private async Task FindWithAiWeeklyAsync(bool replace)
     {
         var month = CurrentPeriod;
-        var weeks = new List<Period>();
-        for (var d = month.Start; d <= month.End; d = d.AddDays(7))
-            if (Periods.Create(PeriodKind.Week, d) is var w && weeks.All(x => x.Label != w.Label)) weeks.Add(w);
-        if (Periods.Create(PeriodKind.Week, month.End) is var last && weeks.All(x => x.Label != last.Label)) weeks.Add(last);
+        var weeks = Periods.IntersectingWeeks(month, DateTime.Today);
         // 예상 비용: 최근 검색 한 번 비용 × 주 수 (기록이 없으면 Sonnet 기준 $0.15)
         double per = _aiLedger.Recent(5) is { Count: > 0 } r ? r.Average() : 0.15;
         if (!ConfirmWindow.Ask(Application.Current.MainWindow, L.T("AI 주마다 나눠 찾기"),
@@ -1027,6 +1055,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                     + (replace ? "\n\n" + L.T("저장된 AI 결과를 지우고 새 결과로 바꿔요.") : ""),
                 L.F("약 ${0:0.00} 쓰고 찾기", per * weeks.Count))) return;
         AiReplace = false;
+        AiWeekly = true;
         var start = DateTime.Now;
         for (int i = 0; i < weeks.Count; i++)
         {
@@ -1906,7 +1935,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await _poolLock.WaitAsync(_life.Token);
         try { _pools.Clear(); } finally { _poolLock.Release(); }
         UpdateAiMarks();
-        await LoadAsync(force: true);
+        if (IsCustomPeriod) await PreciseAsync();
+        else await LoadAsync(force: true);
     }
     public sealed record RecHistory(PeriodKind Kind, DateTime Start, DateTime End, DateTime At, int Count);
     [ObservableProperty] private string _recSavedNote = "";
@@ -1979,8 +2009,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     // 수동 재계산은 저장된 주도 갱신하고, 기간 이동 때는 저장된 주를 합쳐 보여 준다.
     public bool CanPrecise => Mode != PeriodKind.Week;
     public bool UsePrecise => _recPrefs.UsePrecise;
-    [ObservableProperty] private bool _isPrecise;
-    [ObservableProperty] private string _preciseText = "";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(WorkspaceTaskText))] private bool _isPrecise;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(WorkspaceTaskText))] private string _preciseText = "";
     private CancellationTokenSource? _preciseCts;
 
     /// <summary>촘촘한 계산의 조각: 월·연 → 그 기간에 걸친 주 (오늘 이후는 뺀다)</summary>
@@ -2074,7 +2104,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         finally { IsPrecise = false; }
     }
 
-    /// <summary>"다시 계산": 월·연은 선택한 방식으로, 주는 일반 방식으로 계산한다.</summary>
+    /// <summary>"다시 계산": 월·연은 설정한 방식, 직접 선택 범위는 모든 주, 주는 일반 방식으로 계산한다.</summary>
     [RelayCommand]
     private Task Reanalyze() => ConfirmReanalyzeAsync();
 
@@ -2083,7 +2113,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // 진행 중에는 기존 중단 동작을 유지한다.
         if (IsPrecise) { _preciseCts?.Cancel(); return; }
         var period = CurrentPeriod;
-        var precise = UsePrecise && CanPrecise;
+        var precise = IsCustomPeriod || UsePrecise && CanPrecise;
         int units = precise ? PartsOf(period).Count
             : Math.Clamp((int)Math.Ceiling((period.End - period.Start).TotalDays / 31), 1, 3);
         var body = period.Display + " · " + (precise ? L.T("주별로 촘촘히 계산") : L.T("일반 계산"));
@@ -2106,7 +2136,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         [.. AiPicksFor(period).Concat(WebzinePicksFor(period)).GroupBy(r => r.DeezerAlbumId).Select(g => g.Aggregate(MergeAi))];
 
     // ---- 계산 멈추기·뒤에서 새로 계산 ----
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowProgress))] private bool _isRefreshing;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowProgress)), NotifyPropertyChangedFor(nameof(WorkspaceTaskText))] private bool _isRefreshing;
     /// <summary>진행 막대와 '멈추기': 처음 계산 중이거나, 저장된 결과를 보여 준 채 뒤에서 새로 계산 중</summary>
     public bool ShowProgress => IsBusy || IsRefreshing;
     partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(ShowProgress));
@@ -2167,6 +2197,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _loadCts = cts;
         var ct = cts.Token;
         var period = CurrentPeriod;
+        if (period.Kind == PeriodKind.Range)
+        {
+            UpdateAiSaved();
+            var cached = CachedPeriodRecommendations.Read(period, DateTime.Today,
+                week => _recResults.TryGetAt(RecKey(week), out var rows, out _) ? rows : null);
+            var releases = cached.Releases.Concat(SavedPicksFor(period)).GroupBy(r => r.DeezerAlbumId).Select(g => g.Aggregate(MergeAi));
+            IsBusy = IsRefreshing = false;
+            BusyText = "";
+            RecSavedNote = L.F("저장된 주 {0}/{1}개 · 전체 갱신은 다시 계산", cached.SavedWeeks, cached.TotalWeeks);
+            _all = [.. releases.Select(r => MakeItem(r))];
+            ApplyFilters();
+            if (_all.Count == 0) EmptyText = L.T("저장된 추천이 없어요. ‘다시 계산’으로 선택한 주를 분석해 주세요.");
+            _ = LoadLibraryAsync(period, ct);
+            return;
+        }
         var progress = Tracked(period.Display, m => { if (!ct.IsCancellationRequested) BusyText = m; });
         // 작업 현황 창이 떠 있으면 기간을 바꾸자마자 새 기간으로 (멈추면 '멈춤', 저장 결과면 계산 없음으로 끝낸다)
         var stages = progress as StageProgress;
@@ -2306,7 +2351,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             var tracks = await _library.GetTracksAsync(ct);
-            var summary = await _libraryReleases.InPeriodAsync(tracks, period, ct: ct);
+            var summary = await _libraryReleases.InPeriodAsync(tracks, period, ct: ct, cachedOnly: period.Kind == PeriodKind.Range);
             if (ct.IsCancellationRequested) return;
             LibraryGroups.Clear();
             var items = new List<LibraryAlbumItem>();
@@ -2317,6 +2362,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 LibraryGroups.Add(new LibraryArtistGroup(a.Artist, L.F("이 기간 발매 {0}장 · 재생 {1}회", albums.Count, a.PlayCount), albums));
             }
             LibraryCount = items.Count;
+            if (period.Kind == PeriodKind.Range) return;
             foreach (var item in items)
             {
                 if (ct.IsCancellationRequested) break;

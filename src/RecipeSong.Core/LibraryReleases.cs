@@ -11,7 +11,7 @@ public sealed class LibraryReleases(DeezerClient deezer)
     private readonly JsonCache<string?> _dates = new("library-release-dates", TimeSpan.FromDays(3650));
 
     public async Task<ListeningSummary> InPeriodAsync(
-        IEnumerable<TrackRecord> tracks, Period period, IProgress<string>? progress = null, CancellationToken ct = default)
+        IEnumerable<TrackRecord> tracks, Period period, IProgress<string>? progress = null, CancellationToken ct = default, bool cachedOnly = false)
     {
         // 기간과 연도가 겹치는 앨범만 후보 (발매일 조회 횟수를 줄인다)
         var all = ListeningAnalyzer.Summarize(tracks.Where(t => t.Year is int y && period.OverlapsYear(y)), AllTime);
@@ -28,7 +28,9 @@ public sealed class LibraryReleases(DeezerClient deezer)
                 if (period.Kind != PeriodKind.Year && !string.IsNullOrWhiteSpace(album.Album))
                 {
                     var key = $"{album.Artist}\u001f{album.Album}".ToLowerInvariant();
-                    var s = await _dates.GetOrAddAsync(key, async () => (await deezer.FindAlbumAsync(album.Artist, album.Album, ct))?.ReleaseDate);
+                    string? s;
+                    if (cachedOnly) { if (!_dates.TryGet(key, out s)) continue; }
+                    else s = await _dates.GetOrAddAsync(key, async () => (await deezer.FindAlbumAsync(album.Artist, album.Album, ct))?.ReleaseDate);
                     released = DateOnly.TryParse(s, out var d) ? d : null;
                     // 발매일을 못 찾으면 월·주 단위에는 넣지 않는다
                     if (released is not { } r || !period.Contains(r)) continue;
@@ -38,7 +40,7 @@ public sealed class LibraryReleases(DeezerClient deezer)
             if (albums.Count > 0)
                 result.Add(artist with { Albums = albums, PlayCount = albums.Sum(a => a.PlayCount) });
         }
-        _dates.Save();
+        if (!cachedOnly) _dates.Save();
         return new ListeningSummary(period, [.. result.OrderByDescending(a => a.PlayCount)]);
     }
 

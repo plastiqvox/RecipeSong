@@ -20,6 +20,11 @@ L.Init("en");
 var root = Path.Combine(Path.GetTempPath(), "RecipeSong-soulseek-checks-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 CacheLocation.Directory = Path.Combine(root, "cache");
+if (args.FirstOrDefault() == "--period-range")
+{
+    await PeriodRangeChecks.RunAsync();
+    return;
+}
 if (args.FirstOrDefault() == "--download-cache")
 {
     DownloadCacheChecks.Run(root);

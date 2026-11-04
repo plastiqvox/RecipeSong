@@ -7,20 +7,20 @@
             <TextBlock Text="{local:Tr 'Soulseek'}" FontSize="24" FontWeight="Bold"/>
             <TextBlock x:Name="ConnectionText" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,5,0,0"/>
         </StackPanel>
-        <TabControl x:Name="Sections" Style="{StaticResource WorkspaceTabs}" SelectionChanged="Section_Changed">
-            <TabItem Header="{local:Tr '검색'}" Style="{StaticResource WorkspaceTab}">
+        <TabControl x:Name="Sections" Style="{StaticResource WorkspaceSubTabs}" SelectionChanged="Section_Changed">
+            <TabItem Header="{local:Tr '검색'}" Style="{StaticResource WorkspaceSubTab}">
                 <Grid>
                     <StackPanel x:Name="EmptySearch" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24">
                         <TextBlock Text="{local:Tr '받을 앨범을 추천 화면에서 골라 주세요.'}" FontSize="18" TextWrapping="Wrap" TextAlignment="Center"/>
                         <TextBlock Text="{local:Tr '앨범의 Soulseek 검색·다운로드를 누르면 여기서 검색할 수 있어요.'}" Foreground="{StaticResource Text2}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,18"/>
-                        <Button Content="{local:Tr '추천으로'}" Style="{StaticResource Bare}" Click="Recommendations_Click" Padding="18,9" HorizontalAlignment="Center"/>
+                        <Button x:Name="ReturnButton" Content="{local:Tr '추천으로'}" Style="{StaticResource Bare}" Click="Recommendations_Click" Padding="18,9" HorizontalAlignment="Center"/>
                     </StackPanel>
                     <ContentControl x:Name="SearchHost" Margin="24" Visibility="Collapsed"/>
                 </Grid>
             </TabItem>
-            <TabItem Header="{local:Tr '다운로드'}" Style="{StaticResource WorkspaceTab}"/>
-            <TabItem Header="{local:Tr '업로드'}" Style="{StaticResource WorkspaceTab}"/>
-            <TabItem Header="{local:Tr '설정'}" Style="{StaticResource WorkspaceTab}"/>
+            <TabItem Header="{local:Tr '다운로드'}" Style="{StaticResource WorkspaceSubTab}"/>
+            <TabItem Header="{local:Tr '업로드'}" Style="{StaticResource WorkspaceSubTab}"/>
+            <TabItem Header="{local:Tr '설정'}" Style="{StaticResource WorkspaceSubTab}"/>
         </TabControl>
     </DockPanel>
 </UserControl>

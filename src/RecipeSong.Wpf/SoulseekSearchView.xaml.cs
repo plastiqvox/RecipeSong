@@ -55,6 +55,11 @@ public partial class SoulseekSearchView : UserControl
         StatusText.Text = L.T("판본 하나를 골라 수록곡을 확인한 뒤 받으세요.");
     }
     public void Stop() { _disposed = true; _search?.Cancel(); }
+    public void SetReturnTarget(string label)
+    {
+        BackButton.ToolTip = label;
+        System.Windows.Automation.AutomationProperties.SetName(BackButton, label);
+    }
     private void Back_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke();
     private void Stop_Click(object sender, RoutedEventArgs e) => _search?.Cancel();
     private void Settings_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();

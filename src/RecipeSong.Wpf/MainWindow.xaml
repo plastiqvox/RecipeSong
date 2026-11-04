@@ -670,6 +670,94 @@
         </ResourceDictionary>
     </Window.Resources>
 
+    <DockPanel>
+        <Border x:Name="GlobalPlayer" DockPanel.Dock="Bottom" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+                Padding="24,12">
+            <Border.Style><Style TargetType="Border">
+                <Style.Triggers><MultiDataTrigger><MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding SelectedIndex, ElementName=WorkspaceTabs}" Value="0"/>
+                    <Condition Binding="{Binding HasDetail}" Value="True"/>
+                </MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Collapsed"/></MultiDataTrigger></Style.Triggers>
+            </Style></Border.Style>
+            <Grid DataContext="{Binding Player}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="48"/>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="3*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- 볼륨: 아이콘을 누르면 음소거 -->
+                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+                    <Button Style="{StaticResource Bare}" BorderThickness="0" Padding="6" Command="{Binding ToggleMuteCommand}"
+                            AutomationProperties.Name="{local:Tr '음소거'}" ToolTip="{local:Tr '음소거 / 다시 켜기'}">
+                        <Grid Width="18" Height="18">
+                            <Path Data="M3,9 H7 L12,4 V20 L7,15 H3 Z" Fill="{StaticResource Text2}" Stretch="Uniform" Width="12" Height="16" HorizontalAlignment="Left"/>
+                            <Path Data="M15,8 Q18,12 15,16 M17.5,5.5 Q22,12 17.5,18.5" Stroke="{StaticResource Text2}" StrokeThickness="1.6" Stretch="None"
+                                  Margin="-3,-3,0,0" Visibility="{Binding IsMuted, Converter={StaticResource NotBoolVis}}"/>
+                            <Path Data="M15,9 L21,15 M21,9 L15,15" Stroke="{StaticResource AccentText}" StrokeThickness="1.6" Stretch="None"
+                                  Margin="-3,-3,0,0" Visibility="{Binding IsMuted, Converter={StaticResource BoolVis}}"/>
+                        </Grid>
+                    </Button>
+                    <Slider Width="110" Minimum="0" Maximum="1" Value="{Binding Volume}" VerticalAlignment="Center" Margin="6,0,0,0"
+                            IsMoveToPointEnabled="True" SmallChange="0.05" LargeChange="0.1" AutomationProperties.Name="{local:Tr '볼륨'}"/>
+                </StackPanel>
+                <!-- 앨범아트를 누르면 그 앨범이 나온 주로 이동해 수록곡을 펼친다 -->
+                <Button Command="{Binding OpenNowCommand}" Click="NowPlaying_Click" Cursor="Hand" IsEnabled="{Binding HasNowRelease}"
+                        ToolTip="{local:Tr '이 앨범이 나온 주로 가서 수록곡 보기'}" AutomationProperties.Name="{local:Tr '재생 중인 앨범으로 이동'}">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="b" Width="48" Height="48" CornerRadius="6" Background="{StaticResource Line2}" BorderThickness="1" BorderBrush="Transparent">
+                                <Border.Clip><RectangleGeometry Rect="0,0,48,48" RadiusX="6" RadiusY="6"/></Border.Clip>
+                                <Image Source="{Binding CoverUrl, Converter={StaticResource ImgSmall}}" Stretch="UniformToFill"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <MultiTrigger>
+                                    <MultiTrigger.Conditions>
+                                        <Condition Property="IsMouseOver" Value="True"/>
+                                        <Condition Property="IsEnabled" Value="True"/>
+                                    </MultiTrigger.Conditions>
+                                    <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                    <Setter TargetName="b" Property="Opacity" Value="0.85"/>
+                                </MultiTrigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+                <StackPanel Grid.Column="1" Margin="16,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Title}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding Subtitle}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource RoundPlay}" Background="{StaticResource Text}" Foreground="{StaticResource Bg}"
+                        Command="{Binding ToggleCommand}" AutomationProperties.Name="{local:Tr '재생/일시정지'}">
+                    <Grid>
+                        <Path Data="{StaticResource PlayIcon}" Fill="{StaticResource Bg}" Width="16" Height="16" Stretch="Uniform"
+                              Visibility="{Binding IsPlaying, Converter={StaticResource NotBoolVis}}"/>
+                        <Path Data="{StaticResource PauseIcon}" Fill="{StaticResource Bg}" Width="14" Height="14" Stretch="Uniform"
+                              Visibility="{Binding IsPlaying, Converter={StaticResource BoolVis}}"/>
+                    </Grid>
+                </Button>
+                <Grid Grid.Column="3" Margin="16,0,0,0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding PositionText}" Style="{StaticResource MutedText}" FontFamily="{StaticResource Mono}"/>
+                    <Slider Grid.Column="1" Margin="10,0" Minimum="0" Maximum="{Binding Duration}" Value="{Binding Position, Mode=OneWay}"
+                            IsMoveToPointEnabled="True" VerticalAlignment="Center"
+                            Thumb.DragStarted="Seek_DragStarted" Thumb.DragCompleted="Seek_DragCompleted" PreviewMouseLeftButtonUp="Seek_MouseUp"/>
+                    <TextBlock Grid.Column="2" Text="{Binding DurationText}" Style="{StaticResource MutedText}" FontFamily="{StaticResource Mono}"/>
+                </Grid>
+            </Grid>
+        </Border>
+
+    <Border DockPanel.Dock="Top" Background="{StaticResource Surface2}" Padding="18,6" Visibility="{Binding WorkspaceTaskText, Converter={StaticResource EmptyCollapsed}}">
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Content="{local:Tr '작업 화면으로'}" Style="{StaticResource Bare}" Padding="10,4" Margin="12,0,0,0" Click="ShowWork_Click"/>
+            <TextBlock Text="{Binding WorkspaceTaskText}" ToolTip="{Binding WorkspaceTaskText}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+        </DockPanel>
+    </Border>
     <TabControl x:Name="WorkspaceTabs" Style="{StaticResource WorkspaceTabs}">
         <TabItem Header="{local:Tr '추천'}" Style="{StaticResource WorkspaceTab}">
     <Grid>
@@ -777,6 +865,14 @@
                         </UniformGrid>
                     </Border>
 
+                    <Button Content="{local:Tr '기간 직접 선택…'}" Command="{Binding SelectPeriodRangeCommand}" Padding="10,8" Margin="0,10,0,0" HorizontalContentAlignment="Left">
+                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource Bare}">
+                            <Style.Triggers><DataTrigger Binding="{Binding IsCustomPeriod}" Value="True"><Setter Property="BorderBrush" Value="{StaticResource Accent}"/></DataTrigger></Style.Triggers>
+                        </Style></Button.Style>
+                    </Button>
+                    <TextBlock Text="{Binding CustomPeriodSummary}" TextWrapping="Wrap" Foreground="{StaticResource Text2}" FontSize="12" Margin="0,8,0,0"
+                               Visibility="{Binding IsCustomPeriod, Converter={StaticResource BoolVis}}"/>
+                    <StackPanel Visibility="{Binding ShowStandardCalendar, Converter={StaticResource BoolVis}}">
                     <DockPanel Margin="0,24,0,12">
                         <Button DockPanel.Dock="Left" Style="{StaticResource Bare}" Width="36" Height="36" Command="{Binding PrevCommand}" AutomationProperties.Name="{local:Tr '이전'}">
                             <Path Data="{StaticResource ChevronLeft}" Stroke="{StaticResource Text}" StrokeThickness="2" Width="14" Height="14" Stretch="Uniform"/>
@@ -945,6 +1041,7 @@
                             <TextBlock Text="{local:Tr '처음 보는 앨범'}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
                     </Grid>
+                    </StackPanel>
                     <TextBlock Text="{Binding SyncText}" Foreground="{StaticResource Accent}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
                                Visibility="{Binding SyncText, Converter={StaticResource EmptyCollapsed}}"/>
                 </StackPanel>
@@ -1409,84 +1506,10 @@
             </StackPanel>
         </Border>
 
-        <!-- ===== 재생 바 (오른쪽 수록곡 창이 열려 있으면 그 안의 재생 칸을 쓰고 숨긴다) ===== -->
-        <Border Grid.Row="1" Grid.ColumnSpan="3" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
-                Padding="24,12" Visibility="{Binding HasDetail, Converter={StaticResource NotBoolVis}}">
-            <Grid DataContext="{Binding Player}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="48"/>
-                    <ColumnDefinition Width="2*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="3*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <!-- 볼륨: 아이콘을 누르면 음소거 -->
-                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
-                    <Button Style="{StaticResource Bare}" BorderThickness="0" Padding="6" Command="{Binding ToggleMuteCommand}"
-                            AutomationProperties.Name="{local:Tr '음소거'}" ToolTip="{local:Tr '음소거 / 다시 켜기'}">
-                        <Grid Width="18" Height="18">
-                            <Path Data="M3,9 H7 L12,4 V20 L7,15 H3 Z" Fill="{StaticResource Text2}" Stretch="Uniform" Width="12" Height="16" HorizontalAlignment="Left"/>
-                            <Path Data="M15,8 Q18,12 15,16 M17.5,5.5 Q22,12 17.5,18.5" Stroke="{StaticResource Text2}" StrokeThickness="1.6" Stretch="None"
-                                  Margin="-3,-3,0,0" Visibility="{Binding IsMuted, Converter={StaticResource NotBoolVis}}"/>
-                            <Path Data="M15,9 L21,15 M21,9 L15,15" Stroke="{StaticResource AccentText}" StrokeThickness="1.6" Stretch="None"
-                                  Margin="-3,-3,0,0" Visibility="{Binding IsMuted, Converter={StaticResource BoolVis}}"/>
-                        </Grid>
-                    </Button>
-                    <Slider Width="110" Minimum="0" Maximum="1" Value="{Binding Volume}" VerticalAlignment="Center" Margin="6,0,0,0"
-                            IsMoveToPointEnabled="True" SmallChange="0.05" LargeChange="0.1" AutomationProperties.Name="{local:Tr '볼륨'}"/>
-                </StackPanel>
-                <!-- 앨범아트를 누르면 그 앨범이 나온 주로 이동해 수록곡을 펼친다 -->
-                <Button Command="{Binding OpenNowCommand}" Cursor="Hand" IsEnabled="{Binding HasNowRelease}"
-                        ToolTip="{local:Tr '이 앨범이 나온 주로 가서 수록곡 보기'}" AutomationProperties.Name="{local:Tr '재생 중인 앨범으로 이동'}">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border x:Name="b" Width="48" Height="48" CornerRadius="6" Background="{StaticResource Line2}" BorderThickness="1" BorderBrush="Transparent">
-                                <Border.Clip><RectangleGeometry Rect="0,0,48,48" RadiusX="6" RadiusY="6"/></Border.Clip>
-                                <Image Source="{Binding CoverUrl, Converter={StaticResource ImgSmall}}" Stretch="UniformToFill"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <MultiTrigger>
-                                    <MultiTrigger.Conditions>
-                                        <Condition Property="IsMouseOver" Value="True"/>
-                                        <Condition Property="IsEnabled" Value="True"/>
-                                    </MultiTrigger.Conditions>
-                                    <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}"/>
-                                    <Setter TargetName="b" Property="Opacity" Value="0.85"/>
-                                </MultiTrigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
-                <StackPanel Grid.Column="1" Margin="16,0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Title}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Text="{Binding Subtitle}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
-                <Button Grid.Column="2" Style="{StaticResource RoundPlay}" Background="{StaticResource Text}" Foreground="{StaticResource Bg}"
-                        Command="{Binding ToggleCommand}" AutomationProperties.Name="{local:Tr '재생/일시정지'}">
-                    <Grid>
-                        <Path Data="{StaticResource PlayIcon}" Fill="{StaticResource Bg}" Width="16" Height="16" Stretch="Uniform"
-                              Visibility="{Binding IsPlaying, Converter={StaticResource NotBoolVis}}"/>
-                        <Path Data="{StaticResource PauseIcon}" Fill="{StaticResource Bg}" Width="14" Height="14" Stretch="Uniform"
-                              Visibility="{Binding IsPlaying, Converter={StaticResource BoolVis}}"/>
-                    </Grid>
-                </Button>
-                <Grid Grid.Column="3" Margin="16,0,0,0" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding PositionText}" Style="{StaticResource MutedText}" FontFamily="{StaticResource Mono}"/>
-                    <Slider Grid.Column="1" Margin="10,0" Minimum="0" Maximum="{Binding Duration}" Value="{Binding Position, Mode=OneWay}"
-                            IsMoveToPointEnabled="True" VerticalAlignment="Center"
-                            Thumb.DragStarted="Seek_DragStarted" Thumb.DragCompleted="Seek_DragCompleted" PreviewMouseLeftButtonUp="Seek_MouseUp"/>
-                    <TextBlock Grid.Column="2" Text="{Binding DurationText}" Style="{StaticResource MutedText}" FontFamily="{StaticResource Mono}"/>
-                </Grid>
-            </Grid>
-        </Border>
     </Grid>
         </TabItem>
-        <TabItem Header="{local:Tr 'Soulseek'}" Style="{StaticResource WorkspaceTab}"><ContentControl x:Name="SoulseekHost"/></TabItem>
-        <TabItem Header="{local:Tr '내 플리 아티스트'}" Style="{StaticResource WorkspaceTab}"><ContentControl x:Name="ArtistLibraryHost"/></TabItem>
+        <TabItem Header="{local:Tr '아티스트·앨범'}" Style="{StaticResource WorkspaceTab}"><ContentControl x:Name="ArtistLibraryHost"/></TabItem>
+        <TabItem Header="{Binding SoulseekTabTitle}" Style="{StaticResource WorkspaceTab}"><ContentControl x:Name="SoulseekHost"/></TabItem>
     </TabControl>
+    </DockPanel>
 </Window>

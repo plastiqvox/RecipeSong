@@ -1,0 +1,32 @@
+<Window x:Class="RecipeSong.Wpf.PeriodRangeWindow" Icon="/RecipeSong.Wpf;component/Assets/logo.png"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:RecipeSong.Wpf" Title="{local:Tr '기간 직접 선택'}" Width="580" SizeToContent="Height"
+        ResizeMode="NoResize" ShowInTaskbar="False" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Text}" FontFamily="{StaticResource Sans}">
+    <Window.Resources><ResourceDictionary Source="SoulseekStyles.xaml"/></Window.Resources>
+    <StackPanel Margin="24">
+        <TextBlock Text="{local:Tr '기간 직접 선택'}" FontSize="20" FontWeight="SemiBold"/>
+        <TextBlock Text="{local:Tr '월요일부터 일요일까지, 최소 1주를 선택해요. 기간 적용은 저장된 결과만 보여 줘요.'}"
+                   Foreground="{StaticResource Text2}" TextWrapping="Wrap" FontSize="12" Margin="0,8,0,16"/>
+        <WrapPanel Margin="0,0,0,14">
+            <Button Content="{local:Tr '최근 4주'}" Tag="4" Click="Recent_Click" Style="{StaticResource Bare}" Padding="12,7" Margin="0,0,8,6"/>
+            <Button Content="{local:Tr '최근 12주'}" Tag="12" Click="Recent_Click" Style="{StaticResource Bare}" Padding="12,7" Margin="0,0,8,6"/>
+            <Button Content="{local:Tr '최근 26주'}" Tag="26" Click="Recent_Click" Style="{StaticResource Bare}" Padding="12,7" Margin="0,0,0,6"/>
+        </WrapPanel>
+        <Label Content="{local:Tr '시작 주'}" Target="{Binding ElementName=StartYear}" Foreground="{StaticResource Text2}" Padding="0,0,0,6"/>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <ComboBox x:Name="StartYear" Style="{StaticResource SoulseekFormatBox}" SelectionChanged="Year_Changed" AutomationProperties.Name="{local:Tr '시작 연도'}"/>
+            <ComboBox x:Name="StartWeek" Grid.Column="2" Style="{StaticResource SoulseekFormatBox}" SelectionChanged="Week_Changed" AutomationProperties.Name="{local:Tr '시작 주'}"/>
+        </Grid>
+        <Label Content="{local:Tr '종료 주'}" Target="{Binding ElementName=EndYear}" Foreground="{StaticResource Text2}" Padding="0,16,0,6"/>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <ComboBox x:Name="EndYear" Style="{StaticResource SoulseekFormatBox}" SelectionChanged="Year_Changed" AutomationProperties.Name="{local:Tr '종료 연도'}"/>
+            <ComboBox x:Name="EndWeek" Grid.Column="2" Style="{StaticResource SoulseekFormatBox}" SelectionChanged="Week_Changed" AutomationProperties.Name="{local:Tr '종료 주'}"/>
+        </Grid>
+        <TextBlock x:Name="Preview" TextWrapping="Wrap" Margin="0,18,0,0" Foreground="{StaticResource AccentText}"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+            <Button Content="{local:Tr '취소'}" IsCancel="True" Style="{StaticResource Bare}" Padding="16,8"/>
+            <Button x:Name="ApplyButton" Content="{local:Tr '기간 적용'}" IsDefault="True" Click="Apply_Click" Style="{StaticResource Bare}" Padding="16,8" Margin="8,0,0,0"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -17,6 +17,13 @@ public partial class SoulseekWorkspaceView : UserControl, IDisposable
     public bool IsSearching => _search?.IsSearching == true;
     private ReleaseRecommendation? _album;
     private Guid? _replacementId;
+    private string _returnTarget = L.T("추천으로");
+    public void SetReturnTarget(string label)
+    {
+        _returnTarget = label;
+        ReturnButton.Content = label;
+        _search?.SetReturnTarget(label);
+    }
     private readonly Func<AlbumDownload, ReleaseRecommendation>? _recommendation;
     public event Action? RecommendationsRequested;
 
@@ -57,6 +64,7 @@ public partial class SoulseekWorkspaceView : UserControl, IDisposable
             _album = album;
             _replacementId = replaceJobId;
             _search = new SoulseekSearchView(album, _downloads, replaceJobId, excludedPeer);
+            _search.SetReturnTarget(_returnTarget);
             _search.BackRequested += () => RecommendationsRequested?.Invoke();
             _search.SettingsRequested += () => ShowSection("settings");
             _search.DownloadsRequested += () => ShowSection("downloads");

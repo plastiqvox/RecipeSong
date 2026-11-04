@@ -14,10 +14,22 @@ static partial class Program
     {
         var output = Path.GetFullPath(args[0]);
         Directory.CreateDirectory(output);
+        Environment.SetEnvironmentVariable("RECIPESONG_DATA", Path.Combine(output, "data"));
         CacheLocation.Directory = Path.Combine(output, "data");
-        var app = new App();
+        var app = new UiCheckApplication();
         app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (args.Length > 1 && args[1] == "--week-range")
+        {
+            foreach (var language in new[] { "ko", "en" })
+            {
+                L.Init(language);
+                CheckWeekRange(output, language);
+                CheckSharedWorkspace(output, language);
+            }
+            Console.WriteLine("Week range and source navigation UI checks passed.");
+            return 0;
+        }
         if (args.Length > 1 && args[1] == "--download-storage")
         {
             CheckDownloadStorage(output);
@@ -150,6 +162,7 @@ static partial class Program
     static void CheckWorkspace(AlbumDownloads downloads, ReleaseRecommendation album, string output, string language)
     {
         using var workspace = new SoulseekWorkspaceView(downloads);
+        workspace.SetReturnTarget(L.T("아티스트 목록으로"));
         var shell = new TabControl();
         shell.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/RecipeSong.Wpf;component/WorkspaceStyles.xaml", UriKind.Relative) });
         shell.SetResourceReference(FrameworkElement.StyleProperty, "WorkspaceTabs");
@@ -162,6 +175,11 @@ static partial class Program
         workspace.ShowAlbum(album);
         var host = (ContentControl)workspace.FindName("SearchHost");
         var search = (SoulseekSearchView)host.Content;
+        if (!Equals(((Button)search.FindName("BackButton")).ToolTip, L.T("아티스트 목록으로")))
+            throw new Exception("New searches lost their artist return label.");
+        workspace.SetReturnTarget(L.T("추천으로"));
+        if (!Equals(((Button)search.FindName("BackButton")).ToolTip, L.T("추천으로")))
+            throw new Exception("Reused search views retained a stale return label.");
         ((TextBox)search.FindName("QueryBox")).Text = "custom query";
         var files = new[] { new SoulseekFile(@"Music\Album\01 Track.flac", 32000000, 950, 44100, 16) };
         var groups = new[] { new SoulseekFolder(new SoulseekPeer("example-peer", true, 0, 1000000, files), @"Music\Album", files) };
