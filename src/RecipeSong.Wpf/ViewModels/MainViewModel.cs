@@ -1769,10 +1769,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task<CandidatePool> PoolAsync(IProgress<string> progress, CancellationToken ct)
     {
-        const string key = "all";
         await _poolLock.WaitAsync(ct);
         try
         {
+            var options = RecOptions;
+            // 설정을 저장하고 재계산을 취소해도 다음 요청은 새 추천 양에 맞는 후보 목록을 사용한다.
+            var key = $"all|{options.MaxArtists}|{options.Hop2Seeds}";
             var tracks = await _library.GetTracksAsync(ct);
             _recommender.SetIdentityLibrary(tracks, await ReadArchivesAsync(ct));
             var identityVersion = _recommender.IdentityVersion;
@@ -1795,7 +1797,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 .Select(f => new TasteArtist(f.Name, 1.0, 0, FollowList.Tag))];
             _mine ??= TasteProfile.LibraryArtists(tracks);
             _likedArtists.UnionWith(_mine.Select(m => ListeningAnalyzer.NormalizeArtist(m.Artist)));  // 피처링 가산점용
-            p = await _recommender.BuildPoolAsync(seeds, _mine, RecOptions, progress, ct);
+            p = await _recommender.BuildPoolAsync(seeds, _mine, options, progress, ct);
             _pools[key] = p;
             _poolFavVersion[key] = FavoritesVersion;
             _poolIdentityVersion[key] = identityVersion;
@@ -1974,7 +1976,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- 촘촘한 계산(정밀): 월·연을 주 단위로 하나씩 계산해 저장 → 넓은 기간 보기는 그걸 합친다 ----
     // 연도 주 단위로 한다 (예전엔 월 단위): 소리를 듣는 양은 주 52 × 150장 ≈ 월 12 × 600장으로 비슷한데 주 보기만큼 촘촘하고,
-    // 이미 계산한 주(주 보기·월 촘촘한 계산)를 그대로 건너뛴다
+    // 수동 재계산은 저장된 주도 갱신하고, 기간 이동 때는 저장된 주를 합쳐 보여 준다.
     public bool CanPrecise => Mode != PeriodKind.Week;
     public bool UsePrecise => _recPrefs.UsePrecise;
     [ObservableProperty] private bool _isPrecise;
@@ -2017,7 +2019,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return true;
     }
 
-    /// <summary>체크한 뒤 다시 계산으로 실행한다. 중지는 StopLoad, 끝낸 조각은 저장돼 있어 다음에 이어서 계산한다.</summary>
+    /// <summary>다시 계산으로 모든 주를 갱신한다. 중지는 StopLoad, 성공한 주는 저장하고 다시 실행하면 전체 주를 재계산한다.</summary>
     private async Task PreciseAsync()
     {
         if (IsPrecise) { _preciseCts?.Cancel(); return; }
