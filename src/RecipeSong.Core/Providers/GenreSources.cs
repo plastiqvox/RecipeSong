@@ -173,6 +173,8 @@ public sealed class GenreSources
         }
         catch (HttpRequestException) { return []; }
         catch (JsonException) { return []; }
+        catch (IOException) { return []; }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return []; }
     }
 
     /// <summary>캐시에 있는 Last.fm 아티스트 통계 (묻지 않는다). 물어봤는데 없던 아티스트는 true 에 stats=null</summary>
@@ -199,13 +201,16 @@ public sealed class GenreSources
                 if (r.Error == 6) _artistStats.Set(k, null);  // 6: 그런 아티스트 없음
                 return null;
             }
-            ArtistStats? stats = long.TryParse(r.Artist?.Stats?.Listeners, out var listeners)
+            // 청취자 0 은 기록이 없는 빈 페이지 (autocorrect 가 엉뚱한 페이지로 이은 경우 포함) → 모름
+            ArtistStats? stats = long.TryParse(r.Artist?.Stats?.Listeners, out var listeners) && listeners > 0
                 ? new(listeners, string.IsNullOrEmpty(r.Artist!.Mbid) ? null : r.Artist.Mbid) : null;
             _artistStats.Set(k, stats);
             return stats;
         }
         catch (HttpRequestException) { return null; }
         catch (JsonException) { return null; }
+        catch (IOException) { return null; }  // 헤더를 받은 뒤 본문을 읽다 끊김 (HttpIOException)
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return null; }  // HttpClient 시간 초과는 취소가 아니라 실패
     }
 
     /// <summary>
@@ -275,6 +280,8 @@ public sealed class GenreSources
         }
         catch (HttpRequestException) { return null; }
         catch (JsonException) { return null; }
+        catch (IOException) { return null; }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return null; }
     }
 
     /// <summary>Discogs 검색 첫 결과의 스타일 → 장르 순서. 실패하면 null</summary>
@@ -294,6 +301,8 @@ public sealed class GenreSources
         }
         catch (HttpRequestException) { return null; }
         catch (JsonException) { return null; }
+        catch (IOException) { return null; }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return null; }
     }
 
     private static string Esc(string s) => Uri.EscapeDataString(s);
