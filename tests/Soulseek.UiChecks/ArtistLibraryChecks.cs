@@ -11,6 +11,9 @@ static partial class Program
 {
     static void CheckArtistLibrary(string output, string language)
     {
+        var filters = new JsonCache<ArtistAlbumFilters>("artist-album-filters", TimeSpan.FromDays(36500));
+        filters.Set("filters", new(IncludeOwned: false));
+        filters.Save();
         var coverPath = Path.Combine(output, language + "-fixture-cover.png");
         var visual = new System.Windows.Media.DrawingVisual();
         using (var drawing = visual.RenderOpen())
@@ -89,6 +92,7 @@ static partial class Program
             artists.SelectedIndex = 0;
             await WaitFor(() => candidates.SelectedItem != null && !view.IsSearching);
             var originalMusician = (PlaylistMusician)artists.SelectedItem;
+            ((CheckBox)view.FindName("IncludeOwnedBox")).IsChecked = true;
             ((TextBox)view.FindName("DirectArtistQuery")).Text = "Other artist";
             var directSearch = (Button)view.FindName("DirectArtistSearchButton");
             directSearch.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -119,13 +123,16 @@ static partial class Program
             Render(view, Path.Combine(output, language + "-direct-artist-narrow.png"), 700, 950);
             artists.SelectedIndex = 0;
             await WaitFor(() => candidates.SelectedItem != null && !view.IsSearching);
-            if (includeOwned.IsChecked != false) throw new Exception("Returning to a playlist artist left direct-search defaults active.");
+            if (includeOwned.IsChecked != true) throw new Exception("Changing artist reset the saved include-owned preference.");
         });
         using var fallbackHttp = new HttpClient(new ArtistCatalogHandler(new Uri(coverPath).AbsoluteUri, ambiguous: true));
         var fallbackDiscovery = new ArtistAlbumDiscovery(new DeezerClient(fallbackHttp), [song, mostPlayed, secondPlayed], playlists, [], identityStore: FreshIdentityStore());
         using var fallbackView = new ArtistLibraryView(_ => Task.FromResult(fallbackDiscovery));
         OnUi(async () =>
         {
+            var includeOwned = (CheckBox)fallbackView.FindName("IncludeOwnedBox");
+            if (includeOwned.IsChecked != true) throw new Exception("A new artist view lost the saved include-owned preference.");
+            includeOwned.IsChecked = false;
             await fallbackView.InitializeAsync();
             var artists = (ListBox)fallbackView.FindName("Artists");
             artists.SelectedIndex = 0;

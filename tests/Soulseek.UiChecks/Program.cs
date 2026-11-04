@@ -18,6 +18,22 @@ static partial class Program
         var app = new App();
         app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (args.Length > 1 && args[1] == "--artist-library")
+        {
+            foreach (var language in new[] { "ko", "en" })
+            {
+                L.Init(language);
+                CheckArtistLibrary(output, language);
+            }
+            Console.WriteLine("Artist library UI checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--artist-filters")
+        {
+            CheckArtistFilters();
+            Console.WriteLine("Artist album filter persistence checks passed.");
+            return 0;
+        }
         if (args.Length > 1 && args[1] == "--card-actions")
         {
             CheckCardActions(output);

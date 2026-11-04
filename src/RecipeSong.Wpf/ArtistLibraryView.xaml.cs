@@ -5,8 +5,13 @@ using RecipeSong.Core.Providers;
 
 namespace RecipeSong.Wpf;
 
+public sealed record ArtistAlbumFilters(bool IncludeOwned = true, bool Albums = true, bool Ep = true,
+    bool Singles = false, bool Live = false, bool Compilations = false);
+
 public partial class ArtistLibraryView : UserControl, IDisposable
 {
+    private readonly JsonCache<ArtistAlbumFilters> _filters = new("artist-album-filters", TimeSpan.FromDays(36500));
+    private bool _restoringFilters = true;
     private readonly Func<CancellationToken, Task<ArtistAlbumDiscovery>> _load;
     private ArtistAlbumDiscovery? _discovery;
     private IReadOnlyList<DiscoveredAlbum> _albums = [];
@@ -38,6 +43,14 @@ public partial class ArtistLibraryView : UserControl, IDisposable
     {
         InitializeComponent();
         _load = load;
+        var filters = _filters.TryGet("filters", out var saved) ? saved : new ArtistAlbumFilters();
+        IncludeOwnedBox.IsChecked = filters.IncludeOwned;
+        AlbumBox.IsChecked = filters.Albums;
+        EpBox.IsChecked = filters.Ep;
+        SingleBox.IsChecked = filters.Singles;
+        LiveBox.IsChecked = filters.Live;
+        CompilationBox.IsChecked = filters.Compilations;
+        _restoringFilters = false;
     }
 
     public async Task InitializeAsync()
@@ -151,7 +164,6 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         ResetIdentityButton.IsEnabled = false;
         FindButton.IsEnabled = false;
         FindButton.Content = L.T("앨범 목록 불러오기");
-        IncludeOwnedBox.IsChecked = true;
         DirectArtistSearchButton.IsEnabled = false;
         StatusText.Text = L.T("아티스트를 직접 검색하는 중…");
         _activeRequests++;
@@ -181,7 +193,6 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         ResetIdentityButton.Visibility = Visibility.Visible;
         ClearAlbums();
         FindButton.Content = L.T("놓친 앨범 찾기");
-        IncludeOwnedBox.IsChecked = false;
         _updating = true;
         CandidateBox.ItemsSource = null;
         CandidateList.ItemsSource = null;
@@ -278,7 +289,14 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         finally { _activeRequests--; if (!token.IsCancellationRequested) FindButton.IsEnabled = true; }
     }
 
-    private void Type_Changed(object sender, RoutedEventArgs e) { if (Albums != null) RefreshAlbums(); }
+    private void Type_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_restoringFilters || _disposed) return;
+        _filters.Set("filters", new(IncludeOwnedBox.IsChecked == true, AlbumBox.IsChecked == true, EpBox.IsChecked == true,
+            SingleBox.IsChecked == true, LiveBox.IsChecked == true, CompilationBox.IsChecked == true));
+        _filters.Save();
+        RefreshAlbums();
+    }
     private void RefreshAlbums()
     {
         Albums.ItemsSource = _albums.Where(a => IncludeOwnedBox.IsChecked == true || a.Ownership != CatalogOwnership.InLibrary)
