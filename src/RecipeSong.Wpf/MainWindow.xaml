@@ -415,48 +415,48 @@
                             <TextBlock Text="{Binding Because}" Style="{StaticResource MutedText}" FontSize="11" Margin="2,6,0,0" TextWrapping="Wrap"
                                        TextTrimming="CharacterEllipsis" MaxHeight="32" ToolTip="{Binding Because}"
                                        Visibility="{Binding Because, Converter={StaticResource EmptyCollapsed}}"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <WrapPanel Margin="0,8,0,0">
                                 <Button Style="{StaticResource Bare}" Command="{Binding ToggleSaveCommand}"
-                                        Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding SaveTip}"
+                                        Padding="7,4" Margin="0,0,6,4" ToolTip="{Binding SaveTip}"
                                         AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='저장: {0}'}">
                                     <Path x:Name="mark" Data="{StaticResource BookmarkIcon}" Width="11" Height="13" Stretch="Uniform"
                                           Stroke="{StaticResource Text2}" StrokeThickness="1.6" Fill="Transparent"/>
                                 </Button>
                                 <!-- 좋아요(앨범 하트): 학습에 반영 -->
                                 <Button Style="{StaticResource Bare}" Command="{Binding ToggleLikeCommand}"
-                                        Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding LikeTip}"
+                                        Padding="7,4" Margin="0,0,6,4" ToolTip="{Binding LikeTip}"
                                         AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='좋아요: {0}'}">
                                     <Path x:Name="like" Data="{StaticResource ThumbUpIcon}" Width="13" Height="13" Stretch="Uniform"
                                           Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
                                 </Button>
                                 <!-- 별로: 숨기고 학습에 반영 -->
                                 <Button Style="{StaticResource Bare}" Command="{Binding ToggleDislikeCommand}"
-                                        Padding="7,4" Margin="0,0,6,0" ToolTip="{Binding DislikeTip}"
+                                        Padding="7,4" Margin="0,0,6,4" ToolTip="{Binding DislikeTip}"
                                         AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='관심 없음: {0}'}">
                                     <Path x:Name="dislike" Data="{StaticResource ThumbDownIcon}" Width="13" Height="13" Stretch="Uniform"
                                           Stroke="{StaticResource Text2}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent"/>
                                 </Button>
-                                <Button x:Name="tracksBtn" Style="{StaticResource Bare}" Command="{Binding ToggleTracksCommand}" Padding="9,5" Margin="0,0,6,0"
+                                <Button x:Name="tracksBtn" Style="{StaticResource Bare}" Command="{Binding ToggleTracksCommand}" Padding="9,5" Margin="0,0,6,4"
                                         ToolTip="{Binding TracksButton}" AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='수록곡: {0}'}">
                                     <!-- 목록 아이콘: 펼쳐져 있으면 주황 -->
                                     <Path x:Name="tracksIcon" Data="{StaticResource TracklistIcon}" Stroke="{StaticResource Text2}" StrokeThickness="1.8"
                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="16" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
                                 </Button>
-                                <Button Style="{StaticResource Bare}" Command="{Binding OpenEvidenceCommand}" Padding="9,5" Margin="0,0,6,0"
+                                <Button Style="{StaticResource Bare}" Command="{Binding OpenEvidenceCommand}" Padding="9,5" Margin="0,0,6,4"
                                         ToolTip="{local:Tr '추천 근거 보기'}"
                                         AutomationProperties.Name="{Binding Album, Converter={StaticResource TrFmt}, ConverterParameter='추천 근거: {0}'}">
                                     <Path Data="{StaticResource InfoIcon}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource Text2}"
                                           StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" VerticalAlignment="Center"/>
                                 </Button>
-                                <Button Style="{StaticResource Bare}" Command="{Binding OpenAppleMusicCommand}" Padding="9,5" ToolTip="{local:Tr 'Apple Music에서 열기 (iTunes)'}"
+                                <Button Style="{StaticResource Bare}" Command="{Binding OpenAppleMusicCommand}" Padding="9,5" Margin="0,0,6,4" ToolTip="{local:Tr 'Apple Music에서 열기 (iTunes)'}"
                                         AutomationProperties.Name="{Binding Album, StringFormat=Apple Music: {0}}">
                                     <Path Data="{StaticResource AppleMusicIcon}" Fill="#FA2D48" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"/>
                                 </Button>
-                                <Button Style="{StaticResource Bare}" Command="{Binding OpenYouTubeCommand}" Padding="9,5" Margin="6,0,0,0" ToolTip="{local:Tr 'YouTube에서 앨범 찾기 (전곡)'}"
+                                <Button Style="{StaticResource Bare}" Command="{Binding OpenYouTubeCommand}" Padding="9,5" Margin="0,0,0,4" ToolTip="{local:Tr 'YouTube에서 앨범 찾기 (전곡)'}"
                                         AutomationProperties.Name="{Binding Album, StringFormat=YouTube: {0}}">
                                     <Path Data="{StaticResource YouTubeIcon}" Fill="#FF3D3D" Width="17" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
                                 </Button>
-                            </StackPanel>
+                            </WrapPanel>
                         </StackPanel>
                     <StackPanel>
                         <DockPanel LastChildFill="False">
