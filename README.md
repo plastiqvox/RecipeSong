@@ -71,6 +71,7 @@
 
 - .NET 런타임과 `uv` 가 같이 들어 있어 따로 설치할 것이 없다.
 - 설치 마지막의 **소리 분석 환경 설치**(Python · PyTorch, 약 3GB)를 켜 두면 콘솔 창에서 내려받는다. 건너뛰면 앱이 소리 분석 서비스를 처음 띄울 때 받는다.
+- 소리 환경 첫 설치는 실행 환경과 다운로드 캐시를 합쳐 약 14GiB 여유 공간을 확인한다. 패키지·모델 캐시는 재사용하며 설정에서 위치 변경·다음 실행 시 비우기를 예약할 수 있다. [저장 공간과 캐시](docs/storage.md).
 - 제거하면 Python 환경(`ml\.venv`)은 지우고 학습 결과(`ml\data`)는 남긴다. 다시 설치하면 이어서 쓴다.
 - 인스톨러 만들기: `installer\build.ps1` (.NET 9 SDK, [Inno Setup 6](https://jrsoftware.org/isinfo.php), uv 필요). 결과는 `installer\out\`.
 

@@ -35,6 +35,8 @@ public partial class SettingsWindow : Window
         ShowArchiveFolders();
         ShowGenreKeys();
         ShowStorage();
+        DownloadStorage.RestartRequired += () => RestartButton.Visibility = Visibility.Visible;
+        DownloadStorage.Configure(_app, _mlDir);
     }
 
     // ---- 장르 정보 (Last.fm 키 · 예전에 넣은 Discogs 토큰): 저장하면 다음 추천 계산부터 쓴다 ----

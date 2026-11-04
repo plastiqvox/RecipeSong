@@ -53,6 +53,7 @@ Name: "mlenv"; Description: "{cm:MlEnv}"; GroupDescription: "{cm:MlEnvGroup}"
 [Files]
 Source: "{#Stage}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Root}\installer\THIRD-PARTY.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Root}\installer\setup-sound.ps1"; Flags: dontcopy
 
 [Dirs]
 ; 학습 결과·캐시. 업데이트·제거 때 지우지 않는다 (다시 만들려면 처음 학습부터 해야 한다)
@@ -64,10 +65,31 @@ Name: "{autodesktop}\RecipeSong"; Filename: "{app}\RecipeSong.Wpf.exe"; Tasks: d
 
 [Run]
 ; 콘솔 창을 보이게 돌린다 (내려받기 진행이 보이게). 실패하면 창이 바로 닫히지 않게 pause
-Filename: "{cmd}"; Parameters: "/c """"{app}\uv.exe"" sync --no-dev --directory ""{app}\ml"" || pause"""; StatusMsg: "{cm:MlEnvStatus}"; Tasks: mlenv
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\setup-sound.ps1"" -MlDirectory ""{app}\ml"" -Uv ""{app}\uv.exe"" -Language {language} -PauseOnError"; StatusMsg: "{cm:MlEnvStatus}"; Tasks: mlenv
 Filename: "{app}\RecipeSong.Wpf.exe"; Description: "{cm:Launch}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; Python 환경은 수 GB 이고 다시 만들 수 있어서 같이 지운다 (학습 결과 ml\data 는 남긴다)
 Type: filesandordirs; Name: "{app}\ml\.venv"
 Type: filesandordirs; Name: "{app}\ml\__pycache__"
+
+[Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ExitCode: Integer;
+  Report: String;
+  ErrorText: AnsiString;
+begin
+  Result := '';
+  if not WizardIsTaskSelected('mlenv') then Exit;
+  ExtractTemporaryFile('setup-sound.ps1');
+  Report := ExpandConstant('{tmp}\recipesong-space-check.txt');
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\setup-sound.ps1') +
+    '" -MlDirectory "' + ExpandConstant('{app}\ml') + '" -Language ' + ExpandConstant('{language}') +
+    ' -CheckOnly -ReportFile "' + Report + '"', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) or (ExitCode <> 0) then
+  begin
+    Result := CustomMessage('MlEnvStatus');
+    if LoadStringFromFile(Report, ErrorText) then Result := UTF8Decode(ErrorText);
+  end;
+end;

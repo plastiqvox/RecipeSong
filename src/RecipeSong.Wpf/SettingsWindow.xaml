@@ -164,6 +164,8 @@
                 <TextBlock x:Name="MoveResult" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource AccentText}"
                            Visibility="{Binding Text, RelativeSource={RelativeSource Self}, Converter={StaticResource EmptyCollapsed}}"/>
 
+                <local:DownloadCacheView x:Name="DownloadStorage"/>
+
                 <!-- 저장된 추천 비우기 -->
                 <DockPanel Margin="0,14,0,0">
                     <Button x:Name="ClearRecsButton" DockPanel.Dock="Right" Style="{StaticResource Bare}" Padding="12,6" Click="ClearRecs_Click">

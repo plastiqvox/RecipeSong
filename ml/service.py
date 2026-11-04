@@ -173,10 +173,11 @@ class Service:
     def clap(self):
         if self._clap is None:
             from transformers import ClapModel, ClapProcessor
-            model = ClapModel.from_pretrained(embed.MODEL_ID).to(self.device).eval()
+            source = embed.model_source(embed.MODEL_ID)
+            model = ClapModel.from_pretrained(source).to(self.device).eval()
             if self.device == "cuda":
                 model = model.half()
-            self._clap = (model, ClapProcessor.from_pretrained(embed.MODEL_ID))
+            self._clap = (model, ClapProcessor.from_pretrained(source))
         return self._clap
 
     def embed_clips(self, groups: list[list[np.ndarray]]) -> list[np.ndarray | None]:

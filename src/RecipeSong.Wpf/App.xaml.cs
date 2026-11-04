@@ -41,6 +41,9 @@ public partial class App : Application
             settings.Save();
         }
 
+        try { DownloadCache.CompletePending(settings, settings.MlDirectory ?? RecipeSong.Core.Sound.SoundService.FindMlDirectory()); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        { MessageBox.Show(L.F("다운로드 캐시 변경을 완료하지 못했어요: {0}", ex.Message), L.T("RecipeSong 오류"), MessageBoxButton.OK, MessageBoxImage.Warning); }
         _vm = new MainViewModel(settings);
         new MainWindow(_vm).Show();
     }

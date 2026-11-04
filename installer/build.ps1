@@ -33,6 +33,7 @@ $uv = (Get-Command uv.exe -ErrorAction SilentlyContinue).Source
 if (-not $uv) { $uv = Join-Path $env:USERPROFILE '.local\bin\uv.exe' }
 if (-not (Test-Path $uv)) { throw 'uv.exe 를 찾지 못했습니다' }
 Copy-Item $uv (Join-Path $stage 'app\uv.exe')
+Copy-Item (Join-Path $PSScriptRoot 'setup-sound.ps1') (Join-Path $stage 'app\setup-sound.ps1')
 
 & $Iscc "/DAppVersion=$version" "/DStage=$(Join-Path $stage 'app')" "/DRoot=$root" "/O$out" (Join-Path $PSScriptRoot 'RecipeSong.iss')
 if ($LASTEXITCODE) { throw 'Inno Setup 실패' }

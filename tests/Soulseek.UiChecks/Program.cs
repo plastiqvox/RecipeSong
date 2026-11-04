@@ -18,6 +18,12 @@ static partial class Program
         var app = new App();
         app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (args.Length > 1 && args[1] == "--download-storage")
+        {
+            CheckDownloadStorage(output);
+            Console.WriteLine("Download storage UI checks passed.");
+            return 0;
+        }
         if (args.Length > 1 && args[1] == "--artist-library")
         {
             foreach (var language in new[] { "ko", "en" })
