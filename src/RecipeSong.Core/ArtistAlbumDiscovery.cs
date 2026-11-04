@@ -38,6 +38,15 @@ public sealed class PlaylistMusician(string name, IReadOnlyList<TrackRecord> tra
 public sealed record DiscoveredAlbum(DzAlbum Album, string Artist, CatalogOwnership Ownership, int OwnedTracks)
 {
     public string Title => Album.Title;
+    public string Metadata => (Album.Released is { } date ? L.F("{0:yyyy.MM.dd}", date) : L.T("발매일 미상"))
+        + " · " + (Album.RecordType switch { "album" => L.T("정규"), "ep" => "EP", "single" => L.T("싱글"), _ => Album.RecordType ?? "?" });
+    public string OwnershipLabel => Ownership switch
+    {
+        CatalogOwnership.Partial => L.F("일부 보유 · {0}/{1}곡", OwnedTracks, Album.TrackCount),
+        CatalogOwnership.PossibleEdition => L.T("판본 확인"),
+        CatalogOwnership.InLibrary => L.T("보유"),
+        _ => L.T("미보유"),
+    };
     public string Summary => $"{Album.ReleaseDate ?? "?"} · {Album.RecordType ?? "?"} · " + (Ownership switch
     {
         CatalogOwnership.Partial => L.F("일부 보유 · {0}/{1}곡", OwnedTracks, Album.TrackCount),

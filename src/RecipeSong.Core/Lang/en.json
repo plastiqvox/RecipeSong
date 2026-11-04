@@ -1031,5 +1031,16 @@
  "선택 기간의 {0}주를 모두 다시 계산해요. 이미 분석한 소리는 재사용해요.": "All {0} weeks in the selected period will be recalculated. Existing sound analysis is reused.",
  "추천을 다시 계산할까요?": "Recalculate recommendations?",
  "계산 시작": "Start calculation",
- "{0} 종료 · {1}주 저장 · {2}주 갱신 못함": "{0} finished · {1} weeks saved · {2} weeks could not be updated"
+ "{0} 종료 · {1}주 저장 · {2}주 갱신 못함": "{0} finished · {1} weeks saved · {2} weeks could not be updated",
+ "ID 변경": "Change ID",
+ "미보유 {0}": "Missing {0}",
+ "발매일 미상": "Release date unknown",
+ "보유": "Owned",
+ "보유 {0}": "Owned {0}",
+ "보유 앨범 {0}개 일치": "{0} owned albums match",
+ "아티스트 ID 확인 필요": "Select an artist ID",
+ "일부 보유 {0}": "Partial {0}",
+ "전체 {0} · 표시 {1}": "Total {0} · Showing {1}",
+ "판본 확인": "Check edition",
+ "판본 확인 {0}": "Check edition {0}"
 }

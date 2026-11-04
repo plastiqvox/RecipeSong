@@ -158,6 +158,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         finally { _updating = false; }
         CandidateChoices.Visibility = Visibility.Collapsed;
         MySongs.ItemsSource = null;
+        UpdateIdentityPanel();
         ArtistTitle.Text = name;
         PlaylistSongsPanel.Visibility = Visibility.Collapsed;
         ResetIdentityButton.Visibility = Visibility.Collapsed;
@@ -199,6 +200,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         CandidateChoices.Visibility = Visibility.Collapsed;
         _updating = false;
         FindButton.IsEnabled = false;
+        UpdateIdentityPanel();
         MySongs.ItemsSource = null;
         ArtistTitle.Text = L.T("왼쪽에서 아티스트를 골라 주세요.");
         ResetIdentityButton.IsEnabled = false;
@@ -245,6 +247,23 @@ public partial class ArtistLibraryView : UserControl, IDisposable
             try { _discovery.ConfirmArtist(musician, candidate.Artist); StatusText.Text = L.T("선택한 아티스트 ID를 DB에 저장했어요."); }
             catch (Exception ex) { FindButton.IsEnabled = false; StatusText.Text = ex.Message; }
         }
+        UpdateIdentityPanel();
+    }
+    private void UpdateIdentityPanel()
+    {
+        var selected = CandidateBox.SelectedItem as Candidate;
+        bool confirmed = selected != null && FindButton.IsEnabled;
+        IdentitySummary.Text = selected == null ? L.T("아티스트 ID 확인 필요") : L.F("ID {0}", selected.Artist.Id)
+            + (selected.AlbumMatches > 0 ? " · " + L.F("보유 앨범 {0}개 일치", selected.AlbumMatches) : "")
+            + (selected.TrackMatches is > 0 ? " · " + L.F("수록곡 {0}개 일치", selected.TrackMatches) : "");
+        IdentitySummary.ToolTip = selected?.Label;
+        EditIdentityButton.Visibility = confirmed ? Visibility.Visible : Visibility.Collapsed;
+        IdentityEditor.Visibility = confirmed ? Visibility.Collapsed : Visibility.Visible;
+    }
+    private void EditIdentity_Click(object sender, RoutedEventArgs e)
+    {
+        IdentityEditor.Visibility = IdentityEditor.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        CandidateChoices.Visibility = CandidateList.Items.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
     }
     private void CandidateList_Changed(object sender, SelectionChangedEventArgs e)
     {
@@ -261,6 +280,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
     private void ClearAlbums()
     {
         _albums = [];
+        CatalogSummary.Visibility = Visibility.Collapsed;
         _updating = true;
         Albums.ItemsSource = null;
         _updating = false;
@@ -302,6 +322,14 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         Albums.ItemsSource = _albums.Where(a => IncludeOwnedBox.IsChecked == true || a.Ownership != CatalogOwnership.InLibrary)
             .Where(a => ArtistAlbumDiscovery.MatchesType(a.Album, AlbumBox.IsChecked == true,
             EpBox.IsChecked == true, SingleBox.IsChecked == true, LiveBox.IsChecked == true, CompilationBox.IsChecked == true)).ToArray();
+        var counts = _albums.GroupBy(a => a.Ownership).ToDictionary(g => g.Key, g => g.Count());
+        var parts = new List<string> { L.F("전체 {0} · 표시 {1}", _albums.Count, Albums.Items.Count) };
+        if (counts.GetValueOrDefault(CatalogOwnership.InLibrary) is > 0 and var owned) parts.Add(L.F("보유 {0}", owned));
+        if (counts.GetValueOrDefault(CatalogOwnership.Partial) is > 0 and var partial) parts.Add(L.F("일부 보유 {0}", partial));
+        if (counts.GetValueOrDefault(CatalogOwnership.Missing) is > 0 and var missing) parts.Add(L.F("미보유 {0}", missing));
+        if (counts.GetValueOrDefault(CatalogOwnership.PossibleEdition) is > 0 and var edition) parts.Add(L.F("판본 확인 {0}", edition));
+        CatalogSummary.Text = string.Join(" · ", parts);
+        CatalogSummary.Visibility = Visibility.Visible;
         StatusText.Text = IncludeOwnedBox.IsChecked == true ? L.F("앨범 {0}개 · 보유 앨범 포함", Albums.Items.Count)
             : L.F("놓친 앨범 {0}개 · 일부 보유와 다른 판본 포함", Albums.Items.Count);
     }

@@ -58,9 +58,19 @@ static partial class Program
             var candidates = (ComboBox)view.FindName("CandidateBox");
             await WaitFor(() => candidates.Items.Count == 2 && candidates.SelectedItem != null);
             if (!candidates.SelectedItem.ToString()!.Contains("ID 7")) throw new Exception("Owned albums did not correct the first homonymous artist ID.");
+            var identityEditor = (StackPanel)view.FindName("IdentityEditor");
+            if (identityEditor.Visibility != Visibility.Collapsed) throw new Exception("Resolved artist ID did not collapse to a summary.");
+            ((Button)view.FindName("EditIdentityButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            if (identityEditor.Visibility != Visibility.Visible) throw new Exception("Artist ID candidates cannot be reopened.");
+            ((Button)view.FindName("EditIdentityButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             ((Button)view.FindName("FindButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             var albums = (ListBox)view.FindName("Albums");
             await WaitFor(() => albums.Items.Count == 2);
+            var catalogSummary = (TextBlock)view.FindName("CatalogSummary");
+            if (catalogSummary.Visibility != Visibility.Visible || !catalogSummary.Text.Contains(L.F("일부 보유 {0}", 1)))
+                throw new Exception("Album ownership counts are missing.");
+            if (albums.Items.Cast<DiscoveredAlbum>().Any(a => string.IsNullOrWhiteSpace(a.Metadata) || string.IsNullOrWhiteSpace(a.OwnershipLabel)))
+                throw new Exception("Album metadata or ownership badge is missing.");
             if (!albums.Items.Cast<DiscoveredAlbum>().Any(a => a.Ownership == CatalogOwnership.Partial)) throw new Exception("Partial album was hidden.");
             albums.SelectedItem = albums.Items.Cast<DiscoveredAlbum>().Single(a => a.Title == "Missing album");
             var search = (Button)view.FindName("SearchButton");
@@ -69,6 +79,8 @@ static partial class Program
             search.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             if (requested?.DeezerAlbumId != 2 || requested.Artist != "Test artist") throw new Exception("Soulseek navigation lost selected album metadata.");
             Render(view, Path.Combine(output, language + "-artist-library.png"), 1040, 850);
+            if (((ListBoxItem)artists.ItemContainerGenerator.ContainerFromIndex(0)).ActualHeight > 100)
+                throw new Exception("Compact artist rows became too tall.");
             Render(view, Path.Combine(output, language + "-artist-library-narrow.png"), 700, 850);
             if (artistImages.Any(image => image.Source == null)) throw new Exception("Most-played album thumbnails were not displayed.");
             var covers = AlbumImages(albums).ToArray();
@@ -143,12 +155,15 @@ static partial class Program
             await WaitFor(() => choices.Visibility == Visibility.Visible && list.Items.Count == 2);
             if (find.IsEnabled || selected.SelectedItem != null || list.SelectedItem != null)
                 throw new Exception("Ambiguous IDs must show candidates without automatically selecting one.");
+            if (((StackPanel)fallbackView.FindName("IdentityEditor")).Visibility != Visibility.Visible)
+                throw new Exception("Ambiguous artist IDs were hidden in the collapsed summary.");
             Render(fallbackView, Path.Combine(output, language + "-artist-id-candidates.png"), 700, 850);
             list.SelectedItem = list.Items.Cast<object>().Single(item => item.ToString()!.Contains("ID 7"));
             if (!find.IsEnabled || !ReferenceEquals(selected.SelectedItem, list.SelectedItem)) throw new Exception("Manual ID row selection failed.");
             find.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             var albums = (ListBox)fallbackView.FindName("Albums");
             await WaitFor(() => albums.Items.Count == 2);
+            ((Button)fallbackView.FindName("EditIdentityButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             list.SelectedItem = list.Items.Cast<object>().Single(item => item.ToString()!.Contains("ID 6"));
             if (albums.Items.Count != 0 || ((Button)fallbackView.FindName("SearchButton")).IsEnabled)
                 throw new Exception("Changing a manual artist ID left stale albums available.");
