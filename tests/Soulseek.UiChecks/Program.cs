@@ -436,7 +436,12 @@ static partial class Program
             if (!results.Items.Cast<SoulseekFolder>().SequenceEqual(new[] { newest, fast, slow, unknown, queued }) || fast.Files[0].Selected)
                 throw new Exception("Filtering lost queue/speed order or selection.");
             if (unknown.SpeedText != L.T("상대 속도: 정보 없음") || fast.SpeedText != L.F("상대 속도: {0:0.0} MiB/s", 2d)) throw new Exception("Reported speed display failed.");
-            Render(search, Path.Combine(output, language + "-search-order.png"), 700, 1000);
+            // 나를 차단한 상대는 가장 빠른 상대여도 맨 아래에 표시만 해 둔다
+            var banned = new SoulseekFolder(new("banned-fastest", true, 0, 50 * 1048576, files), "Album", files) { BannedMeAt = new DateTime(2026, 11, 5) };
+            source.Add(banned);
+            if (!ReferenceEquals(results.Items[^1], banned) || banned.BannedText.Length == 0 || newest.BannedText.Length != 0)
+                throw new Exception("A peer that banned us was not marked and moved to the bottom.");
+            Render(search, Path.Combine(output, language + "-search-order.png"), 700, 1200);
         }
         finally { search.Stop(); }
     }
