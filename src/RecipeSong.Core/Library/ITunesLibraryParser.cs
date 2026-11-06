@@ -25,7 +25,13 @@ public static class ITunesLibraryParser
     public static ITunesLibrary ParseLibrary(string path)
     {
         var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, IgnoreWhitespace = true };
-        using var reader = XmlReader.Create(path, settings);
+        // iTunes는 임시 파일(iT N.tmp)에 쓴 뒤 XML을 바꿔치기하는데, 파일이 열려 있으면 공유 모드와 상관없이 실패해 임시 파일만 남는다.
+        // 파싱하는 몇 초 동안 잡고 있지 않도록 메모리로 먼저 읽고 바로 닫는다
+        var bytes = new MemoryStream();
+        using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            file.CopyTo(bytes);
+        bytes.Position = 0;
+        using var reader = XmlReader.Create(bytes, settings);
         reader.MoveToContent();  // <plist>
         reader.Read();           // <dict>
         var root = ReadDict(reader);
