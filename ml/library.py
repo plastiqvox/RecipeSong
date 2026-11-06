@@ -90,8 +90,8 @@ def location_to_path(url: str | None) -> Path | None:
 
 
 def load(xml_path: str | Path, min_playlist_size: int = 15) -> tuple[dict[str, Track], dict[str, list[str]]]:
-    with open(xml_path, "rb") as f:
-        lib = plistlib.load(f)
+    # 파싱하는 동안 파일을 잡고 있으면 iTunes가 XML을 바꿔치기하지 못해 임시 파일(iT N.tmp)만 남는다 → 먼저 다 읽고 닫는다
+    lib = plistlib.loads(Path(xml_path).read_bytes())
 
     tracks: dict[str, Track] = {}
     by_id: dict[int, str] = {}

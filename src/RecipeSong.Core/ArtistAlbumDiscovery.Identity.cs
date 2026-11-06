@@ -9,7 +9,7 @@ public sealed partial class ArtistAlbumDiscovery
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ArtistIdentityResult> _identityResults = [];
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _identityGenerations = [];
-    private readonly Lazy<IReadOnlyDictionary<string, string>> _identityHashes = new(() => tracks.GroupBy(t => Key(Who(t)))
+    private readonly Lazy<IReadOnlyDictionary<string, string>> _identityHashes = new(() => tracks.Concat(ArchiveEvidence(archives)).GroupBy(t => Key(Who(t)))
         .ToDictionary(g => g.Key, g => ArtistIdentityStore.Fingerprint(g.Select(t => System.Text.Json.JsonSerializer.Serialize(new[] { Key(t.Album), Key(t.Title) })))));
     public string? EvidenceHash(string artist) => _identityHashes.Value.GetValueOrDefault(Key(artist));
     public void ConfirmArtist(PlaylistMusician musician, DzArtist artist)
@@ -43,7 +43,7 @@ public sealed partial class ArtistAlbumDiscovery
         }
         var cacheKey = Key(musician.Name) + "\u001f" + musician.DeezerId + "\u001f" + _identities.Revision;
         if (_identityResults.TryGetValue(cacheKey, out var cached)) return cached;
-        var owned = tracks.Where(t => Key(Who(t)) == Key(musician.Name) && !string.IsNullOrWhiteSpace(t.Album))
+        var owned = tracks.Concat(ArchiveEvidence(archives)).Where(t => Key(Who(t)) == Key(musician.Name) && !string.IsNullOrWhiteSpace(t.Album))
             .GroupBy(t => EditionKey(t.Album)).Where(g => g.Key.Length > 0)
             .OrderByDescending(g => g.Sum(t => (long)Math.Max(0, t.PlayCount))).ThenBy(g => g.Key).ToArray();
         ct.ThrowIfCancellationRequested();

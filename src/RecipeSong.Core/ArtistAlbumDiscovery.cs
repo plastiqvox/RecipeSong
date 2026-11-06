@@ -38,6 +38,15 @@ public sealed class PlaylistMusician(string name, IReadOnlyList<TrackRecord> tra
 public sealed record DiscoveredAlbum(DzAlbum Album, string Artist, CatalogOwnership Ownership, int OwnedTracks)
 {
     public string Title => Album.Title;
+    public string Metadata => (Album.Released is { } date ? L.F("{0:yyyy.MM.dd}", date) : L.T("발매일 미상"))
+        + " · " + (Album.RecordType switch { "album" => L.T("정규"), "ep" => "EP", "single" => L.T("싱글"), _ => Album.RecordType ?? "?" });
+    public string OwnershipLabel => Ownership switch
+    {
+        CatalogOwnership.Partial => L.F("일부 보유 · {0}/{1}곡", OwnedTracks, Album.TrackCount),
+        CatalogOwnership.PossibleEdition => L.T("판본 확인"),
+        CatalogOwnership.InLibrary => L.T("보유"),
+        _ => L.T("미보유"),
+    };
     public string Summary => $"{Album.ReleaseDate ?? "?"} · {Album.RecordType ?? "?"} · " + (Ownership switch
     {
         CatalogOwnership.Partial => L.F("일부 보유 · {0}/{1}곡", OwnedTracks, Album.TrackCount),
@@ -50,8 +59,12 @@ public sealed record DiscoveredAlbum(DzAlbum Album, string Artist, CatalogOwners
 /// <summary>플리는 취향 아티스트의 출처다. 보유 판정에는 플리가 아닌 전체 라이브러리를 사용한다.</summary>
 public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyList<TrackRecord> tracks,
     IReadOnlyList<Playlist> playlists, IReadOnlyList<FollowList.Followed> follows,
-    Func<AlbumSummary, CancellationToken, Task<string?>>? artwork = null, ArtistIdentityStore? identityStore = null)
+    Func<AlbumSummary, CancellationToken, Task<string?>>? artwork = null, ArtistIdentityStore? identityStore = null,
+    IReadOnlyList<Library.ArchiveAlbum>? archives = null)
 {
+    private static IEnumerable<TrackRecord> ArchiveEvidence(IEnumerable<Library.ArchiveAlbum>? albums) =>
+        (albums ?? []).Select(a => new TrackRecord { Artist = a.Artist, AlbumArtist = a.Artist, Album = a.Album, Title = "" });
+
     private readonly ArtistIdentityStore _identities = identityStore ?? new();
     public IReadOnlyList<Playlist> Playlists { get; } = playlists.Where(p => p.Kind == PlaylistKind.User).ToArray();
     private readonly Lazy<IReadOnlyDictionary<string, IReadOnlyList<AlbumSummary>>> _topAlbums = new(() => TopAlbums(tracks));
@@ -71,6 +84,14 @@ public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyL
 
     public Task<string?> ArtistCoverAsync(AlbumSummary album, CancellationToken ct) => artwork != null
         ? artwork(album, ct) : Task.FromResult<string?>(null);
+
+    /// <summary>플리·팔로우·저장된 ID를 바꾸지 않고 이름으로 카탈로그 후보만 찾는다.</summary>
+    public async Task<IReadOnlyList<DzArtist>> SearchArtistsAsync(string name, CancellationToken ct)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return [];
+        return (await client.SearchArtistsAsync(name, ct)).Where(a => a.Id > 0).DistinctBy(a => a.Id).ToArray();
+    }
 
     public IReadOnlyList<PlaylistMusician> Musicians(Playlist? playlist = null, bool includeFollows = true)
     {
@@ -107,14 +128,22 @@ public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyL
 
     public CatalogOwnership Ownership(string artist, DzAlbum album, out int ownedTracks)
     {
+        var archived = (archives ?? []).Where(a => Key(a.Artist) == Key(artist)).ToArray();
+        var exact = archived.FirstOrDefault(a => Key(a.Album) == Key(album.Title));
+        if (exact != null)
+        {
+            ownedTracks = exact.Tracks;
+            return album.TrackCount is > 0 && ownedTracks < album.TrackCount ? CatalogOwnership.Partial : CatalogOwnership.InLibrary;
+        }
         var mine = tracks.Where(t => Key(Who(t)) == Key(artist)).ToArray();
         ownedTracks = mine.Where(t => Key(t.Album) == Key(album.Title)).Select(t => Key(t.Title)).Distinct().Count();
         if (ownedTracks > 0)
             return album.TrackCount is > 0 && ownedTracks < album.TrackCount ? CatalogOwnership.Partial : CatalogOwnership.InLibrary;
-        return mine.Any(t => EditionKey(t.Album) == EditionKey(album.Title)) ? CatalogOwnership.PossibleEdition : CatalogOwnership.Missing;
+        return mine.Any(t => EditionKey(t.Album) == EditionKey(album.Title)) || archived.Any(a => EditionKey(a.Album) == EditionKey(album.Title))
+            ? CatalogOwnership.PossibleEdition : CatalogOwnership.Missing;
     }
 
-    public async Task<IReadOnlyList<DiscoveredAlbum>> AlbumsAsync(DzArtist artist, CancellationToken ct, string? libraryArtist = null)
+    public async Task<IReadOnlyList<DiscoveredAlbum>> AlbumsAsync(DzArtist artist, CancellationToken ct, string? libraryArtist = null, bool includeOwned = false)
     {
         var result = new List<DiscoveredAlbum>();
         foreach (var item in await IdentityDiscographyAsync(artist.Id, ct))
@@ -129,7 +158,7 @@ public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyL
                 if (album.TrackCount is not > 0) throw new HttpRequestException(L.T("앨범 곡수를 확인하지 못했어요."));
             }
             state = Ownership(libraryArtist ?? artist.Name, album, out var count);
-            if (state != CatalogOwnership.InLibrary) result.Add(new(album, artist.Name, state, count));
+            if (includeOwned || state != CatalogOwnership.InLibrary) result.Add(new(album, artist.Name, state, count));
         }
         return [.. result.OrderByDescending(a => a.Album.Released).ThenBy(a => a.Title)];
     }

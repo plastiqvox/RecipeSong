@@ -30,4 +30,27 @@
             </ControlTemplate></Setter.Value>
         </Setter>
     </Style>
+    <Style x:Key="WorkspaceSubTabs" TargetType="TabControl" BasedOn="{StaticResource WorkspaceTabs}">
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabControl">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Background="{StaticResource Bg}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="12,0">
+                    <ItemsPresenter KeyboardNavigation.TabIndex="0"/>
+                </Border>
+                <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" KeyboardNavigation.TabIndex="1"/>
+            </DockPanel>
+        </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="WorkspaceSubTab" TargetType="TabItem" BasedOn="{StaticResource WorkspaceTab}">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabItem">
+            <Border x:Name="border" Padding="14,8" Background="Transparent" BorderBrush="Transparent" BorderThickness="0,0,0,2">
+                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsSelected" Value="True"><Setter TargetName="border" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter Property="Foreground" Value="{StaticResource Text}"/></Trigger>
+                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="border" Property="Background" Value="{StaticResource Surface2}"/></Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="border" Property="Background" Value="{StaticResource Surface2}"/><Setter TargetName="border" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+    </Style>
 </ResourceDictionary>

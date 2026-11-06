@@ -1,48 +1,86 @@
-<Window x:Class="RecipeSong.Wpf.PipelineWindow" Icon="/Assets/logo.png"
+<Window x:Class="RecipeSong.Wpf.PipelineWindow" Icon="/RecipeSong.Wpf;component/Assets/logo.png"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:RecipeSong.Wpf"
         Title="{local:Tr '작업 현황'}" Width="900" Height="1000" MinWidth="480" MinHeight="560"
         ShowActivated="False" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
         FontFamily="{StaticResource Sans}">
-    <!-- 작업 현황 옵션(설정 → 고급)을 켜면 계산이 시작될 때 뜬다. 칸 배치는 docs/images/recommendation.mjs 흐름도와 같다 (그림은 코드에서 그린다) -->
+    <Window.Resources>
+        <Style x:Key="NodeButton" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="10">
+                            <ContentPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <!-- 작업 현황 옵션(설정 → 고급)을 켜면 계산이 시작될 때 뜬다. 문서 흐름도와 같은 데이터 흐름을 칸·선으로 그린다. -->
     <Grid Margin="20,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="3*"/>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*" MinHeight="90"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <StackPanel Margin="0,0,0,10">
-            <DockPanel>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <!-- 범례: 칸 모양과 같게 (PipelineWindow.Paint). 진행 중 색은 아래 계산 목록의 점 색 -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Bottom">
-                    <Border Width="16" Height="11" CornerRadius="3" BorderThickness="2" BorderBrush="{StaticResource Ok}" Background="#15261C" Margin="0,0,5,0"/>
-                    <TextBlock Text="{local:Tr '완료'}" FontSize="11" Foreground="{StaticResource Ok}" Margin="0,0,12,0"/>
-                    <Border Width="16" Height="11" CornerRadius="3" BorderThickness="2" BorderBrush="#5FA8A3" Background="#132322" Margin="0,0,5,0"/>
-                    <TextBlock Text="{local:Tr '재사용'}" FontSize="11" Foreground="#9CCFCB" Margin="0,0,12,0"
-                               ToolTip="{local:Tr '앞 계산이 만든 후보 목록을 그대로 써서 이번엔 하지 않은 칸 (12시간 동안 다시 씀)'}"/>
-                    <Rectangle Width="16" Height="11" RadiusX="3" RadiusY="3" StrokeThickness="1.5" StrokeDashArray="2,1.5" Stroke="{StaticResource Line3}" Margin="0,0,5,0"/>
-                    <TextBlock Text="{local:Tr '대기'}" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,0,12,0"/>
-                    <Rectangle Width="16" Height="11" RadiusX="3" RadiusY="3" StrokeThickness="1.5" StrokeDashArray="2,1.5" Stroke="{StaticResource Line3}" Opacity="0.35" Margin="0,0,5,0"/>
-                    <TextBlock Text="{local:Tr '안 함'}" FontSize="11" Foreground="{StaticResource Muted}"
-                               ToolTip="{local:Tr '이 계산에는 없는 칸(팔로우 신보·AI 계산 등), 또는 저장된 결과를 보여 주거나 멈춰서 하지 않은 칸'}"/>
-                    <!-- 단계가 아닌 칸: 순서도 기호 아이콘 (PipelineWindow.DataIcon · RuleIcon 과 같은 경로) -->
-                    <Border Width="1" Height="12" Background="{StaticResource Line3}" Margin="12,0,12,0" VerticalAlignment="Center"/>
-                    <Path Data="M1,3 A6,2.2 0 0 1 13,3 L13,13 A6,2.2 0 0 1 1,13 Z M1,3 A6,2.2 0 0 0 13,3" Width="11" Height="13" Stretch="Uniform" StrokeThickness="1.4" Stroke="{StaticResource Text2}" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="{local:Tr '데이터'}" FontSize="11" Foreground="{StaticResource Text2}" Margin="0,0,12,0"
-                               ToolTip="{local:Tr '추천 계산이 가져다 쓰는 저장된 것 (내 아카이브 · 내 곡 분석이 만든 소리 기준). 계산 단계가 아니라 색이 바뀌지 않아요'}"/>
-                    <Path Data="M8,1.5 L8,14 M5,14.5 L11,14.5 M2,4 L14,4 M2,4 L0.5,9 M2,4 L3.5,9 M0.5,9 Q2,11.5 3.5,9 M14,4 L12.5,9 M14,4 L15.5,9 M12.5,9 Q14,11.5 15.5,9" Width="14" Height="13" Stretch="Uniform" StrokeThickness="1.1" Stroke="{StaticResource Text2}" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="{local:Tr '규칙'}" FontSize="11" Foreground="{StaticResource Text2}"
-                               ToolTip="{local:Tr '계산 단계가 아니라 단계가 따르는 규칙 (장르 정하는 순서 · AI·웹진 거르기). 색이 바뀌지 않아요'}"/>
-                </StackPanel>
+                <WrapPanel Grid.Row="1" Margin="0,6,0,0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                        <Button x:Name="ZoomOutButton" Content="−" Style="{StaticResource Bare}" Padding="9,2" Click="ZoomOut_Click"
+                                ToolTip="{local:Tr '축소'}" AutomationProperties.Name="{local:Tr '축소'}"/>
+                        <Button x:Name="ZoomResetButton" Content="100%" Style="{StaticResource Bare}" Padding="8,2" Margin="4,0" Click="ZoomReset_Click"
+                                ToolTip="{local:Tr '원래 크기'}" AutomationProperties.Name="{local:Tr '원래 크기'}"/>
+                        <Button x:Name="ZoomInButton" Content="+" Style="{StaticResource Bare}" Padding="9,2" Click="ZoomIn_Click"
+                                ToolTip="{local:Tr '확대'}" AutomationProperties.Name="{local:Tr '확대'}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="FollowStep" Content="{local:Tr '진행 단계 따라가기'}" IsChecked="True" Click="FollowStep_Click"
+                              Margin="0,0,16,6" VerticalAlignment="Center"/>
+                    <ToggleButton x:Name="OverviewToggle" Content="{local:Tr '전체 개요'}" Style="{StaticResource Bare}" Padding="8,2" MinWidth="112"
+                                  Click="Overview_Click" Margin="0,0,16,6" AutomationProperties.Name="{local:Tr '전체 개요'}"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
+                        <Border Width="16" Height="11" CornerRadius="3" BorderThickness="2" BorderBrush="{StaticResource Ok}" Background="#15261C" Margin="0,0,5,0"/>
+                        <TextBlock Text="{local:Tr '완료'}" FontSize="11" Foreground="{StaticResource Ok}" Margin="0,0,12,0"/>
+                        <Border Width="16" Height="11" CornerRadius="3" BorderThickness="2" BorderBrush="#5FA8A3" Background="#132322" Margin="0,0,5,0"/>
+                        <TextBlock Text="{local:Tr '재사용'}" FontSize="11" Foreground="#9CCFCB" Margin="0,0,12,0"
+                                   ToolTip="{local:Tr '후보 목록(12시간)이나 저장된 추천 결과를 다시 쓴 칸. 새 계산을 하지 않아요'}"/>
+                        <Rectangle Width="16" Height="11" RadiusX="3" RadiusY="3" StrokeThickness="1.5" StrokeDashArray="2,1.5" Stroke="{StaticResource Line3}" Margin="0,0,5,0"/>
+                        <TextBlock Text="{local:Tr '대기'}" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,0,12,0"/>
+                        <Rectangle Width="16" Height="11" RadiusX="3" RadiusY="3" StrokeThickness="1.5" StrokeDashArray="2,1.5" Stroke="{StaticResource Line3}" Opacity="0.35" Margin="0,0,5,0"/>
+                        <TextBlock Text="{local:Tr '안 함'}" FontSize="11" Foreground="{StaticResource Muted}"
+                                   ToolTip="{local:Tr '이 계산에는 없는 칸(팔로우 신보·AI 계산 등), 또는 저장된 결과를 보여 주거나 멈춰서 하지 않은 칸'}"/>
+                        <!-- 데이터는 원통, 규칙은 접힌 메모. 본문에서도 같은 외곽선 안에 이름을 표시한다. -->
+                        <Border Width="1" Height="12" Background="{StaticResource Line3}" Margin="12,0,12,0" VerticalAlignment="Center"/>
+                        <Path Data="M1,3 A6,2.2 0 0 1 13,3 L13,13 A6,2.2 0 0 1 1,13 Z M1,3 A6,2.2 0 0 0 13,3" Width="20" Height="14" Stretch="Fill" StrokeThickness="1.2" Stroke="{StaticResource Text2}" Fill="{StaticResource Surface2}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{local:Tr '데이터'}" FontSize="11" Foreground="{StaticResource Text2}" Margin="0,0,12,0"
+                                   ToolTip="{local:Tr '추천에 쓰는 데이터 (라이브러리·ZIP 보유·뮤지션 ID·기간별 저장 결과·소리 기준). 읽기·분석·재사용 상태도 함께 표시해요'}"/>
+                        <Path Data="M1,1 L10,1 L14,5 L14,13 L1,13 Z M10,1 L10,5 L14,5" Width="16" Height="14" Stretch="Fill" StrokeThickness="1.2" Stroke="{StaticResource Text2}" Fill="{StaticResource Surface2}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{local:Tr '규칙'}" FontSize="11" Foreground="{StaticResource Text2}"
+                                   ToolTip="{local:Tr '계산 단계가 아니라 단계가 따르는 규칙 (장르 정하는 순서 · 공통 취향 기준). 색이 바뀌지 않아요'}"/>
+                    </StackPanel>
+                </WrapPanel>
                 <StackPanel>
                     <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap"/>
-                    <TextBlock Text="{Binding Status}" Style="{StaticResource MutedText}" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="StatusSummary" Text="{Binding Status}" AutomationProperties.LiveSetting="Polite"
+                               Style="{StaticResource MutedText}" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
-            </DockPanel>
+            </Grid>
             <!-- 지금 도는 계산: 색 점 = 흐름도에서 그 계산의 색 (주 계산은 칸 테두리, 다른 계산은 점선 고리·알약) -->
-            <ItemsControl ItemsSource="{Binding Runs}" Margin="0,8,0,0" Focusable="False">
+            <ScrollViewer x:Name="RunsViewport" MaxHeight="144" Margin="0,8,0,0"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          AutomationProperties.Name="{local:Tr '진행·대기 작업 목록'}">
+            <ItemsControl ItemsSource="{Binding Runs}" Focusable="False">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <DockPanel x:Name="row" Margin="0,2">
@@ -67,14 +105,106 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            </ScrollViewer>
+            <Border x:Name="RecoveryPanel" Visibility="Collapsed" Background="{StaticResource Surface2}" Padding="10,6" Margin="0,8,0,0" CornerRadius="6">
+                <StackPanel>
+                    <TextBlock x:Name="RecoveryMessage" TextWrapping="Wrap" Foreground="{StaticResource Text2}" FontSize="12"/>
+                    <WrapPanel Margin="0,6,0,0">
+                        <Button x:Name="RetryArchiveButton" Content="{local:Tr '다시 읽기'}" Style="{StaticResource Bare}" Padding="10,4"
+                                Click="RetryArchive_Click" Margin="0,0,8,0"/>
+                        <Button x:Name="ArchiveSettingsButton" Content="{local:Tr '설정 열기'}" Style="{StaticResource Bare}" Padding="10,4"
+                                Click="ArchiveSettings_Click"/>
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
         </StackPanel>
 
-        <Viewbox Grid.Row="1" Stretch="Uniform" VerticalAlignment="Top">
-            <Canvas x:Name="Chart"/>
-        </Viewbox>
+        <ScrollViewer x:Name="ChartViewport" Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                      CanContentScroll="False" Background="{StaticResource Bg}" AutomationProperties.Name="{local:Tr '추천 흐름도'}">
+            <ScrollViewer.Resources>
+                <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#0F1012"/>
+            </ScrollViewer.Resources>
+            <Canvas x:Name="Chart">
+                <Canvas.LayoutTransform>
+                    <ScaleTransform x:Name="ChartScale" ScaleX="1" ScaleY="1"/>
+                </Canvas.LayoutTransform>
+            </Canvas>
+        </ScrollViewer>
+        <ListBox x:Name="OverviewList" Grid.Row="1" Visibility="Collapsed" Background="{StaticResource Surface}" Foreground="{StaticResource Text}"
+                 BorderThickness="0" SelectionChanged="Overview_SelectionChanged" KeyDown="Overview_KeyDown" HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="{local:Tr '전체 개요'}">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding Label}"/>
+                    <Setter Property="AutomationProperties.ItemStatus" Value="{Binding StateLabel}"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                                    <ContentPresenter/>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{StaticResource AccentDeep}"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <DockPanel Margin="6,4">
+                        <TextBlock Text="{Binding StateLabel}" DockPanel.Dock="Right" FontSize="12" Margin="12,0,0,0" Foreground="{StaticResource Muted}"/>
+                        <TextBlock Text="{Binding Label}" FontSize="13" TextWrapping="Wrap"/>
+                    </DockPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
 
-        <TextBlock Grid.Row="2" Text="{local:Tr '진행 기록'}" Style="{StaticResource Kicker}" Margin="0,12,0,6"/>
-        <Border Grid.Row="3" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="6" Background="{StaticResource Surface}">
+        <Border x:Name="NodeDetailPanel" Grid.Row="2" Visibility="Collapsed" Padding="10,6" Margin="0,8,0,0"
+                Background="{StaticResource Surface2}" CornerRadius="6">
+            <StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="×" Style="{StaticResource Bare}" Padding="7,0" Click="CloseNodeDetail_Click"
+                            AutomationProperties.Name="{local:Tr '상세 정보 닫기'}" ToolTip="{local:Tr '상세 정보 닫기'}"/>
+                    <TextBlock x:Name="NodeDetailTitle" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"/>
+                </DockPanel>
+                <TextBox x:Name="NodeDetailText" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="110" VerticalScrollBarVisibility="Auto"
+                         Background="Transparent" Foreground="{StaticResource Text2}" BorderThickness="0" FontSize="12"
+                         AutomationProperties.Name="{local:Tr '노드 상세 정보'}"/>
+            </StackPanel>
+        </Border>
+
+        <ToggleButton x:Name="LogToggle" Grid.Row="3" Style="{StaticResource Bare}" HorizontalAlignment="Left" Padding="8,4" Margin="0,8,0,4"
+                      AutomationProperties.Name="{local:Tr '진행 기록 펼치기/접기'}" ToolTip="{local:Tr '진행 기록 펼치기/접기'}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Margin="0,0,6,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="▸"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsChecked, ElementName=LogToggle}" Value="True">
+                                    <Setter Property="Text" Value="▾"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="{local:Tr '진행 기록'}"/>
+            </StackPanel>
+        </ToggleButton>
+        <Border Grid.Row="4" Height="200" BorderBrush="{StaticResource Line2}" BorderThickness="1" CornerRadius="6" Background="{StaticResource Surface}"
+                Visibility="{Binding IsChecked, ElementName=LogToggle, Converter={StaticResource BoolVis}}">
             <ListBox ItemsSource="{Binding Log}" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text2}"
                      FontFamily="{StaticResource Mono}" FontSize="11" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      AutomationProperties.Name="{local:Tr '진행 기록'}">

@@ -11,21 +11,22 @@ namespace RecipeSong.Wpf.ViewModels;
 /// Reused: 앞 계산이 만든 결과(후보 목록)를 그대로 써서 이번엔 하지 않은 칸.
 /// Skipped: 이번 계산에는 없는 칸이거나 저장된 결과·멈춤으로 하지 않은 칸 ('안 함').
 /// Fixed: 단계가 아닌 칸(라이브러리·거르기 — 늘 같은 모양)
+/// Failed·Cancelled: ZIP 읽기의 실패·취소. 건너뛴 단계와 구분해 상단 요약에도 남긴다.
 /// </summary>
-public enum StageState { Todo, Current, Done, Reused, Skipped, Fixed }
+public enum StageState { Todo, Current, Done, Reused, Skipped, Fixed, Failed, Cancelled }
 
 /// <summary>
 /// 계산 종류 — 순서도 창에서 색으로 구분한다 (동시에 여럿 돌 수 있다).
 /// Load·Refresh·Precise·Ai 는 순서도를 처음부터 지나는 계산, 나머지는 칸 하나(또는 몇 개)에 닿는 옆 작업.
 /// </summary>
-public enum RunKind { Load, Refresh, Precise, Ai, Analysis, Follow, Mine, Taste, Tracks, Genres, Similar }
+public enum RunKind { Load, Refresh, Precise, Ai, Analysis, Follow, Mine, Taste, Tracks, Genres, Similar, Archive }
 
-/// <summary>칸 종류 (순서도 기호): Step 처리 단계(상자) · Data 저장된 데이터(원통 아이콘) · Rule 단계가 따르는 규칙(저울 아이콘)</summary>
+/// <summary>칸 종류 (순서도 기호): Step 처리 단계(사각형) · Data 저장된 데이터(원통형) · Rule 단계가 따르는 규칙(접힌 메모형)</summary>
 public enum NodeKind { Step, Data, Rule }
 
 /// <summary>
 /// 순서도 창의 칸 하나. 배치(Col 0 왼쪽 · 1 가운데 · 2 오른쪽, Row)는 docs/images/recommendation.mjs 흐름도와 같다.
-/// Stage 가 없으면 고정 칸, Follows 가 있으면 그 단계 칸의 상태를 따라간다. Kind 가 Step 이 아니면 상자 대신 아이콘 + 이름으로 그린다.
+    /// Stage 가 없으면 고정 칸, Follows 가 있으면 그 단계 칸의 상태를 따라간다. Kind 에 따라 처리·데이터·규칙 도형으로 그린다.
 /// State·Detail·Time 은 '주 계산'(가장 나중에 시작한 추천 계산) 기준. 다른 계산이 있는 자리는 창이 RunInfo 로 따로 그린다.
 /// </summary>
 public sealed partial class StageItem(string key, int col, int row, string label, string sub, RecStage? stage = null, RecStage? follows = null,
@@ -40,7 +41,13 @@ public sealed partial class StageItem(string key, int col, int row, string label
     public RecStage? Stage { get; } = stage;
     public RecStage? Follows { get; } = follows;
     // 내 곡 소리 기준(Analyze)은 추천과 따로 도는 분석이라 평소엔 고정 칸 (분석 중·끝만 따로 표시)
-    [ObservableProperty] private StageState _state = (stage is null or RecStage.Analyze) && follows == null ? StageState.Fixed : StageState.Todo;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(StateLabel))] private StageState _state = (stage is null or RecStage.Analyze) && follows == null ? StageState.Fixed : StageState.Todo;
+    public string StateLabel => State switch
+    {
+        StageState.Current => L.T("진행 중"), StageState.Done => L.T("완료"), StageState.Reused => L.T("재사용"),
+        StageState.Skipped => L.T("안 함"), StageState.Failed => L.T("실패"), StageState.Cancelled => L.T("취소됨"),
+        StageState.Fixed => Kind == NodeKind.Rule ? L.T("규칙") : L.T("데이터"), _ => L.T("대기"),
+    };
     /// <summary>이 단계에서 마지막으로 온 진행 문구</summary>
     [ObservableProperty] private string _detail = "";
     /// <summary>걸린 시간 (끝나면 고정, 진행 중이면 매초 갱신)</summary>
@@ -70,10 +77,11 @@ public sealed partial class RunInfo(int id, string title, RunKind kind) : Observ
         RunKind.Ai => L.T("AI·웹진"),
         RunKind.Analysis => L.T("내 곡 분석"),
         RunKind.Follow => L.T("팔로우 신보"),
-        RunKind.Mine => L.T("아카이브 뮤지션 모으기"),
+        RunKind.Mine => L.T("라이브러리 뮤지션 모으기"),
         RunKind.Taste => L.T("좋아요·별로 소리"),
         RunKind.Tracks => L.T("수록곡 비슷한 내 곡"),
         RunKind.Genres => L.T("장르 미리 받기"),
+        RunKind.Archive => L.T("ZIP 보유 읽기"),
         _ => L.T("닮은 앨범 확인"),
     };
     [ObservableProperty] private RecStage? _current;
@@ -107,6 +115,7 @@ public sealed partial class RunInfo(int id, string title, RunKind kind) : Observ
         [RunKind.Tracks] = (B("#E6B98A"), B("#F0D2B2"), B("#33281C")),
         [RunKind.Genres] = (B("#A4B8C6"), B("#C8D5DE"), B("#1E252B")),
         [RunKind.Similar] = (B("#E57373"), B("#F0A5A5"), B("#361A1A")),
+        [RunKind.Archive] = (B("#69CBB5"), B("#A6E5D6"), B("#17332D")),
     };
 
     private static Brush B(string hex)
@@ -130,22 +139,25 @@ public sealed partial class PipelineMonitor : ObservableObject
     // 후보 목록(시드 → 비슷한 아티스트 → 디스코그래피, 아카이브·팔로우 뮤지션)은 12시간 재사용, 그 기간 고르기부터는 기간마다
     public IReadOnlyList<StageItem> Stages { get; } =
     [
-        new("lib", 1, 0, L.T("내 아카이브 전체"), L.T("플레이리스트와 상관없이"), kind: NodeKind.Data),
+        new("lib", 1, 0, L.T("내 라이브러리 전체"), L.T("iTunes·플리 · ZIP 보유와 분리"), kind: NodeKind.Data),
         new("base", 0, 1, L.T("내 곡 소리 기준"), L.T("새 곡 디코딩 · CLAP · 평균"), RecStage.Analyze, kind: NodeKind.Data),
         new("seed", 1, 1, L.T("시드 아티스트"), L.T("많이 듣고 좋아한 80명 + 하트·팔로우"), RecStage.Seeds),
-        new("mine", 2, 1, L.T("내 아카이브 뮤지션"), L.T("상위 500명 · 신보 항상 앞"), RecStage.Mine),
+        new("mine", 2, 1, L.T("내 라이브러리 뮤지션"), L.T("상위 500명 · 신보 항상 앞"), RecStage.Mine),
         new("follow", 3, 1, L.T("팔로우 뮤지션"), L.T("☆ 누른 아티스트 · 신보 항상 앞"), RecStage.Follow),
         new("related", 1, 2, L.T("비슷한 아티스트 2단계"), L.T("Deezer 연관 + Last.fm 비슷한"), RecStage.Related),
+        new("identity", 0, 2, L.T("뮤지션 ID · SQLite"), L.T("수동 우선 · 라이브러리·ZIP 대조"), kind: NodeKind.Data),
         new("disco", 1, 3, L.T("디스코그래피"), L.T("후보 아티스트의 앨범 목록 · 3일 캐시"), RecStage.Discography),
         new("releases", 1, 4, L.T("그 기간 고르기"), L.T("가진·차단 빼고 · 연결 점수 상위만 듣기"), RecStage.Releases),
+        new("archive", 0, 4, L.T("앨범 ZIP 보유 목록"), L.T("보유 제외·ID 대조만 · 취향 중립"), kind: NodeKind.Data),
+        new("saved", 2, 4, L.T("기간별 추천 저장"), L.T("경계 주 포함 · 빈 결과도 재사용"), kind: NodeKind.Data),
         new("aisearch", 3, 4, L.T("AI 웹 검색 · 웹진 글"), L.T("커넥터별 웹 검색 · 웹진 RSS"), RecStage.AiSearch),
-        new("listen", 1, 5, L.T("미리듣기 소리 분석"), L.T("CLAP · 내 곡과 비교"), RecStage.Listen),
+        new("listen", 1, 5, L.T("미리듣기 소리 분석"), L.T("평균 · 상위곡 · 적합 비율"), RecStage.Listen),
         new("aicheck", 3, 5, L.T("Deezer에서 확인"), L.T("실제로 있는 앨범만"), RecStage.AiCheck),
-        new("score", 1, 6, L.T("점수"), L.T("닮음 + 연결 + 좋아요 − 별로"), RecStage.Score),
+        new("score", 1, 6, L.T("점수"), L.T("소리 · 연결 · 태그 · 제작진"), RecStage.Score),
         new("ladder", 0, 7, L.T("장르 정하는 순서"), L.T("Last.fm → Deezer → 소리가 닮은 앨범"), kind: NodeKind.Rule),
         new("crate", 1, 7, L.T("장르 칸"), L.T("국적과 상관없이 6칸"), RecStage.Genre),
         new("screen", 1, 8, L.T("화면"), L.T("저장하고 칸마다 묶어 보여 줌"), RecStage.Done),
-        new("gate", 2, 8, L.T("AI·웹진 거르기"), L.T("일반 추천 하위 25% 선 미만 숨김"), kind: NodeKind.Rule),
+        new("gate", 2, 8, L.T("공통 취향 기준"), L.T("모든 출처 · 근거 부족은 확인 필요"), kind: NodeKind.Rule),
     ];
 
     public IReadOnlyList<StageEdge> Edges { get; } =
@@ -153,6 +165,11 @@ public sealed partial class PipelineMonitor : ObservableObject
         new("lib", "base", L.T("전 곡 소리")),
         new("lib", "mine", L.T("2곡 이상 · 하트")),
         new("lib", "seed", L.T("많이 듣고 좋아한")),
+        new("lib", "identity"),
+        new("archive", "identity"),
+        new("identity", "related"),
+        new("archive", "releases"),
+        new("saved", "screen", L.T("저장 결과 재사용")),
         new("seed", "related", L.T("연관 아티스트")),
         new("related", "disco", L.T("후보 아티스트")),
         new("mine", "disco", L.T("항상 포함")),
@@ -203,6 +220,8 @@ public sealed partial class PipelineMonitor : ObservableObject
     /// <summary>추천 계산 칸 (분석 칸은 따로)</summary>
     private IEnumerable<StageItem> Steps => Stages.Where(s => s.Stage is { } st && st != RecStage.Analyze);
     private StageItem Base => Stages.First(s => s.Stage == RecStage.Analyze);
+    private StageItem Archive => Stages.First(s => s.Key == "archive");
+    private StageItem DataFor(RunInfo run) => run.Kind == RunKind.Archive ? Archive : Base;
     private RunInfo? Find(int id) => Runs.FirstOrDefault(r => r.Id == id);
 
     /// <summary>
@@ -215,19 +234,25 @@ public sealed partial class PipelineMonitor : ObservableObject
         foreach (var old in Runs.Where(r => r.Ended).ToList()) Runs.Remove(old);
         var run = new RunInfo(++_nextId, title, kind);
         Runs.Add(run);
-        if (kind == RunKind.Analysis)
+        if (kind is RunKind.Analysis or RunKind.Archive)
         {
-            var b = Base;
+            var b = DataFor(run);
             b.State = StageState.Current;
             b.Detail = "";
             b.Watch.Restart();
-            if (Primary == null) Title = title;
+            b.LastNews = DateTime.Now;
+            run.StageLabel = b.Label;
+            run.StageWatch.Restart();
+            if (Primary == null) { Title = title; _note = null; }
         }
         else if (primary)
         {
             Primary = run;
             Title = title;
             _note = null;
+            var saved = Stages.First(s => s.Key == "saved");
+            saved.State = StageState.Fixed;
+            saved.Detail = "";
             foreach (var s in Steps) Reset(s);
             Mirror();
         }
@@ -297,9 +322,10 @@ public sealed partial class PipelineMonitor : ObservableObject
     /// <summary>
     /// 계산이 끝까지 가지 않고 끝났다: 저장된 추천을 그대로 보여 줬거나 멈췄다. 주 계산이면 끝나지 않은 칸을 '안 거침'으로
     /// </summary>
-    public void Finish(int id, string note)
+    public void Finish(int id, string note, bool canceled = false)
     {
         if (Find(id) is not { Ended: false } run) return;
+        if (run.Kind == RunKind.Archive) { EndArchive(run, note, canceled ? StageState.Cancelled : StageState.Failed); return; }
         if (run.Kind == RunKind.Analysis) { EndAnalysis(run); Refresh(); return; }
         if (run == Primary)
         {
@@ -336,6 +362,31 @@ public sealed partial class PipelineMonitor : ObservableObject
         End(run, L.T("[분석] 끝"));
     }
 
+    public void CompleteArchive(int id, string note)
+    {
+        if (Find(id) is { Ended: false, Kind: RunKind.Archive } run) EndArchive(run, note, StageState.Done);
+    }
+
+    private void EndArchive(RunInfo run, string note, StageState state)
+    {
+        Archive.Watch.Stop();
+        Archive.State = state;
+        Archive.Detail = note;
+        if (Primary == null) _note = note;
+        End(run, note);
+        Refresh();
+    }
+
+    public void SetSavedResult(int id, string note, bool reused)
+    {
+        if (Primary?.Id != id) return;
+        var saved = Stages.First(s => s.Key == "saved");
+        saved.Detail = note;
+        saved.State = reused ? StageState.Reused : StageState.Done;
+        if (reused) Stages.First(s => s.Stage == RecStage.Done).State = StageState.Done;
+        Changed?.Invoke();
+    }
+
     /// <summary>따라가는 칸(장르 정하는 순서)을 그 단계 칸과 같은 상태로</summary>
     private void Mirror()
     {
@@ -351,7 +402,7 @@ public sealed partial class PipelineMonitor : ObservableObject
     {
         if (Find(id) is not { Ended: false } run) return;
         run.Detail = message;
-        if (run.Kind == RunKind.Analysis) { Base.Detail = message; Base.LastNews = DateTime.Now; }
+        if (run.Kind is RunKind.Analysis or RunKind.Archive) { var data = DataFor(run); data.Detail = message; data.LastNews = DateTime.Now; }
         else if (run == Primary)
         {
             var cur = Steps.FirstOrDefault(s => s.State == StageState.Current);
@@ -392,7 +443,7 @@ public sealed partial class PipelineMonitor : ObservableObject
         foreach (var r in Runs) r.StageTime = Clock(r.StageWatch.Elapsed);
         foreach (var r in Runs) r.Time = r.Ended ? Clock(r.Total.Elapsed) : $"{Clock(r.StageWatch.Elapsed)} / {Clock(r.Total.Elapsed)}";
         int running = Runs.Count(r => !r.Ended);
-        if (Primary == null && Runs.Count == 0)
+        if (Primary == null && Runs.Count == 0 && _note == null)
         {
             // 아직 추천 계산 없음 (앱을 켤 때 잠깐 돈 옆 작업이 끝난 뒤에도 '진행 중'이 남지 않게)
             Status = L.T("아직 계산 없음 · 계산이 시작되면 여기에 보여요");
@@ -400,8 +451,10 @@ public sealed partial class PipelineMonitor : ObservableObject
             return;
         }
         Status = _note != null && running == 0 ? _note
-            : running > 1 ? L.F("{0}개 계산이 함께 진행 중 · 미리듣기·분석은 소리 서비스가 하나씩 처리해요", running)
+            : running > 1 ? L.F("{0}개 작업 진행·대기 중 · 소리 분석은 하나씩 처리해요", running)
             : running == 1 ? L.T("진행 중") : L.T("끝");
+        if (Primary != null && Archive.State == StageState.Failed) Status = L.F("{0} · ZIP 읽기 실패", Status);
+        else if (Primary != null && Archive.State == StageState.Cancelled) Status = L.F("{0} · ZIP 읽기 취소", Status);
         Changed?.Invoke();
     }
 }
@@ -444,9 +497,19 @@ public sealed class StageProgress(string title, Action<string> report, RunKind k
     });
 
     /// <summary>끝까지 계산하지 않고 끝났다 (저장된 결과·멈춤)</summary>
-    public void Finish(string note) => Post(() =>
+    public void Finish(string note, bool canceled = false) => Post(() =>
     {
-        if (_run != 0) PipelineMonitor.Instance.Finish(_run, note);
+        if (_run != 0) PipelineMonitor.Instance.Finish(_run, note, canceled);
+    });
+
+    public void CompleteArchive(string note) => Post(() =>
+    {
+        if (_run != 0) PipelineMonitor.Instance.CompleteArchive(_run, note);
+    });
+
+    public void SavedResult(string note, bool reused) => Post(() =>
+    {
+        if (_run != 0) PipelineMonitor.Instance.SetSavedResult(_run, note, reused);
     });
 
     public void Report(string value) => Post(() =>

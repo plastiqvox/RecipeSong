@@ -6,12 +6,19 @@ public sealed class AppSettings
 {
     public string? ITunesLibraryPath { get; set; }
     public List<string> PlaylistFolders { get; set; } = [];
+    /// <summary>앨범 ZIP 보관 경로. 보유 판정에만 사용하며 취향 모델에는 넣지 않는다.</summary>
+    public List<string> ArchiveFolders { get; set; } = [];
     /// <summary>iTunes Search API 국가 코드 (앨범 아트 · 미리듣기 지역)</summary>
     public string Country { get; set; } = "KR";
     /// <summary>소리 분석 서비스(ml/service.py) 폴더. 비우면 실행 파일 위쪽 폴더에서 찾는다.</summary>
     public string? MlDirectory { get; set; }
     /// <summary>캐시·기록 폴더. 비우면 %LOCALAPPDATA%\RecipeSong</summary>
     public string? CacheDirectory { get; set; }
+    /// <summary>재다운로드 가능한 패키지·모델 캐시. 추천 기록·취향 모델과 분리한다.</summary>
+    public string? DownloadCacheDirectory { get; set; }
+    /// <summary>다음 실행 때 전용 다운로드 캐시를 옮길 경로.</summary>
+    public string? PendingDownloadCacheDirectory { get; set; }
+    public bool ClearDownloadCacheOnNextStart { get; set; }
     /// <summary>uv.exe 경로. 비우면 %USERPROFILE%\.local\bin 과 PATH에서 찾는다.</summary>
     public string? UvPath { get; set; }
     /// <summary>화면 언어 (ko / en). 비우면 Windows 표시 언어를 따른다.</summary>

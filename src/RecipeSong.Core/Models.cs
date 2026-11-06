@@ -2,7 +2,7 @@ namespace RecipeSong.Core;
 
 public enum LibrarySource { ITunes, Winamp }
 
-public enum PeriodKind { Year, Month, Week }
+public enum PeriodKind { Year, Month, Week, Range }
 
 /// <summary>한 곡의 청취 기록. 소스마다 채워지는 필드가 다르다.</summary>
 public sealed record TrackRecord
@@ -75,6 +75,7 @@ public readonly record struct Period(PeriodKind Kind, DateTime Start, DateTime E
     {
         PeriodKind.Year => L.F("{0}년", Start.Year),
         PeriodKind.Month => L.F("{0}년 {1}월", Start.Year, Start.Month, Start),
+        PeriodKind.Range => L.F("{0:yyyy.M.d} – {1:yyyy.M.d} · {2}주", Start, End.AddDays(-1), (End - Start).Days / 7),
         _ => L.F("{0}년 {1}주차 ({2:M.d} – {3:M.d})",
             System.Globalization.ISOWeek.GetYear(Start), System.Globalization.ISOWeek.GetWeekOfYear(Start), Start, Start.AddDays(6)),
     };
@@ -119,7 +120,17 @@ public sealed record ReleaseRecommendation(
     string? FromPlaylist = null, string? AiReason = null, IReadOnlyList<string>? AiBy = null,
     string? FavNear = null, string? LikedLabel = null, string? WithLiked = null, int Fans = 0,
     string? SourceUrl = null, long ArtistId = 0, IReadOnlyList<TrackPair>? Pairs = null, IReadOnlyList<string>? Genres = null,
-    bool ViaLastFm = false);
+    bool ViaLastFm = false, string? MatchedTag = null, string? MatchedCrew = null,
+    double? FitRatio = null, int? AnalyzedTracks = null, RankingEvidence? Evidence = null);
+
+/// <summary>계산 당시 실제로 더한 점수. Kind는 저장용 식별자이며 화면에서만 번역한다.</summary>
+public sealed record ScoreContribution(string Kind, double Value);
+public sealed record ScoredTrack(long Id, string? Title, double Taste, bool? MeetsThreshold = null, bool? MatchesDislike = null);
+public sealed record RankingEvidence(IReadOnlyList<ScoreContribution> Contributions, double? MeanTaste,
+    double? TopTaste, double? FitThreshold, bool HitsOnly, IReadOnlyList<ScoredTrack>? Tracks = null, int? TotalTracks = null)
+{
+    public double Total => Math.Round(Contributions.Sum(c => c.Value), 3);
+}
 
 /// <summary>이 앨범의 곡 ≈ 가장 닮은 내 곡 ("아티스트 – 곡명"), 소리 서비스가 미리듣기 곡마다 매긴다</summary>
 public sealed record TrackPair(string Track, string Near, double Sim);
@@ -138,7 +149,11 @@ public sealed record AiPick(string Artist, string Album, string? ReleaseDate, st
 public sealed record RecommendationResult(
     Period Period,
     IReadOnlyList<ReleaseRecommendation> Releases,
-    bool SoundScored);
+    bool SoundScored)
+{
+    /// <summary>소리 분석을 완료했거나 후보가 없어 정상 종료한 결과만 재사용한다.</summary>
+    public bool CanCache { get; init; } = SoundScored;
+}
 
 /// <summary>
 /// 소리 분석 서비스가 돌려주는 앨범 한 장의 판정 + 레이블·장르.
@@ -147,7 +162,8 @@ public sealed record RecommendationResult(
 public sealed record AlbumSound(
     double? Taste, IReadOnlyList<string> Near, string? Label, string? Genre,
     double? Fav = null, string? FavNear = null, double? Dis = null, IReadOnlyList<string>? With = null,
-    IReadOnlyList<TrackPair>? Pairs = null)
+    IReadOnlyList<TrackPair>? Pairs = null, double? FitRatio = null, int? AnalyzedTracks = null,
+    double? MeanTaste = null, double? TopTaste = null, double? FitThreshold = null, IReadOnlyList<ScoredTrack>? ScoredTracks = null, int? TotalTracks = null)
 {
     /// <summary>Fav: 저장함 앨범과 닮은 정도, FavNear: 가장 닮은 저장 앨범 ("아티스트 – 앨범")</summary>
     public bool Heard => Taste != null;

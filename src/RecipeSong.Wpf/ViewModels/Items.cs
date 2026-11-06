@@ -101,11 +101,23 @@ public sealed partial class ReleaseItem : ObservableObject
     /// <summary>비슷한 내 곡 — 수록곡을 곡마다 분석했으면 그 결과(수록곡 목록과 같은 곡), 아니면 앨범 전체와 닮은 곡</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasNear))] private IReadOnlyList<NearTrackItem> _nearItems = [];
     public string Near => string.Join("  /  ", Rec.NearTracks.Take(2).Select(Shorten));
+    public string MetadataTip => string.Join("\n", new[]
+    {
+        Rec.MatchedTag is { } tag ? L.F("취향과 겹치는 스타일: {0}", tag) : null,
+        Rec.MatchedCrew is { } crew ? L.F("좋아하는 앨범과 같은 제작진: {0}", crew) : null,
+        Rec.FitRatio is { } ratio && Rec.AnalyzedTracks is { } count
+            ? L.F("분석한 {0}곡 중 취향 기준 이상 {1:P0} (분석 가능한 곡 기준)", count, ratio) : null
+    }.Where(s => s != null));
     // BecauseOf는 아티스트 이름 또는 "웹진"·"AI 제안" → 표시할 때만 번역. 웹진·AI 제안은 배지가 이미 말해 줘서 뺀다
     public string Because => SavedNote ?? (IsMine ? ""
         : Rec.BecauseOf.Where(b => b is not ("웹진" or "AI 제안")).ToList() is { Count: > 0 } bs ? L.F("{0}에서 출발", string.Join(", ", bs.Select(L.T))) : "");
 
     public IAsyncRelayCommand ToggleTracksCommand { get; }
+    [ObservableProperty] private int _detailTabIndex;
+    internal Task<bool>? TracksLoadTask;
+    public Action<ReleaseItem>? OpenEvidenceAction { get; init; }
+    [RelayCommand]
+    private void OpenEvidence() => OpenEvidenceAction?.Invoke(this);
     public IRelayCommand ToggleSaveCommand { get; }
 
     [ObservableProperty] private bool _isPlaying;
@@ -134,11 +146,14 @@ public sealed partial class ReleaseItem : ObservableObject
     /// <summary>곡 하트: VM이 채운다 (곡 ID → 하트 여부, 하트 토글)</summary>
     public Func<long, bool>? IsTrackLiked { get; init; }
     public Action<TrackItem>? ToggleTrackLikeAction { get; init; }
+    public Func<long, bool>? IsTrackDisliked { get; init; }
+    public Action<TrackItem>? ToggleTrackDislikeAction { get; init; }
+    [ObservableProperty] private string? _tasteReviewReason;
 
     /// <summary>별로: 추천에서 숨기고 학습에 반영 (저장함 탭 아래에서 되돌릴 수 있다)</summary>
     public Action<ReleaseItem>? ToggleDislikeAction { get; init; }
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DislikeTip))] private bool _isDisliked;
-    public string DislikeTip => IsDisliked ? L.T("관심 없음 취소 (다시 추천에 나와요)") : L.T("관심 없음 · 추천에서 숨기고 비슷한 소리·이 아티스트는 덜 추천");
+    public string DislikeTip => IsDisliked ? L.T("관심 없음 취소 (다시 추천에 나와요)") : L.T("관심 없음 · 이 앨범을 숨기고 비슷한 소리는 덜 추천");
 
     [RelayCommand]
     private void ToggleDislike() => ToggleDislikeAction?.Invoke(this);
@@ -172,8 +187,10 @@ public sealed partial class ReleaseItem : ObservableObject
             foreach (var t in tracks)
                 Tracks.Add(new TrackItem(this, t, Artist, maxRank, singleTop, _play)
                 {
-                    IsLiked = t.Id != 0 && IsTrackLiked?.Invoke(t.Id) == true,
+                    IsLiked = t.Id != 0 && IsTrackLiked?.Invoke(t.Id) == true && IsTrackDisliked?.Invoke(t.Id) != true,
+                    IsDisliked = t.Id != 0 && IsTrackDisliked?.Invoke(t.Id) == true,
                     ToggleLikeAction = ToggleTrackLikeAction,
+                    ToggleDislikeAction = ToggleTrackDislikeAction,
                 });
         }
         TracksLoadedAt = DateTime.Now;
@@ -254,12 +271,14 @@ public sealed partial class TrackItem : ObservableObject
     public TrackItem(ReleaseItem release, AlbumTrack t, string albumArtist, int albumMaxRank, bool singleTop,
         Func<ReleaseItem, TrackItem?, Task> play)
     {
-        // 인기도: 앨범 안에서 가장 인기 있는 곡 대비 (Deezer rank). 신보는 아직 낮고 비슷할 수 있다.
-        int level = albumMaxRank > 0 ? Math.Clamp((int)Math.Ceiling(5.0 * t.Rank / albumMaxRank), t.Rank > 0 ? 1 : 0, 5) : 0;
-        PopBars = [.. Enumerable.Range(0, 5).Select(i => i < level)];
+        // 앨범 최고점 대비 비율을 그대로 그린다. 칸 단위로 올림하면 비슷한 점수가 모두 꽉 차 보인다.
+        double popularity = albumMaxRank > 0 ? Math.Clamp((double)t.Rank / albumMaxRank, 0, 1) : 0;
+        PopWidth = 36 * popularity;
         HasPopularity = albumMaxRank > 0;
         IsTop = albumMaxRank > 0 && singleTop && t.Rank == albumMaxRank;
-        PopTip = t.Rank > 0 ? L.F("Deezer 인기 {0:N0}", t.Rank) + (IsTop ? " · " + L.T("앨범에서 가장 인기") : "") : L.T("인기 정보 없음");
+        PopTip = t.Rank > 0 ? L.F("Deezer 인기 점수 {0:N0}", t.Rank) + (IsTop ? " · " + L.T("앨범에서 가장 인기") : "") : L.T("인기 정보 없음");
+        if (HasPopularity) PopTip += "\n" + L.F("앨범 최고점 대비 {0:P1}", popularity);
+        if (t.Rank > 0) PopTip += "\n" + L.T("재생 횟수가 아닌 인기 지표예요.");
         Release = release;
         Number = t.Number;
         Title = t.Title;
@@ -285,7 +304,12 @@ public sealed partial class TrackItem : ObservableObject
 
     [RelayCommand]
     private void ToggleLike() => ToggleLikeAction?.Invoke(this);
-    public bool[] PopBars { get; }
+    public Action<TrackItem>? ToggleDislikeAction { get; init; }
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DislikeTip))] private bool _isDisliked;
+    public string DislikeTip => IsDisliked ? L.T("이 곡 별로 취소") : L.T("이 곡 별로 · 비슷한 소리를 덜 추천");
+    [RelayCommand]
+    private void ToggleDislike() => ToggleDislikeAction?.Invoke(this);
+    public double PopWidth { get; }
     public bool HasPopularity { get; }
     public bool IsTop { get; }
     public string PopTip { get; }

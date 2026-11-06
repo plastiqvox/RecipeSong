@@ -19,6 +19,7 @@ from tqdm import tqdm
 from transformers import ClapModel, ClapProcessor
 
 import library
+from model_cache import model_source
 
 # laion/larger_clap_music 은 허브 체크포인트가 고장나 있다 (어떤 입력이든 같은 출력) → 쓰지 말 것
 MODEL_ID = "laion/larger_clap_general"
@@ -123,10 +124,11 @@ def main() -> None:
         return
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = ClapModel.from_pretrained(args.model).to(device).eval()
+    source = model_source(args.model)
+    model = ClapModel.from_pretrained(source).to(device).eval()
     if device == "cuda":
         model = model.half()
-    processor = ClapProcessor.from_pretrained(args.model)
+    processor = ClapProcessor.from_pretrained(source)
 
     keys, embs, failed = [], [], 0
     t0 = time.time()

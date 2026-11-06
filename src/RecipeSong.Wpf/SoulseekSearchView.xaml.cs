@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -42,7 +43,8 @@ public partial class SoulseekSearchView : UserControl
             ExcludedPeerText.Visibility = Visibility.Visible;
         }
         AlbumText.Text = $"{album.Artist} — {album.Album}";
-        QueryBox.Text = $"{album.Artist} {album.Album}";
+        // 자동 검색어의 기호 표기 차이를 줄인다. 사용자가 입력한 제외 조건은 전송할 때 바꾸지 않는다.
+        QueryBox.Text = Regex.Replace(Regex.Replace($"{album.Artist} {album.Album}", @"[&'\u2018\u2019\u02BC\uFF07\p{Pd}]+", " "), @"\s+", " ").Trim();
         Groups.ItemsSource = _groups;
         Groups.Items.Filter = item => item is SoulseekFolder group && _albumTrackCount is > 0 && group.Files.Count == _albumTrackCount;
         _groups.CollectionChanged += (_, _) => RefreshFilterCount();
@@ -53,6 +55,11 @@ public partial class SoulseekSearchView : UserControl
         StatusText.Text = L.T("판본 하나를 골라 수록곡을 확인한 뒤 받으세요.");
     }
     public void Stop() { _disposed = true; _search?.Cancel(); }
+    public void SetReturnTarget(string label)
+    {
+        BackButton.ToolTip = label;
+        System.Windows.Automation.AutomationProperties.SetName(BackButton, label);
+    }
     private void Back_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke();
     private void Stop_Click(object sender, RoutedEventArgs e) => _search?.Cancel();
     private void Settings_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
@@ -68,6 +75,8 @@ public partial class SoulseekSearchView : UserControl
         using (view.DeferRefresh())
         {
             view.SortDescriptions.Clear();
+            // 나를 차단한 상대는 숨기지 않고 맨 아래로 (차단이 풀렸을 수도 있다)
+            view.SortDescriptions.Add(new SortDescription(nameof(SoulseekFolder.BannedMe), ListSortDirection.Ascending));
             view.SortDescriptions.Add(new SortDescription("Peer.QueueLength", ListSortDirection.Ascending));
             view.SortDescriptions.Add(new SortDescription(nameof(SoulseekFolder.ReportedSpeed), ListSortDirection.Descending));
             view.SortDescriptions.Add(new SortDescription("Peer.Username", ListSortDirection.Ascending));
@@ -121,7 +130,7 @@ public partial class SoulseekSearchView : UserControl
                 {
                     var key = (peer.Username, folder.Key);
                     if (!seen.Add(key)) continue;
-                    var group = new SoulseekFolder(peer, folder.Key, folder.DistinctBy(f => f.Filename).ToArray());
+                    var group = new SoulseekFolder(peer, folder.Key, folder.DistinctBy(f => f.Filename).ToArray()) { BannedMeAt = _downloads.BannedMeAt(peer.Username) };
                     group.FilterFormat(_format);
                     _groups.Add(group);
                 }
@@ -197,6 +206,10 @@ public sealed class SoulseekFolder : ObservableObject
     public string Summary => string.Join(" / ", Files.Select(p => p.File).Select(f =>
         (f.Format is "FLAC" or "WAV" or "AIFF" or "ALAC" ? f with { BitRate = null } : f).Quality).Distinct().Take(3))
         + " · " + L.F("{0}곡 · {1:0.0} MiB", Files.Count, Files.Sum(p => p.File.Size) / 1048576d);
+    /// <summary>이 상대가 나를 차단했다고 응답한 시각 (기록이 없으면 null)</summary>
+    public DateTime? BannedMeAt { get; init; }
+    public bool BannedMe => BannedMeAt != null;
+    public string BannedText => BannedMeAt is { } at ? L.F("{0:M.d}에 나를 차단한 상대 · 받기가 거절될 수 있어요", at) : "";
     public bool HasAvailableSlot => Peer.HasFreeUploadSlot;
     public string Availability => HasAvailableSlot ? L.T("다운로드 가능") : L.T("다운로드 대기");
     public string SlotText => HasAvailableSlot ? L.T("상대 빈 슬롯: 1개 이상") : L.T("상대 빈 슬롯: 없음");

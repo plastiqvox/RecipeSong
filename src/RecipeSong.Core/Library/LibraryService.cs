@@ -6,6 +6,28 @@ public sealed class LibraryService(AppSettings settings)
     private IReadOnlyList<TrackRecord>? _tracks;
     private IReadOnlyList<Playlist> _playlists = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
+    private IReadOnlyList<ArchiveAlbum>? _archives;
+    private readonly SemaphoreSlim _archiveLock = new(1, 1);
+    private readonly ZipAlbumLibrary _zipAlbums = new();
+    public IReadOnlyList<string> ArchiveWarnings => _zipAlbums.Warnings;
+    public int ArchiveCount => _archives?.Count ?? 0;
+
+    public async Task<IReadOnlyList<ArchiveAlbum>> GetArchiveAlbumsAsync(CancellationToken ct = default, bool refresh = false,
+        IProgress<ArchiveScanProgress>? progress = null)
+    {
+        progress?.Report(new(ArchiveScanStage.Waiting, "", 0, 0, 0, 0));
+        await _archiveLock.WaitAsync(ct);
+        try
+        {
+            if (_archives == null || refresh)
+            {
+                var folders = Settings.ArchiveFolders.ToArray();
+                _archives = await Task.Run(() => _zipAlbums.Scan(folders, ct, progress), ct);
+            }
+            return _archives;
+        }
+        finally { _archiveLock.Release(); }
+    }
 
     public AppSettings Settings { get; } = settings;
     public IReadOnlyList<string> Warnings { get; private set; } = [];

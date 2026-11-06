@@ -7,7 +7,7 @@
                 <Button DockPanel.Dock="Right" Style="{StaticResource UtilityIconButton}" Click="Settings_Click" ToolTip="{local:Tr 'Soulseek 설정'}" AutomationProperties.Name="{local:Tr 'Soulseek 설정'}">
                     <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource GearIcon}" StrokeThickness="0" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                 </Button>
-                <Button Style="{StaticResource UtilityIconButton}" Click="Back_Click" HorizontalAlignment="Left" ToolTip="{local:Tr '추천으로'}" AutomationProperties.Name="{local:Tr '추천으로'}">
+                <Button x:Name="BackButton" Style="{StaticResource UtilityIconButton}" Click="Back_Click" HorizontalAlignment="Left" ToolTip="{local:Tr '추천으로'}" AutomationProperties.Name="{local:Tr '추천으로'}">
                     <Path Style="{StaticResource UtilityIcon}" Data="{StaticResource BackIcon}"/>
                 </Button>
             </DockPanel>
@@ -43,6 +43,10 @@
                             <StackPanel>
                                 <TextBlock Text="{Binding Summary}" FontWeight="Medium" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding Peer.Username}" FontSize="12" Foreground="{StaticResource Text2}" Margin="0,5,0,0" TextWrapping="Wrap"/>
+                                <Border Background="{StaticResource AccentDeep}" CornerRadius="5" Padding="8,4" Margin="0,6,0,0" HorizontalAlignment="Left"
+                                        Visibility="{Binding BannedMe, Converter={StaticResource BoolVis}}">
+                                    <TextBlock Text="{Binding BannedText}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource AccentText}" TextWrapping="Wrap"/>
+                                </Border>
                                 <WrapPanel Margin="0,8,0,4" ToolTip="{local:Tr '검색 응답 당시 상대방의 업로드 슬롯·대기열 정보예요. 내 대기 순번은 아니며 다운로드 요청 시 달라질 수 있어요.'}">
                                     <Border Background="{StaticResource Surface3}" CornerRadius="5" Padding="8,4" Margin="0,0,10,4">
                                         <TextBlock Text="{Binding Availability}" FontSize="12" FontWeight="SemiBold">

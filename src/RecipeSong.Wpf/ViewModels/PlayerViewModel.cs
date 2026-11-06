@@ -61,11 +61,13 @@ public sealed partial class PlayerViewModel : ObservableObject
         };
         _player.MediaOpened += (_, _) =>
         {
+            if (!HasMedia) return;
             Duration = _player.NaturalDuration.HasTimeSpan ? _player.NaturalDuration.TimeSpan.TotalSeconds : 30;
             DurationText = Format(Duration);
         };
         _player.MediaEnded += (_, _) =>
         {
+            if (!HasMedia) return;
             if (NowRelease is { } done) Listened?.Invoke(done, Duration, true);
             _player.Stop(); // 다시 누르면 처음부터
             SetPlaying(false);
@@ -73,6 +75,7 @@ public sealed partial class PlayerViewModel : ObservableObject
         };
         _player.MediaFailed += (_, e) =>
         {
+            if (!HasMedia) return;
             SetPlaying(false);
             Subtitle = L.F("재생할 수 없습니다: {0}", e.ErrorException?.Message);
         };
@@ -96,6 +99,7 @@ public sealed partial class PlayerViewModel : ObservableObject
     /// <summary>같은 곡을 보여 주는 카드가 새로 만들어졌을 때 재생 표시·다음 곡을 그쪽으로 옮긴다</summary>
     public void Rebind(Action<bool> owner, Action? ended, ReleaseItem release)
     {
+        if (!HasMedia) return;
         _setOwnerPlaying = owner;
         _ended = ended;
         NowRelease = release;
@@ -129,6 +133,32 @@ public sealed partial class PlayerViewModel : ObservableObject
     }
 
     public bool IsCurrent(Action<bool> owner) => _setOwnerPlaying == owner;
+
+    /// <summary>관심 없음·뮤지션/레이블 차단이 재생 중인 추천에 해당할 때만 멈춘다.</summary>
+    public void StopIfExcluded(Func<ReleaseRecommendation, bool> excluded)
+    {
+        if (NowRelease is { } release && excluded(release.Rec)) Stop();
+    }
+
+    /// <summary>음원을 닫고 카드와 다음 곡 콜백을 해제한다. 제외를 되돌려도 자동으로 재개하지 않는다.</summary>
+    public void Stop()
+    {
+        _ended = null;
+        HasMedia = false;
+        _player.Close();
+        SetPlaying(false);
+        _setOwnerPlaying = null;
+        NowRelease = null;
+        OnPropertyChanged(nameof(HasNowRelease));
+        _dragging = false;
+        Position = 0;
+        PositionText = "0:00";
+        Duration = 30;
+        DurationText = "0:00";
+        Title = L.T("재생 중인 곡 없음");
+        Subtitle = L.T("커버의 재생 버튼을 눌러 미리 들어 보세요");
+        CoverUrl = null;
+    }
 
     [RelayCommand]
     public void Toggle()

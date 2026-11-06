@@ -68,7 +68,7 @@
                                     <CheckBox x:Name="UsePreciseBox" Content="{local:Tr '주별로 촘촘히 계산'}" Foreground="{StaticResource Text}" FontSize="14"
                                               AutomationProperties.Name="{local:Tr '주별로 촘촘히 계산'}"/>
                                     <TextBlock Style="{StaticResource MutedText}" FontSize="12" Margin="22,4,0,0" TextWrapping="Wrap"
-                                               Text="{local:Tr '기본으로 켜져 있어요. 월·연에서 다시 계산하거나 저장하고 다시 찾을 때 주별로 계산해요. 저장된 주는 건너뛰고, 주 보기는 일반 계산을 사용해요.'}"/>
+                                               Text="{local:Tr '기본으로 켜져 있어요. 월·연에서 다시 계산하면 저장된 주도 모두 새로 계산해요. 이미 분석한 소리는 재사용하며, 주 보기는 일반 계산을 사용해요.'}"/>
                                 </StackPanel>
                             </StackPanel>
                         </Grid>

@@ -74,6 +74,9 @@ public sealed class JsonCache<T>
 
     public void Set(string key, T value) => _items[key] = new Entry(DateTime.UtcNow, value);
 
+    /// <summary>하나를 지운다 (Save 해야 파일에 반영). 있었으면 true</summary>
+    public bool Remove(string key) => _items.TryRemove(key, out _);
+
     /// <summary>모두 지운다 (Save 해야 파일에 반영)</summary>
     public void Clear() => _items.Clear();
 

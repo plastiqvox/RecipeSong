@@ -25,7 +25,7 @@ public sealed record RecommendOptions
     public double WithLikedWeight { get; init; } = 0.6;
     /// <summary>형식 취향: album/ep/single → 가산점 (내 라이브러리에서 그 형식을 얼마나 듣는지)</summary>
     public IReadOnlyDictionary<string, double> TypeBonus { get; init; } = new Dictionary<string, double>();
-    /// <summary>작은 아티스트 우대 (Deezer 팬 수) 비중. 디깅 앱이라 기본으로 켠다.</summary>
+    /// <summary>작은 아티스트 우대 (Last.fm 청취자 수, 모르면 Deezer 팬 수) 비중. 디깅 앱이라 기본으로 켠다.</summary>
     public double SmallArtistWeight { get; init; } = 1.0;
 
     /// <summary>차단한 아티스트(정규화 이름)·레이블(LabelAffinity 키): 어디서도 추천하지 않는다</summary>
@@ -41,8 +41,6 @@ public sealed record RecommendOptions
     /// <summary>좋아하는 레이블 (LabelAffinity.Normalize 이름 → 0~1). 같은 레이블 신보에 가산점</summary>
     public IReadOnlyDictionary<string, double> LabelAffinity { get; init; } = new Dictionary<string, double>();
     public double LabelWeight { get; init; } = 1.0;
-    /// <summary>별로 표시한 앨범의 아티스트 (정규화 이름): 추가 제안에서 뺀다 (내 라이브러리 뮤지션은 그대로)</summary>
-    public IReadOnlySet<string> DislikedArtists { get; init; } = new HashSet<string>();
     /// <summary>추가 제안에서 내 라이브러리에 있는 아티스트는 뺀다 (처음 듣는 사람만)</summary>
     public bool ExcludeKnown { get; init; }
 
@@ -68,12 +66,8 @@ public sealed record RecommendOptions
     };
     /// <summary>추천 중에 장르 DB(Last.fm·Discogs)에 새로 물어볼 최대 앨범 수 (점수 높은 순, 나머지는 WarmGenresAsync 로 뒤에서)</summary>
     public int MaxGenreLookups { get; init; } = 60;
-    /// <summary>
-    /// AI·웹진이 찾은 앨범도 이만큼은 내 곡과 닮아야 보여 준다 (소리 서비스의 taste: 가장 닮은 내 곡 20곡 유사도 평균, 곡 가중치를 곱한 값).
-    /// 0.48 은 만든 사람 라이브러리에서 일반 추천(이미 점수 상위)의 하위 25% 선 (2026-10, 일반 추천 9천 장 중앙값 0.52).
-    /// 화면은 그 기간 일반 추천의 하위 25% 선이 있으면 그것을 쓴다 (라이브러리마다 값의 크기가 달라서)
-    /// </summary>
-    public double MinOutsideTaste { get; init; } = 0.48;
+    /// <summary>추천 중에 Last.fm 청취자 수를 새로 물어볼 최대 아티스트 수 (연결 점수 높은 순, 나머지는 WarmGenresAsync 로 뒤에서)</summary>
+    public int MaxListenerLookups { get; init; } = 60;
 }
 
 /// <summary>후보 아티스트와 디스코그래피. 기간과 상관없으므로 한 번 모아 두고 여러 기간에 쓴다.</summary>
@@ -96,14 +90,17 @@ public sealed record PoolArtist(long Id, string Name, double Score, IReadOnlyLis
 public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres = null, SoundService? sound = null, ArtistIdentityStore? identityStore = null)
 {
     private readonly ArtistIdentityStore _identities = identityStore ?? new();
+    private readonly MetadataAffinity _metadata = new(genres);
     private ArtistAlbumDiscovery? _identityLibrary;
     private IReadOnlyList<TrackRecord>? _identityTracks;
+    private IReadOnlyList<Library.ArchiveAlbum>? _identityArchives;
     public long IdentityVersion => _identities.Revision;
-    public void SetIdentityLibrary(IReadOnlyList<TrackRecord> tracks)
+    public void SetIdentityLibrary(IReadOnlyList<TrackRecord> tracks, IReadOnlyList<Library.ArchiveAlbum>? archives = null)
     {
-        if (ReferenceEquals(_identityTracks, tracks)) return;
+        if (ReferenceEquals(_identityTracks, tracks) && ReferenceEquals(_identityArchives, archives)) return;
         _identityTracks = tracks;
-        _identityLibrary = new(deezer, tracks, [], [], identityStore: _identities);
+        _identityArchives = archives;
+        _identityLibrary = new(deezer, tracks, [], [], identityStore: _identities, archives: archives);
     }
     public StoredArtistIdentity? KnownIdentity(string name) => _identities.FindValid(name, _identityLibrary?.EvidenceHash(name));
     private readonly JsonCache<List<DzArtist>> _related = new("deezer-related", TimeSpan.FromDays(14));
@@ -277,6 +274,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         CandidatePool pool, OwnedLibrary owned, Period period,
         RecommendOptions? options = null, IProgress<string>? progress = null, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         options ??= new RecommendOptions();
         Step(progress, RecStage.Releases);
         var inPeriod = pool.Artists
@@ -290,12 +288,15 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             .ToList();
         var mineHits = inPeriod.Where(x => x.c.Mine != null)
             .OrderByDescending(x => x.c.Mine!.Tracks * TypeWeight(x.a.RecordType)).ToList();
-        var others = inPeriod.Where(x => x.c.Mine == null && !(options.ExcludeKnown && owned.HasArtist(x.c.Name))
-                && !options.DislikedArtists.Contains(ListeningAnalyzer.NormalizeArtist(x.c.Name)))
+        var others = inPeriod.Where(x => x.c.Mine == null && !(options.ExcludeKnown && owned.HasArtist(x.c.Name)))
             .OrderByDescending(x => x.c.Score * TypeWeight(x.a.RecordType))
             .Take(options.MaxScored).ToList();
         var hits = mineHits.Concat(others).ToList();
-        if (hits.Count == 0) { Step(progress, RecStage.Done); return new RecommendationResult(period, [], false); }
+        if (hits.Count == 0)
+        {
+            Step(progress, RecStage.Done);
+            return new RecommendationResult(period, [], false) { CanCache = pool.MinePending == 0 };
+        }
 
         // 연·월 단위면 라이브러리 뮤지션 발매작이 수백 장이라 앞쪽만 소리를 듣는다
         var toScore = mineHits.Take(options.MaxMineScored).Concat(others).Select(h => h.a.Id).ToList();
@@ -356,18 +357,17 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         matched?.Invoke([.. hits.Select(h => WithAi(Bare(h.c, h.a)))]);
         var options = new RecommendOptions();
         var (recs, _) = await ScoreHitsAsync(hits, [.. hits.Select(h => h.a.Id)], owned, options, progress, ct);
-        // 내 곡과 닮지 않은 앨범도 점수와 함께 저장한다 (화면에서 TasteOk 로 숨긴다 — 다시 찾거나 다시 점수 매기지 않게)
-        foreach (var r in recs.Where(r => !TasteOk(r, options)))
-            AiDebugLog.Write(byAlbum[r.DeezerAlbumId][0].By, $"숨김 {r.Artist} – {r.Album}: 내 곡과 닮음 {r.Taste:F3} < {options.MinOutsideTaste:F2}");
+        // 후보는 모두 저장하고, 화면에서 공통 취향 기준으로 추천·확인 필요·기준 미달을 나눈다.
+        foreach (var r in recs.Where(r => !TasteOk(r)))
+            AiDebugLog.Write(byAlbum[r.DeezerAlbumId][0].By, $"취향 판정 {r.Artist} – {r.Album}: {TasteGate.Assess(r)}");
         Step(progress, RecStage.Done);
         return ([.. recs.Select(WithAi).OrderByDescending(r => r.Score)], picks.Count - accepted, otherWeeks);
     }
 
-    /// <summary>AI·웹진이 찾은 앨범도 내 곡과 이만큼은 닮아야 보여 준다 (소리를 못 들은 앨범은 판단할 수 없어 보여 준다)</summary>
-    public static bool TasteOk(ReleaseRecommendation r, RecommendOptions? options = null) =>
-        r.Taste is not { } t || t >= (options ?? Defaults).MinOutsideTaste;
+    /// <summary>출처에 관계없는 곡별 근거 기준. 근거 부족은 화면의 확인 필요 목록에서 다룬다.</summary>
+    public static bool TasteOk(ReleaseRecommendation r) =>
+        TasteGate.Assess(r) == TasteDecision.Recommended;
 
-    private static readonly RecommendOptions Defaults = new();
 
     /// <summary>소리 점수 전의 추천 (칸·취향 없음). Taste == null 이면 아직 점수를 안 매긴 것</summary>
     private static ReleaseRecommendation Bare(PoolArtist c, DzAlbum a) =>
@@ -458,6 +458,8 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                     && !(options.ExcludeInstrumental && IsRedundantInstrumental(c, a, owned)))
                 .DistinctBy(a => a.Id).Select(a => (c, a)));
         }
+        // 협업 앨범은 여러 팔로우 아티스트의 디스코그래피에 나온다. 전체에서 한 번만 분석한다.
+        hits = [.. hits.DistinctBy(h => h.a.Id)];
         SaveCaches();
         Step(progress, RecStage.Releases);
         if (hits.Count == 0) { Step(progress, RecStage.Done); return []; }
@@ -522,36 +524,60 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         var disIdx = heard.Select((s, i) => (s, i)).Where(x => x.s?.Dis != null).Select(x => x.i).ToList();
         var disZ = ZScores([.. disIdx.Select(i => heard[i]!.Dis!.Value)]);
         var disZOf = disIdx.Select((i, j) => (i, z: disZ[j])).ToDictionary(x => x.i, x => x.z);
+        var listeners = await ListenersAsync(hits, options, progress, ct);
         int k = 0;
         var scores = new double[hits.Count];
         var labelAffs = new double[hits.Count];
         var withLikeds = new string?[hits.Count];
+        var contributions = new List<ScoreContribution>[hits.Count];
         for (int i = 0; i < hits.Count; i++)
         {
             var (c, a) = hits[i];
             var snd = heard[i];
+            contributions[i] = [];
+            double Add(string kind, double value) { contributions[i].Add(new(kind, value)); return value; }
             double score;
             // 소리 비중: 예전 레시피 적합도(최대 2점)가 빠진 만큼 내 곡과의 닮음을 1.5배로
             if (snd != null)
-                score = 1.5 * tasteZ[k++] + (c.Mine == null ? options.GraphWeight * graphZ[i] : 0)
-                        + options.FavoriteWeight * favZOf.GetValueOrDefault(i)
-                        - options.DislikeWeight * Math.Max(0, disZOf.GetValueOrDefault(i));
-            else score = -1 + (c.Mine == null ? options.GraphWeight * graphZ[i] : 0);  // 소리를 못 들은 앨범은 뒤로
+                score = Add("sound", 1.5 * tasteZ[k++]) + Add("connection", c.Mine == null ? options.GraphWeight * graphZ[i] : 0)
+                        + Add("likes", options.FavoriteWeight * favZOf.GetValueOrDefault(i))
+                        + Add("dislikes", -options.DislikeWeight * Math.Max(0, disZOf.GetValueOrDefault(i)));
+            else score = Add("unheard", -1) + Add("connection", c.Mine == null ? options.GraphWeight * graphZ[i] : 0);
 
             var info = infos[i];
             // 좋아하는 레이블이면 가산점
             labelAffs[i] = RecipeSong.Core.LabelAffinity.Of(options.LabelAffinity, info.Label);
-            score += options.LabelWeight * labelAffs[i];
+            score += Add("label", options.LabelWeight * labelAffs[i]);
             // 피처링·참여: 수록곡에 좋아하는 아티스트가 있으면
             withLikeds[i] = info.With?.FirstOrDefault(n => options.LikedArtists.Contains(ListeningAnalyzer.NormalizeArtist(n))
                 && ListeningAnalyzer.NormalizeArtist(n) != ListeningAnalyzer.NormalizeArtist(c.Name));
-            if (withLikeds[i] != null) score += options.WithLikedWeight;
+            if (withLikeds[i] != null) score += Add("collaborator", options.WithLikedWeight);
             // 형식 취향
-            score += options.TypeBonus.GetValueOrDefault(a.RecordType ?? "album");
-            // 작은 아티스트 우대 (추가 제안만, 팬 수를 알 때)
-            if (c.Mine == null && c.Fans > 0)
-                score += options.SmallArtistWeight * (c.Fans < 5_000 ? 0.4 : c.Fans < 50_000 ? 0.2 : c.Fans > 1_000_000 ? -0.2 : 0);
+            score += Add("format", options.TypeBonus.GetValueOrDefault(a.RecordType ?? "album"));
+            // 작은 아티스트 우대 (추가 제안만, 청취자 수나 팬 수를 알 때)
+            if (SmallArtistEligible(c) && SmallArtistBonus(listeners[i].Listeners, c.Fans, listeners[i].Pending) is { } small)
+                score += Add("small_artist", options.SmallArtistWeight * small);
             scores[i] = score;
+        }
+
+        // 소리 중심 순위의 상위 12장에만 메타데이터를 보완한다. 자료 없음·조회 실패는 감점하지 않는다.
+        IReadOnlyDictionary<long, MetadataAffinity.Match> metadata = new Dictionary<long, MetadataAffinity.Match>();
+        try
+        {
+            progress?.Report(L.T("세부 장르·제작진 연결 확인 중…"));
+            var candidates = hits.Select((h, i) => (h, i)).OrderByDescending(x => scores[x.i]).Take(12)
+                .Select(x => (x.h.a.Id, x.h.c.Name, x.h.a.Title)).ToArray();
+            metadata = await _metadata.ScoreAsync(_identityTracks ?? [], candidates, ct);
+            for (int i = 0; i < hits.Count; i++)
+                if (metadata.TryGetValue(hits[i].a.Id, out var match))
+                {
+                    scores[i] += match.Bonus;
+                    contributions[i].Add(new("metadata", match.Bonus));
+                }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or System.Text.Json.JsonException)
+        {
+            progress?.Report(L.T("메타데이터 보완을 건너뛰고 소리 점수를 사용해요."));
         }
 
         // 5) 칸 (장르 묶음)
@@ -578,9 +604,59 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                 Fans: c.Fans,
                 Pairs: snd?.Pairs,
                 Genres: genres?.CachedTags(c.Name, a.Title),
-                ViaLastFm: c.ViaLastFm && c.Mine == null));
+                ViaLastFm: c.ViaLastFm && c.Mine == null,
+                MatchedTag: metadata.GetValueOrDefault(a.Id)?.Tag,
+                MatchedCrew: metadata.GetValueOrDefault(a.Id)?.Crew,
+                FitRatio: snd?.FitRatio, AnalyzedTracks: snd?.AnalyzedTracks,
+                Evidence: new(contributions[i], snd?.MeanTaste, snd?.TopTaste, snd?.FitThreshold, options.HitsOnly, snd?.ScoredTracks, snd?.TotalTracks)));
         }
         return (recs, heard.Any(s => s != null));
+    }
+
+    /// <summary>
+    /// 작은 아티스트 가산점. Last.fm 청취자 수를 알면 그것만 본다: Deezer 팬 수는 연관 아티스트의 절반 넘게 0(모름)으로 오고
+    /// (Lil Uzi Vert·Faye Webster 도 0), 오래된·아시아 아티스트는 수십 배 적게 센다 (Makoto Matsushita 는 Deezer 3,880명 · Last.fm 51만 명).
+    /// Last.fm 기준은 두 수를 표본 65명으로 비교해 정했다. 둘 다 모르면 null.
+    /// pending: 아직 Last.fm 에 묻지 못한 아티스트. Deezer 가산점을 절반만 줘서, 첫 계산에서 먼저 물어본 상위 아티스트(Last.fm 기준이라 까다롭다)보다
+    /// 묻지 못한 아티스트가 유리해지지 않게 한다. 물어봤는데 Last.fm 에 없는 아티스트는 정말 작은 경우가 많아 Deezer 기준을 그대로 쓴다.
+    /// </summary>
+    public static double? SmallArtistBonus(long? listeners, int fans, bool pending = false) =>
+        // 청취자 0 은 기록 없는 빈 페이지라 모름 (예전 빌드가 캐시에 0 으로 넣어 둔 것도 여기서 거른다)
+        listeners is > 0 and var l ? Tier(l, 50_000, 250_000, 2_000_000)
+        : fans > 0 ? Tier(fans, 5_000, 50_000, 1_000_000) * (pending ? 0.5 : 1)
+        : null;
+
+    private static double Tier(long n, long small, long mid, long big) => n < small ? 0.4 : n < mid ? 0.2 : n > big ? -0.2 : 0;
+
+    /// <summary>
+    /// 작은 아티스트 우대 대상: 추가 제안만. 라이브러리 뮤지션·팔로우는 Mine 이 있고, AI·웹진 앨범은 연결 점수가 0 이다.
+    /// WarmGenresAsync 는 같은 집합을 추천 결과에서 FromPlaylist·AiBy 가 없는 것으로 고른다.
+    /// </summary>
+    private static bool SmallArtistEligible(PoolArtist c) => c.Mine == null && c.Score > 0;
+
+    /// <summary>
+    /// 추가 제안 아티스트의 Last.fm 청취자 수: 캐시 → 연결 점수 높은 아티스트부터 MaxListenerLookups 명까지 새로 묻기.
+    /// Listeners 는 모르면 null, Pending 은 아직 묻지 못한 아티스트 (Last.fm 키가 없으면 아무도 pending 이 아니다)
+    /// </summary>
+    private async Task<(long? Listeners, bool Pending)[]> ListenersAsync(List<(PoolArtist c, DzAlbum a)> hits, RecommendOptions options,
+        IProgress<string>? progress, CancellationToken ct)
+    {
+        var result = new (long? Listeners, bool Pending)[hits.Count];
+        if (genres?.HasLastFm != true) return result;
+        // 정규화하면 빈 이름(기호뿐)은 물을 수 없으므로 묻지도, pending 으로 두지도 않는다
+        bool Askable(PoolArtist c) => ListeningAnalyzer.NormalizeArtist(c.Name).Length > 0;
+        var ask = hits.Where(h => SmallArtistEligible(h.c) && Askable(h.c) && !genres.TryCachedArtistStats(h.c.Name, out _)).Select(h => h.c)
+            .DistinctBy(c => c.Id).OrderByDescending(c => c.Score).Take(options.MaxListenerLookups).ToList();
+        for (int n = 0; n < ask.Count; n++)
+        {
+            if (n % 10 == 0) progress?.Report(L.F("Last.fm 청취자 수 확인 중… {0}/{1}", n, ask.Count));
+            await genres.ArtistStatsAsync(ask[n].Name, ct);
+        }
+        if (ask.Count > 0) genres.Save();
+        for (int i = 0; i < hits.Count; i++)
+            if (SmallArtistEligible(hits[i].c))
+                result[i] = genres.TryCachedArtistStats(hits[i].c.Name, out var stats) ? (stats?.Listeners, false) : (null, Askable(hits[i].c));
+        return result;
     }
 
     /// <summary>
@@ -631,14 +707,18 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         return [.. groups.Select(g => g ?? GenreGroups.Indie)];
     }
 
-    /// <summary>추천에서 장르 DB에 묻지 못한 앨범의 태그를 뒤에서 받아 둔다 (다음 계산부터 칸이 정확해진다). 받은 수</summary>
+    /// <summary>
+    /// 추천에서 장르 DB에 묻지 못한 앨범의 태그와 추가 제안 아티스트의 Last.fm 청취자 수를 뒤에서 받아 둔다
+    /// (다음 계산부터 칸과 작은 아티스트 우대가 정확해진다). 받은 수
+    /// </summary>
     public async Task<int> WarmGenresAsync(IEnumerable<ReleaseRecommendation> recs, int max = 300,
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
         if (genres is not { Enabled: true }) return 0;
         Step(progress, RecStage.Genre);
+        var list = recs as IReadOnlyCollection<ReleaseRecommendation> ?? [.. recs];
         var todo = new List<ReleaseRecommendation>();
-        foreach (var r in recs.OrderByDescending(r => r.Score).DistinctBy(r => r.DeezerAlbumId))
+        foreach (var r in list.OrderByDescending(r => r.Score).DistinctBy(r => r.DeezerAlbumId))
         {
             if (todo.Count >= max) break;
             if ((await genres.GroupAsync(r.Artist, r.Album, cachedOnly: true, ct)) is { Group: null, NeedsFetch: true }) todo.Add(r);
@@ -648,9 +728,19 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             await genres.GroupAsync(todo[i].Artist, todo[i].Album, cachedOnly: false, ct);
             if (i % 20 == 19) { genres.Save(); progress?.Report(L.F("장르 확인 {0}/{1}", i + 1, todo.Count)); }
         }
+        // 작은 아티스트 우대는 추가 제안만 받으므로 (SmallArtistEligible) 라이브러리 뮤지션·AI·웹진 제안은 뺀다
+        List<string> artists = genres.HasLastFm
+            ? [.. list.Where(r => r.FromPlaylist == null && r.AiBy == null).OrderByDescending(r => r.Score).Select(r => r.Artist)
+                .Where(a => !genres.TryCachedArtistStats(a, out _)).DistinctBy(ListeningAnalyzer.NormalizeArtist).Take(max)]
+            : [];
+        for (int i = 0; i < artists.Count; i++)
+        {
+            await genres.ArtistStatsAsync(artists[i], ct);
+            if (i % 20 == 19) { genres.Save(); progress?.Report(L.F("Last.fm 청취자 수 {0}/{1}", i + 1, artists.Count)); }
+        }
         genres.Save();
         Step(progress, RecStage.Done);
-        return todo.Count;
+        return todo.Count + artists.Count;
     }
 
     /// <summary>앨범 전체 수록곡과 미리듣기 URL (재생 직전에 받는다). URL은 몇 시간 뒤 만료된다.</summary>
@@ -764,16 +854,25 @@ public sealed class OwnedLibrary
 {
     private readonly HashSet<string> _artists;
     private readonly HashSet<string> _albums;
+    private readonly HashSet<string> _archiveAlbums;
 
-    public OwnedLibrary(IEnumerable<TrackRecord> tracks)
+    public OwnedLibrary(IEnumerable<TrackRecord> tracks, IEnumerable<RecipeSong.Core.Library.ArchiveAlbum>? archives = null)
     {
         var list = tracks as IReadOnlyCollection<TrackRecord> ?? [.. tracks];
         _artists = ListeningAnalyzer.KnownArtists(list);
         _albums = [.. list.Select(t => Key(t.GroupArtist, t.Album))];
+        _archiveAlbums = [];
+        foreach (var album in archives ?? [])
+        {
+            _artists.Add(ListeningAnalyzer.NormalizeArtist(album.Artist));
+            _archiveAlbums.Add(Key(album.Artist, album.Album));
+        }
+        _albums.UnionWith(_archiveAlbums);
     }
 
     public bool HasArtist(string artist) => _artists.Contains(ListeningAnalyzer.NormalizeArtist(artist));
     public bool HasAlbum(string artist, string album) => _albums.Contains(Key(artist, album));
+    public bool HasArchiveAlbum(string artist, string album) => _archiveAlbums.Contains(Key(artist, album));
 
     private static string Key(string artist, string album) =>
         ListeningAnalyzer.NormalizeArtist(artist) + "|" + ListeningAnalyzer.NormalizeArtist(album);

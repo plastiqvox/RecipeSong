@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using RecipeSong.Wpf.ViewModels;
@@ -15,6 +16,7 @@ public partial class MainWindow : Window
     private bool _checkingExit;
     private bool _exitApproved;
     private bool _restartRequested;
+    private readonly WorkspaceNavigation _navigation = new();
 
     public MainWindow(MainViewModel vm)
     {
@@ -22,19 +24,25 @@ public partial class MainWindow : Window
         DarkTitleBar.Apply(this);
         DataContext = _vm = vm;
         _vm.SoulseekSearchRequested += OpenSoulseekSearch;
-        _vm.SoulseekSectionRequested += section => { GetSoulseekWorkspace().ShowSection(section); WorkspaceTabs.SelectedIndex = 1; };
+        _vm.SoulseekSectionRequested += section =>
+        {
+            _navigation.BeginSearch((WorkspacePage)WorkspaceTabs.SelectedIndex);
+            GetSoulseekWorkspace().ShowSection(section);
+            WorkspaceTabs.SelectedIndex = (int)WorkspacePage.Soulseek;
+        };
         WorkspaceTabs.SelectionChanged += async (_, e) =>
         {
-            if (e.Source == WorkspaceTabs && WorkspaceTabs.SelectedIndex == 1) GetSoulseekWorkspace();
-            if (e.Source == WorkspaceTabs && WorkspaceTabs.SelectedIndex == 2)
+            if (e.Source == WorkspaceTabs && WorkspaceTabs.SelectedIndex == (int)WorkspacePage.Soulseek) GetSoulseekWorkspace();
+            if (e.Source == WorkspaceTabs && WorkspaceTabs.SelectedIndex == (int)WorkspacePage.Artists)
             {
                 if (_artistLibrary == null)
                 {
                     _artistLibrary = new ArtistLibraryView(_vm.CreateArtistDiscoveryAsync);
                     _artistLibrary.SearchRequested += album =>
                     {
+                        _navigation.BeginSearch(WorkspacePage.Artists);
                         GetSoulseekWorkspace().ShowAlbum(album);
-                        WorkspaceTabs.SelectedIndex = 1;
+                        WorkspaceTabs.SelectedIndex = (int)WorkspacePage.Soulseek;
                     };
                     ArtistLibraryHost.Content = _artistLibrary;
                 }
@@ -86,7 +94,7 @@ public partial class MainWindow : Window
         try
         {
             var downloading = await _vm.HasPendingDownloadsAsync();
-            var searching = _vm.IsBusy || _vm.IsRefreshing || _vm.IsPrecise || _vm.AiBusy
+            var searching = _vm.IsBusy || _vm.IsRefreshing || _vm.IsPrecise || _vm.AiBusy || _vm.ArchiveBusy
                 || _soulseekWorkspace?.IsSearching == true || _artistLibrary?.IsSearching == true;
             if ((searching || downloading) && MessageBox.Show(this,
                     RecipeSong.Core.L.T("검색·추천 계산 또는 다운로드 작업이 남아 있어요. 종료하면 진행 중인 작업이 중단될 수 있어요. 종료할까요?"),
@@ -208,17 +216,22 @@ public partial class MainWindow : Window
 
     private SoulseekWorkspaceView GetSoulseekWorkspace()
     {
-        if (_soulseekWorkspace != null) return _soulseekWorkspace;
+        if (_soulseekWorkspace != null) { _soulseekWorkspace.SetReturnTarget(_navigation.BackLabel); return _soulseekWorkspace; }
         _soulseekWorkspace = new SoulseekWorkspaceView(_vm.SoulseekDownloads, _vm.DownloadRecommendation, _vm.IsDownloadFavorite, _vm.ToggleDownloadFavoriteAsync);
-        _soulseekWorkspace.RecommendationsRequested += () => WorkspaceTabs.SelectedIndex = 0;
+        _soulseekWorkspace.RecommendationsRequested += () => WorkspaceTabs.SelectedIndex = (int)_navigation.SearchOrigin;
+        _soulseekWorkspace.SetReturnTarget(_navigation.BackLabel);
         SoulseekHost.Content = _soulseekWorkspace;
         return _soulseekWorkspace;
     }
 
+    private void NowPlaying_Click(object sender, RoutedEventArgs e) => WorkspaceTabs.SelectedIndex = (int)WorkspacePage.Recommendations;
+    private void ShowWork_Click(object sender, RoutedEventArgs e) => WorkspaceTabs.SelectedIndex = (int)WorkspacePage.Recommendations;
+
     private void OpenSoulseekSearch(ReleaseItem item)
     {
+        _navigation.BeginSearch((WorkspacePage)WorkspaceTabs.SelectedIndex);
         GetSoulseekWorkspace().ShowAlbum(item.Rec with { CoverUrl = item.CoverUrl });
-        WorkspaceTabs.SelectedIndex = 1;
+        WorkspaceTabs.SelectedIndex = (int)WorkspacePage.Soulseek;
     }
 
     /// <summary>수록곡 창의 ⋯ 버튼: 왼쪽 클릭으로도 메뉴를 버튼 아래에 연다</summary>
@@ -295,6 +308,12 @@ public partial class MainWindow : Window
     }
 
     // 수록곡 창의 스피커 아이콘: 휠 한 칸에 5%
+    private async void DetailTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.RemovedItems.Count > 0 && ReferenceEquals(e.Source, sender) && sender is TabControl { SelectedIndex: 0 })
+            await _vm.EnsureDetailTracksAsync();
+    }
+
     private void Volume_Wheel(object sender, MouseWheelEventArgs e)
     {
         _vm.Player.Volume = Math.Clamp(_vm.Player.Volume + Math.Sign(e.Delta) * 0.05, 0, 1);

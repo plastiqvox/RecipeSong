@@ -48,7 +48,12 @@ public sealed class AlbumDownloads : IAsyncDisposable
     private readonly Task _worker;
     private readonly string _path = Path.Combine(JsonCache<object>.Dir, "soulseek-native-downloads.json");
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+    // 나를 차단한 상대 (검색 결과에 표시). 차단은 풀릴 수 있어 180일 뒤 잊고, 그 상대에게서 앨범을 다 받으면 지운다.
+    private readonly JsonCache<bool> _bannedBy = new("soulseek-banned-by", TimeSpan.FromDays(180));
     public SoulseekSession Session { get; } = new();
+
+    /// <summary>이 상대가 나를 차단했다고 응답한 시각(로컬). 기록이 없으면 null</summary>
+    public DateTime? BannedMeAt(string user) => _bannedBy.TryGetAt(user, out _, out var at) ? at : null;
     public string? StartupError { get; private set; }
 
     public AlbumDownloads() : this(null, null, null) { }
@@ -277,6 +282,7 @@ public sealed class AlbumDownloads : IAsyncDisposable
     {
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var registered = false;
+        string? refusal = null;
         try
         {
             await _gate.WaitAsync(ct);
@@ -303,7 +309,15 @@ public sealed class AlbumDownloads : IAsyncDisposable
                 }
                 // 곡 하나가 실패해도 나머지 파일 요청은 끝까지 처리한다. 직접 중단만 공통 토큰을 취소한다.
                 if (!_isLoggedIn() || job.Owner != _username()) throw new InvalidOperationException(L.T("받을 곡이 남아 있어요. 해당 Soulseek 계정으로 로그인한 뒤 다시 시도하세요."));
-                await _download(job.Username, file, path, cancel.Token, job.Id);
+                try { await _download(job.Username, file, path, cancel.Token, job.Id); }
+                catch (Exception ex) when (PeerFailure(ex) is { StopAlbum: true } stop)
+                {
+                    // 이 상대로는 앨범을 끝낼 수 없으니 남은 곡을 기다리지 않는다 (받던 파일은 .partial 로 남아 다시 시도 때 이어 받는다)
+                    Interlocked.CompareExchange(ref refusal, stop.Text, null);
+                    if (stop.Banned) RememberBan(job.Username, true);
+                    cancel.Cancel();
+                    throw;
+                }
             }));
             await _gate.WaitAsync(ct);
             try { job.State = "packing"; Save(); }
@@ -315,17 +329,22 @@ public sealed class AlbumDownloads : IAsyncDisposable
             await _gate.WaitAsync(ct);
             try { job.ArchivePath = zip; job.Detail = zip; job.State = "done"; }
             finally { _gate.Release(); }
+            RememberBan(job.Username, false);
         }
         catch (OperationCanceledException)
         {
             await _gate.WaitAsync();
-            try { if (registered) job.State = _explicitStops.Contains(job.Id) ? "cancelled" : ct.IsCancellationRequested ? "waiting" : "cancelled"; }
+            try
+            {
+                if (registered) job.State = _explicitStops.Contains(job.Id) ? "cancelled" : refusal != null ? "failed" : ct.IsCancellationRequested ? "waiting" : "cancelled";
+                if (registered && job.State == "failed") job.Detail = refusal!;
+            }
             finally { _gate.Release(); }
         }
         catch (Exception ex)
         {
             await _gate.WaitAsync();
-            try { if (registered) { job.State = _explicitStops.Contains(job.Id) ? "cancelled" : "failed"; job.Detail = job.State == "failed" ? ex.Message : ""; } }
+            try { if (registered) { job.State = _explicitStops.Contains(job.Id) ? "cancelled" : "failed"; job.Detail = job.State == "failed" ? refusal ?? PeerFailure(ex)?.Text ?? ex.Message : ""; } }
             finally { _gate.Release(); }
         }
         finally
@@ -353,6 +372,47 @@ public sealed class AlbumDownloads : IAsyncDisposable
                 }
             }
         }
+    }
+
+    // 차단 기록은 검색 결과 표시용이라 저장에 실패해도 받기 결과를 바꾸지 않는다
+    private void RememberBan(string user, bool banned)
+    {
+        try
+        {
+            if (banned) _bannedBy.Set(user, true);
+            else if (!_bannedBy.Remove(user)) return;
+            _bannedBy.Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
+    /// <summary>
+    /// 상대 쪽 거절·오류를 앨범 안내로 바꾼다. 상대가 보낸 사유는 "Transfer rejected: Banned" 처럼 메시지 끝에 붙는다.
+    /// StopAlbum 이면 이 상대로는 지금 앨범을 끝낼 수 없어(차단·공유 해제·파일 변경·접속 끊김) 남은 곡을 기다리지 않는다.
+    /// 대기열 한도·연결 끊김은 다시 시도하면 풀릴 수 있어 남은 곡은 계속 받는다. 모르는 사유는 null (원문을 그대로 보여 준다).
+    /// Banned 면 그 상대를 기록해 검색 결과에 표시한다.
+    /// </summary>
+    internal static (string Text, bool StopAlbum, bool Banned)? PeerFailure(Exception ex)
+    {
+        for (var e = ex; e != null; e = e.InnerException)
+            switch (e)
+            {
+                case global::Soulseek.TransferRejectedException:
+                    bool Says(string reason) => e.Message.Contains(reason, StringComparison.OrdinalIgnoreCase);
+                    return Says("Banned") || Says("Blocked") ? (L.T("상대가 내 계정을 차단했어요. ‘다른 상대 찾기’로 다른 상대에게서 받으세요."), true, true)
+                        : Says("not shared") || Says("Disallowed") ? (L.T("상대가 이 곡을 더 이상 공유하지 않아요. ‘다른 상대 찾기’로 다른 상대에게서 받으세요."), true, false)
+                        : Says("shutdown") ? (L.T("상대가 접속을 끊는 중이에요. 나중에 ‘다시 시도’하거나 ‘다른 상대 찾기’를 쓰세요."), true, false)
+                        : Says("Too many") ? (L.T("상대가 한 사람에게 내주는 대기열이 꽉 찼어요. 받은 곡이 끝난 뒤 ‘다시 시도’하세요."), false, false)
+                        : null;
+                case global::Soulseek.TransferSizeMismatchException:
+                    return (L.T("상대 파일이 바뀌었어요. ‘다른 상대 찾기’로 다시 고르세요."), true, false);
+                case global::Soulseek.UserOfflineException:
+                    return (L.T("상대가 접속해 있지 않아요. 나중에 ‘다시 시도’하거나 ‘다른 상대 찾기’를 쓰세요."), true, false);
+                case global::Soulseek.ConnectionException or global::Soulseek.UserEndPointException or global::Soulseek.DownloadEnqueueException
+                    or global::Soulseek.TransferReportedFailedException or TimeoutException:
+                    return (L.T("상대와 연결이 끊겼어요. ‘다시 시도’하면 받은 데까지 이어 받아요."), false, false);
+            }
+        return null;
     }
 
     public async ValueTask DisposeAsync()

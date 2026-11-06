@@ -14,10 +14,81 @@ static partial class Program
     {
         var output = Path.GetFullPath(args[0]);
         Directory.CreateDirectory(output);
+        Environment.SetEnvironmentVariable("RECIPESONG_DATA", Path.Combine(output, "data"));
         CacheLocation.Directory = Path.Combine(output, "data");
-        var app = new App();
+        var app = new UiCheckApplication();
         app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (args.Length > 1 && args[1] == "--week-range")
+        {
+            foreach (var language in new[] { "ko", "en" })
+            {
+                L.Init(language);
+                CheckWeekRange(output, language);
+                CheckSharedWorkspace(output, language);
+            }
+            Console.WriteLine("Week range and source navigation UI checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--download-storage")
+        {
+            CheckDownloadStorage(output);
+            Console.WriteLine("Download storage UI checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--artist-library")
+        {
+            foreach (var language in new[] { "ko", "en" })
+            {
+                L.Init(language);
+                CheckArtistLibrary(output, language);
+            }
+            Console.WriteLine("Artist library UI checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--artist-filters")
+        {
+            CheckArtistFilters();
+            Console.WriteLine("Artist album filter persistence checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--card-actions")
+        {
+            CheckCardActions(output);
+            Console.WriteLine("Card action layout checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--search-confirmation")
+        {
+            CheckSearchConfirmation(output);
+            Console.WriteLine("Search confirmation checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--taste-feedback")
+        {
+            CheckTasteFeedback(output);
+            Console.WriteLine("Track feedback UI checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--evidence")
+        {
+            CheckEvidence(output);
+            Console.WriteLine("Recommendation evidence checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--playback")
+        {
+            CheckExcludedPlayback(output);
+            Console.WriteLine("Excluded playback checks passed.");
+            return 0;
+        }
+        if (args.Length > 1 && args[1] == "--pipeline")
+        {
+            L.Init(args.Length > 2 ? args[2] : "ko");
+            CheckPipeline(output);
+            Console.WriteLine("Pipeline UI checks passed.");
+            return 0;
+        }
         CheckRecommendationSettingsEdits(output);
         // OnStartup과 Application.Run은 호출하지 않는다. 사용자 앱·설정·소리 서비스·네트워크에 접근하지 않는다.
         foreach (var language in new[] { "ko", "en" })
@@ -91,6 +162,7 @@ static partial class Program
     static void CheckWorkspace(AlbumDownloads downloads, ReleaseRecommendation album, string output, string language)
     {
         using var workspace = new SoulseekWorkspaceView(downloads);
+        workspace.SetReturnTarget(L.T("아티스트 목록으로"));
         var shell = new TabControl();
         shell.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/RecipeSong.Wpf;component/WorkspaceStyles.xaml", UriKind.Relative) });
         shell.SetResourceReference(FrameworkElement.StyleProperty, "WorkspaceTabs");
@@ -103,6 +175,11 @@ static partial class Program
         workspace.ShowAlbum(album);
         var host = (ContentControl)workspace.FindName("SearchHost");
         var search = (SoulseekSearchView)host.Content;
+        if (!Equals(((Button)search.FindName("BackButton")).ToolTip, L.T("아티스트 목록으로")))
+            throw new Exception("New searches lost their artist return label.");
+        workspace.SetReturnTarget(L.T("추천으로"));
+        if (!Equals(((Button)search.FindName("BackButton")).ToolTip, L.T("추천으로")))
+            throw new Exception("Reused search views retained a stale return label.");
         ((TextBox)search.FindName("QueryBox")).Text = "custom query";
         var files = new[] { new SoulseekFile(@"Music\Album\01 Track.flac", 32000000, 950, 44100, 16) };
         var groups = new[] { new SoulseekFolder(new SoulseekPeer("example-peer", true, 0, 1000000, files), @"Music\Album", files) };
@@ -359,7 +436,12 @@ static partial class Program
             if (!results.Items.Cast<SoulseekFolder>().SequenceEqual(new[] { newest, fast, slow, unknown, queued }) || fast.Files[0].Selected)
                 throw new Exception("Filtering lost queue/speed order or selection.");
             if (unknown.SpeedText != L.T("상대 속도: 정보 없음") || fast.SpeedText != L.F("상대 속도: {0:0.0} MiB/s", 2d)) throw new Exception("Reported speed display failed.");
-            Render(search, Path.Combine(output, language + "-search-order.png"), 700, 1000);
+            // 나를 차단한 상대는 가장 빠른 상대여도 맨 아래에 표시만 해 둔다
+            var banned = new SoulseekFolder(new("banned-fastest", true, 0, 50 * 1048576, files), "Album", files) { BannedMeAt = new DateTime(2026, 11, 5) };
+            source.Add(banned);
+            if (!ReferenceEquals(results.Items[^1], banned) || banned.BannedText.Length == 0 || newest.BannedText.Length != 0)
+                throw new Exception("A peer that banned us was not marked and moved to the bottom.");
+            Render(search, Path.Combine(output, language + "-search-order.png"), 700, 1200);
         }
         finally { search.Stop(); }
     }
@@ -401,6 +483,8 @@ static partial class Program
     static void RenderWindow(Window window, string path, int width, int height)
     {
         var content = (FrameworkElement)window.Content;
+        if (content.ReadLocalValue(FrameworkElement.DataContextProperty) == DependencyProperty.UnsetValue)
+            content.DataContext = window.DataContext;
         window.Content = null;
         content.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/RecipeSong.Wpf;component/SoulseekStyles.xaml", UriKind.Relative) });
         Render(content, path, width, height);
@@ -412,6 +496,12 @@ static partial class Program
         var canvas = new Border { Background = (Brush)Application.Current.FindResource("Bg"), Child = content, Width = width, Height = height };
         canvas.Measure(new Size(width, height));
         canvas.Arrange(new Rect(0, 0, width, height));
+        void Invalidate(DependencyObject visual)
+        {
+            if (visual is UIElement element) element.InvalidateVisual();
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(visual); i++) Invalidate(VisualTreeHelper.GetChild(visual, i));
+        }
+        Invalidate(canvas);
         canvas.UpdateLayout();
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(canvas);

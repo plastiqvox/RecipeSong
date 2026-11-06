@@ -19,6 +19,8 @@ public sealed class SoundService : IAsyncDisposable
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Process? _proc;
     private int _nextId;
+    private DownloadCache? _downloads;
+    private FileStream? _cacheLease;
 
     private sealed record Pending(TaskCompletionSource<JsonElement> Done, IProgress<string>? Progress, QueueEntry Entry);
 
@@ -55,7 +57,8 @@ public sealed class SoundService : IAsyncDisposable
         var uv = settings.UvPath ?? FindUv();
         // 분석한 곡이 없어도 띄운다 (처음 설치): 서비스가 분석 전 상태로 뜨고 '분석 시작'으로 라이브러리를 처음 듣는다
         if (ml == null || uv == null || settings.ITunesLibraryPath == null) return null;
-        return new SoundService(ml, uv, settings.ITunesLibraryPath);
+        return new SoundService(ml, uv, settings.ITunesLibraryPath)
+            { _downloads = new DownloadCache(DownloadCache.Location(settings, ml)) };
     }
 
     public static string? FindMlDirectory()
@@ -83,6 +86,15 @@ public sealed class SoundService : IAsyncDisposable
     public async Task StartAsync(CancellationToken ct = default)
     {
         if (_proc != null) { await _ready.Task.WaitAsync(ct); return; }
+        try
+        {
+            if (_downloads != null)
+            {
+                DownloadCache.CheckInstallSpace(_mlDir, _downloads.DirectoryPath);
+                _cacheLease = _downloads.Lease();
+            }
+        }
+        catch (Exception ex) { _ready.TrySetException(ex); throw; }
         var psi = new ProcessStartInfo(_uv)
         {
             WorkingDirectory = _mlDir,
@@ -99,8 +111,10 @@ public sealed class SoundService : IAsyncDisposable
         foreach (var a in new[] { "run", "--quiet", "--no-dev", "python", "service.py", "--xml", _xml }) psi.ArgumentList.Add(a);
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONUNBUFFERED"] = "1";
+        _downloads?.Apply(psi);
 
-        _proc = Process.Start(psi) ?? throw new InvalidOperationException(L.T("소리 분석 서비스를 시작하지 못했습니다."));
+        try { _proc = Process.Start(psi) ?? throw new InvalidOperationException(L.T("소리 분석 서비스를 시작하지 못했습니다.")); }
+        catch (Exception ex) { _cacheLease?.Dispose(); _cacheLease = null; _ready.TrySetException(ex); throw; }
         _proc.StandardInput.AutoFlush = true;
         _ = Task.Run(ReadStdoutAsync);
         _ = Task.Run(ReadStderrAsync);
@@ -147,7 +161,17 @@ public sealed class SoundService : IAsyncDisposable
                 a.TryGetProperty("dis", out var dis) ? dis.GetDouble() : null,
                 a.TryGetProperty("with", out var with) && with.ValueKind == JsonValueKind.Array
                     ? [.. with.EnumerateArray().Select(e => e.GetString() ?? "").Where(n => n.Length > 0)] : null,
-                Pairs(a));
+                Pairs(a),
+                a.TryGetProperty("fit_ratio", out var fit) ? fit.GetDouble() : null,
+                a.TryGetProperty("analyzed_tracks", out var analyzed) ? analyzed.GetInt32() : null,
+                a.TryGetProperty("mean_taste", out var mean) ? mean.GetDouble() : null,
+                a.TryGetProperty("top_taste", out var top) ? top.GetDouble() : null,
+                a.TryGetProperty("fit_threshold", out var threshold) ? threshold.GetDouble() : null,
+                a.TryGetProperty("scored_tracks", out var scored) ? [.. scored.EnumerateArray().Select(t =>
+                    new ScoredTrack(t.GetProperty("id").GetInt64(), Str(t, "title"), t.GetProperty("taste").GetDouble(),
+                        t.TryGetProperty("fits", out var fits) ? fits.GetBoolean() : null,
+                        t.TryGetProperty("matches_dislike", out var bad) ? bad.GetBoolean() : null))] : null,
+                a.TryGetProperty("total_tracks", out var total) && total.ValueKind == JsonValueKind.Number ? total.GetInt32() : null);
         }
         return map;
     }
@@ -158,12 +182,13 @@ public sealed class SoundService : IAsyncDisposable
     /// </summary>
     /// <param name="likes">앨범 하트는 앨범 ID, 곡 하트는 "t곡ID"</param>
     public async Task<int> SetFavoritesAsync(IEnumerable<(string Key, string Name)> likes, CancellationToken ct = default,
-        IEnumerable<long>? dislikes = null)
+        IEnumerable<long>? dislikes = null, IEnumerable<DislikedTrack>? dislikedTracks = null)
     {
         var args = new
         {
             albums = likes.Select(a => new { id = a.Key, name = a.Name }).ToList(),
             dislikes = (dislikes ?? []).Select(id => new { id }).ToList(),
+            disliked_tracks = (dislikedTracks ?? []).Select(t => new { id = $"t{t.TrackId}", artist = t.Artist, title = t.Title }).ToList(),
         };
         var r = await CallAsync("favorites", args, null, ct);
         return r.GetProperty("count").GetInt32();
@@ -309,12 +334,15 @@ public sealed class SoundService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_proc is not { HasExited: false }) return;
         try
         {
-            await _proc.StandardInput.WriteLineAsync("{\"cmd\":\"quit\"}");
-            if (!_proc.WaitForExit(3000)) _proc.Kill(entireProcessTree: true);
+            if (_proc is { HasExited: false })
+            {
+                await _proc.StandardInput.WriteLineAsync("{\"cmd\":\"quit\"}");
+                if (!_proc.WaitForExit(3000)) { _proc.Kill(entireProcessTree: true); await _proc.WaitForExitAsync(); }
+            }
         }
         catch (Exception) { /* 이미 종료 */ }
+        finally { _cacheLease?.Dispose(); _cacheLease = null; }
     }
 }

@@ -124,6 +124,8 @@ public sealed class GenreSources
     private readonly JsonCache<List<string>> _discogs = new("genre-discogs", TimeSpan.FromDays(365));
     // Last.fm 비슷한 아티스트 (후보 모으기에 Deezer 연관과 같이 쓴다). Deezer 연관 캐시와 같은 14일
     private readonly JsonCache<List<SimilarArtist>> _similar = new("lastfm-similar", TimeSpan.FromDays(14));
+    // Last.fm 아티스트 청취자 수·MBID (작은 아티스트 우대). 청취자 수는 천천히 변해 30일. 못 찾은 아티스트는 null 로 기억한다
+    private readonly JsonCache<ArtistStats?> _artistStats = new("lastfm-artist-stats", TimeSpan.FromDays(30));
     private readonly Throttle _lastFmGate = new(TimeSpan.FromMilliseconds(250));
     private readonly Throttle _discogsGate = new(TimeSpan.FromMilliseconds(1100));
 
@@ -171,6 +173,44 @@ public sealed class GenreSources
         }
         catch (HttpRequestException) { return []; }
         catch (JsonException) { return []; }
+        catch (IOException) { return []; }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return []; }
+    }
+
+    /// <summary>캐시에 있는 Last.fm 아티스트 통계 (묻지 않는다). 물어봤는데 없던 아티스트는 true 에 stats=null</summary>
+    public bool TryCachedArtistStats(string artist, out ArtistStats? stats) => _artistStats.TryGet(ArtistKey(artist), out stats);
+
+    /// <summary>
+    /// Last.fm 아티스트 청취자 수 (artist.getInfo). Deezer 팬 수는 절반 넘게 0 으로 오고, 오래된·아시아 아티스트는 크게 적게 센다.
+    /// 키가 없거나 실패하면 null (네트워크 실패는 캐시하지 않는다)
+    /// </summary>
+    public async Task<ArtistStats?> ArtistStatsAsync(string artist, CancellationToken ct)
+    {
+        if (Settings.LastFmKey is not { } key) return null;
+        var k = ArtistKey(artist);
+        if (k.Length == 0) return null;
+        if (_artistStats.TryGet(k, out var hit)) return hit;
+        await _lastFmGate.WaitAsync(ct);
+        try
+        {
+            var r = await _http.GetFromJsonAsync<LastFmArtistInfo>(
+                $"https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={Esc(artist)}&autocorrect=1&api_key={key}&format=json", ct);
+            if (r == null) return null;
+            if (r.Error != null)
+            {
+                if (r.Error == 6) _artistStats.Set(k, null);  // 6: 그런 아티스트 없음
+                return null;
+            }
+            // 청취자 0 은 기록이 없는 빈 페이지 (autocorrect 가 엉뚱한 페이지로 이은 경우 포함) → 모름
+            ArtistStats? stats = long.TryParse(r.Artist?.Stats?.Listeners, out var listeners) && listeners > 0
+                ? new(listeners, string.IsNullOrEmpty(r.Artist!.Mbid) ? null : r.Artist.Mbid) : null;
+            _artistStats.Set(k, stats);
+            return stats;
+        }
+        catch (HttpRequestException) { return null; }
+        catch (JsonException) { return null; }
+        catch (IOException) { return null; }  // 헤더를 받은 뒤 본문을 읽다 끊김 (HttpIOException)
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return null; }  // HttpClient 시간 초과는 취소가 아니라 실패
     }
 
     /// <summary>
@@ -203,14 +243,14 @@ public sealed class GenreSources
     /// 카드 장르 배지: 받아 둔 태그 중 장르로 읽히는 것 최대 max 개. Last.fm 앨범 태그 → 아티스트 태그 → Discogs 중 먼저 나오는 곳 하나에서만 고른다.
     /// 캐시만 본다 (묻지 않는다 — 못 받은 앨범은 WarmGenresAsync 가 채운 뒤 다음에 보일 때 붙는다). "seen live" · 국적 · 아티스트 이름 같은 태그는 뺀다
     /// </summary>
-    public IReadOnlyList<string> CachedTags(string artist, string album, int max = 3)
+    public IReadOnlyList<string> CachedTags(string artist, string album, int max = 3, Func<string, bool>? filter = null)
     {
         var self = ArtistKey(artist);
         foreach (var (cache, k) in new[] { (_albumTags, AlbumKey(artist, album)), (_artistTags, self), (_discogs, AlbumKey(artist, album)) })
         {
             if (!cache.TryGet(k, out var tags)) continue;
             var seen = new HashSet<string>();
-            List<string> picked = [.. tags.Where(t => GenreGroups.IsGenre(t) && ListeningAnalyzer.NormalizeArtist(t) is { Length: > 0 } n && n != self && seen.Add(n))
+            List<string> picked = [.. tags.Where(t => GenreGroups.IsGenre(t) && (filter == null || filter(t)) && ListeningAnalyzer.NormalizeArtist(t) is { Length: > 0 } n && n != self && seen.Add(n))
                 .Take(max)];
             if (picked.Count > 0) return picked;
         }
@@ -223,6 +263,7 @@ public sealed class GenreSources
         _artistTags.Save();
         _discogs.Save();
         _similar.Save();
+        _artistStats.Save();
     }
 
     /// <summary>Last.fm 태그 (많이 붙은 순). count 가 10 미만인 태그는 몇 사람만 붙인 것이라 뺀다. 실패하면 null</summary>
@@ -239,6 +280,8 @@ public sealed class GenreSources
         }
         catch (HttpRequestException) { return null; }
         catch (JsonException) { return null; }
+        catch (IOException) { return null; }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return null; }
     }
 
     /// <summary>Discogs 검색 첫 결과의 스타일 → 장르 순서. 실패하면 null</summary>
@@ -258,6 +301,8 @@ public sealed class GenreSources
         }
         catch (HttpRequestException) { return null; }
         catch (JsonException) { return null; }
+        catch (IOException) { return null; }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return null; }
     }
 
     private static string Esc(string s) => Uri.EscapeDataString(s);
@@ -300,6 +345,15 @@ public sealed class GenreSources
     // match 는 "0.81" 처럼 문자열로 온다
     private sealed record LastFmSimilarItem([property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("match")] string? Match);
 
+    private sealed record LastFmArtistInfo(
+        [property: JsonPropertyName("artist")] LastFmArtist? Artist,
+        [property: JsonPropertyName("error")] int? Error);
+    private sealed record LastFmArtist(
+        [property: JsonPropertyName("mbid")] string? Mbid,
+        [property: JsonPropertyName("stats")] LastFmArtistCounts? Stats);
+    // listeners 도 "12345" 처럼 문자열로 온다
+    private sealed record LastFmArtistCounts([property: JsonPropertyName("listeners")] string? Listeners);
+
     private sealed record DiscogsSearch([property: JsonPropertyName("results")] List<DiscogsResult>? Results);
     private sealed record DiscogsResult(
         [property: JsonPropertyName("genre")] List<string>? Genre,
@@ -308,3 +362,6 @@ public sealed class GenreSources
 
 /// <summary>Last.fm 비슷한 아티스트 하나 (Match: 0~1, 1이 가장 닮음)</summary>
 public sealed record SimilarArtist(string Name, double Match);
+
+/// <summary>Last.fm 아티스트 통계. Mbid 는 Last.fm 이 아는 경우만 (빠지거나 틀릴 때가 있어 아직 ID 대조에는 쓰지 않는다)</summary>
+public sealed record ArtistStats(long Listeners, string? Mbid);

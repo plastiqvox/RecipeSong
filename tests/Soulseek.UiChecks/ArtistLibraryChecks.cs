@@ -11,6 +11,9 @@ static partial class Program
 {
     static void CheckArtistLibrary(string output, string language)
     {
+        var filters = new JsonCache<ArtistAlbumFilters>("artist-album-filters", TimeSpan.FromDays(36500));
+        filters.Set("filters", new(IncludeOwned: false));
+        filters.Save();
         var coverPath = Path.Combine(output, language + "-fixture-cover.png");
         var visual = new System.Windows.Media.DrawingVisual();
         using (var drawing = visual.RenderOpen())
@@ -55,9 +58,19 @@ static partial class Program
             var candidates = (ComboBox)view.FindName("CandidateBox");
             await WaitFor(() => candidates.Items.Count == 2 && candidates.SelectedItem != null);
             if (!candidates.SelectedItem.ToString()!.Contains("ID 7")) throw new Exception("Owned albums did not correct the first homonymous artist ID.");
+            var identityEditor = (StackPanel)view.FindName("IdentityEditor");
+            if (identityEditor.Visibility != Visibility.Collapsed) throw new Exception("Resolved artist ID did not collapse to a summary.");
+            ((Button)view.FindName("EditIdentityButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            if (identityEditor.Visibility != Visibility.Visible) throw new Exception("Artist ID candidates cannot be reopened.");
+            ((Button)view.FindName("EditIdentityButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             ((Button)view.FindName("FindButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             var albums = (ListBox)view.FindName("Albums");
             await WaitFor(() => albums.Items.Count == 2);
+            var catalogSummary = (TextBlock)view.FindName("CatalogSummary");
+            if (catalogSummary.Visibility != Visibility.Visible || !catalogSummary.Text.Contains(L.F("일부 보유 {0}", 1)))
+                throw new Exception("Album ownership counts are missing.");
+            if (albums.Items.Cast<DiscoveredAlbum>().Any(a => string.IsNullOrWhiteSpace(a.Metadata) || string.IsNullOrWhiteSpace(a.OwnershipLabel)))
+                throw new Exception("Album metadata or ownership badge is missing.");
             if (!albums.Items.Cast<DiscoveredAlbum>().Any(a => a.Ownership == CatalogOwnership.Partial)) throw new Exception("Partial album was hidden.");
             albums.SelectedItem = albums.Items.Cast<DiscoveredAlbum>().Single(a => a.Title == "Missing album");
             var search = (Button)view.FindName("SearchButton");
@@ -66,6 +79,8 @@ static partial class Program
             search.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             if (requested?.DeezerAlbumId != 2 || requested.Artist != "Test artist") throw new Exception("Soulseek navigation lost selected album metadata.");
             Render(view, Path.Combine(output, language + "-artist-library.png"), 1040, 850);
+            if (((ListBoxItem)artists.ItemContainerGenerator.ContainerFromIndex(0)).ActualHeight > 100)
+                throw new Exception("Compact artist rows became too tall.");
             Render(view, Path.Combine(output, language + "-artist-library-narrow.png"), 700, 850);
             if (artistImages.Any(image => image.Source == null)) throw new Exception("Most-played album thumbnails were not displayed.");
             var covers = AlbumImages(albums).ToArray();
@@ -83,12 +98,53 @@ static partial class Program
             ((TextBox)view.FindName("ArtistQuery")).Text = "";
             ((ComboBox)view.FindName("PlaylistBox")).SelectedIndex = 1;
             if (artists.Items.Count != 1) throw new Exception("Specific playlist selection failed.");
+            ((CheckBox)view.FindName("AlbumBox")).IsChecked = true;
+            ((CheckBox)view.FindName("EpBox")).IsChecked = true;
+            ((CheckBox)view.FindName("SingleBox")).IsChecked = false;
+            artists.SelectedIndex = 0;
+            await WaitFor(() => candidates.SelectedItem != null && !view.IsSearching);
+            var originalMusician = (PlaylistMusician)artists.SelectedItem;
+            ((CheckBox)view.FindName("IncludeOwnedBox")).IsChecked = true;
+            ((TextBox)view.FindName("DirectArtistQuery")).Text = "Other artist";
+            var directSearch = (Button)view.FindName("DirectArtistSearchButton");
+            directSearch.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitFor(() => directSearch.IsEnabled && candidates.Items.Count == 2 && artists.SelectedItem == null);
+            candidates.SelectedIndex = 0; // 플리에서 확정했던 ID 7과 다른 동명이인
+            var keptIdentity = await discovery.ResolveArtistAsync(originalMusician, CancellationToken.None);
+            if (keptIdentity.SelectedId != 7 || ((Button)view.FindName("ResetIdentityButton")).IsEnabled)
+                throw new Exception("Direct search overwrote the playlist artist's identity.");
+            candidates.SelectedIndex = 1;
+            ((Button)view.FindName("FindButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var includeOwned = (CheckBox)view.FindName("IncludeOwnedBox");
+            await WaitFor(() => !view.IsSearching && ((Button)view.FindName("FindButton")).IsEnabled);
+            if (albums.Items.Count != 4) throw new Exception("Direct album count: " + albums.Items.Count + " · " + ((TextBlock)view.FindName("StatusText")).Text);
+            if (includeOwned.IsChecked != true || !albums.Items.Cast<DiscoveredAlbum>().Any(a => a.Ownership == CatalogOwnership.InLibrary))
+                throw new Exception("Direct artist search must include owned albums by default.");
+            includeOwned.IsChecked = false;
+            if (albums.Items.Count != 2) throw new Exception("Owned album filter did not restore missing albums only.");
+            includeOwned.IsChecked = true;
+            albums.SelectedItem = albums.Items.Cast<DiscoveredAlbum>().Single(a => a.Title == "Missing album");
+            await WaitFor(() => search.IsEnabled);
+            requested = null;
+            search.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            if (requested?.DeezerAlbumId != 2 || requested.Artist != "Test artist")
+                throw new Exception("Direct artist lookup did not forward the selected album to Soulseek.");
+            if (discovery.Musicians().Count != 1 || discovery.Musicians()[0].Tracks.Count != 1)
+                throw new Exception("Direct search modified the curated playlist artist list.");
+            Render(view, Path.Combine(output, language + "-direct-artist.png"), 1040, 950);
+            Render(view, Path.Combine(output, language + "-direct-artist-narrow.png"), 700, 950);
+            artists.SelectedIndex = 0;
+            await WaitFor(() => candidates.SelectedItem != null && !view.IsSearching);
+            if (includeOwned.IsChecked != true) throw new Exception("Changing artist reset the saved include-owned preference.");
         });
         using var fallbackHttp = new HttpClient(new ArtistCatalogHandler(new Uri(coverPath).AbsoluteUri, ambiguous: true));
         var fallbackDiscovery = new ArtistAlbumDiscovery(new DeezerClient(fallbackHttp), [song, mostPlayed, secondPlayed], playlists, [], identityStore: FreshIdentityStore());
         using var fallbackView = new ArtistLibraryView(_ => Task.FromResult(fallbackDiscovery));
         OnUi(async () =>
         {
+            var includeOwned = (CheckBox)fallbackView.FindName("IncludeOwnedBox");
+            if (includeOwned.IsChecked != true) throw new Exception("A new artist view lost the saved include-owned preference.");
+            includeOwned.IsChecked = false;
             await fallbackView.InitializeAsync();
             var artists = (ListBox)fallbackView.FindName("Artists");
             artists.SelectedIndex = 0;
@@ -99,12 +155,15 @@ static partial class Program
             await WaitFor(() => choices.Visibility == Visibility.Visible && list.Items.Count == 2);
             if (find.IsEnabled || selected.SelectedItem != null || list.SelectedItem != null)
                 throw new Exception("Ambiguous IDs must show candidates without automatically selecting one.");
+            if (((StackPanel)fallbackView.FindName("IdentityEditor")).Visibility != Visibility.Visible)
+                throw new Exception("Ambiguous artist IDs were hidden in the collapsed summary.");
             Render(fallbackView, Path.Combine(output, language + "-artist-id-candidates.png"), 700, 850);
             list.SelectedItem = list.Items.Cast<object>().Single(item => item.ToString()!.Contains("ID 7"));
             if (!find.IsEnabled || !ReferenceEquals(selected.SelectedItem, list.SelectedItem)) throw new Exception("Manual ID row selection failed.");
             find.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             var albums = (ListBox)fallbackView.FindName("Albums");
             await WaitFor(() => albums.Items.Count == 2);
+            ((Button)fallbackView.FindName("EditIdentityButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             list.SelectedItem = list.Items.Cast<object>().Single(item => item.ToString()!.Contains("ID 6"));
             if (albums.Items.Count != 0 || ((Button)fallbackView.FindName("SearchButton")).IsEnabled)
                 throw new Exception("Changing a manual artist ID left stale albums available.");
@@ -129,6 +188,14 @@ static partial class Program
             await WaitFor(() => status.Text == L.T("카탈로그에서 아티스트를 찾지 못했어요."));
             if (((StackPanel)emptyView.FindName("CandidateChoices")).Visibility != Visibility.Collapsed
                 || ((Button)emptyView.FindName("FindButton")).IsEnabled) throw new Exception("Empty ID search must not expose invalid candidates.");
+            ((TextBox)emptyView.FindName("DirectArtistQuery")).Text = "No catalog match";
+            var direct = (Button)emptyView.FindName("DirectArtistSearchButton");
+            direct.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitFor(() => direct.IsEnabled && !emptyView.IsSearching);
+            if (((ComboBox)emptyView.FindName("CandidateBox")).Items.Count != 0
+                || ((Button)emptyView.FindName("FindButton")).IsEnabled || ((Button)emptyView.FindName("SearchButton")).IsEnabled)
+                throw new Exception("Empty direct search retained a downloadable selection.");
+            Render(emptyView, Path.Combine(output, language + "-direct-artist-empty.png"), 700, 850);
         });
     }
 
@@ -174,7 +241,7 @@ static partial class Program
             if (path == "/artist/7/albums")
             {
                 json = json.Replace("\"id\":2,", "\"cover_big\":" + System.Text.Json.JsonSerializer.Serialize(cover) + ",\"id\":2,");
-                json = json.Replace("\"data\":[", "\"data\":[{\"id\":8,\"title\":\"Most played album\",\"nb_tracks\":1},{\"id\":9,\"title\":\"Second most played album\",\"nb_tracks\":1},");
+                json = json.Replace("\"data\":[", "\"data\":[{\"id\":8,\"title\":\"Most played album\",\"nb_tracks\":1,\"record_type\":\"album\",\"release_date\":\"2018-01-01\"},{\"id\":9,\"title\":\"Second most played album\",\"nb_tracks\":1,\"record_type\":\"album\",\"release_date\":\"2019-01-01\"},");
             }
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) });
         }
