@@ -608,7 +608,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                 MatchedTag: metadata.GetValueOrDefault(a.Id)?.Tag,
                 MatchedCrew: metadata.GetValueOrDefault(a.Id)?.Crew,
                 FitRatio: snd?.FitRatio, AnalyzedTracks: snd?.AnalyzedTracks,
-                Evidence: new(contributions[i], snd?.MeanTaste, snd?.TopTaste, snd?.FitThreshold, options.HitsOnly, snd?.ScoredTracks, snd?.TotalTracks)));
+                Evidence: new(contributions[i], snd?.MeanTaste, snd?.TopTaste, snd?.FitThreshold, options.HitsOnly, snd?.ScoredTracks, snd?.TotalTracks, snd?.Model)));
         }
         return (recs, heard.Any(s => s != null));
     }

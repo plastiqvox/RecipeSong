@@ -105,7 +105,7 @@ public sealed partial class ReleaseItem : ObservableObject
     {
         Rec.MatchedTag is { } tag ? L.F("취향과 겹치는 스타일: {0}", tag) : null,
         Rec.MatchedCrew is { } crew ? L.F("좋아하는 앨범과 같은 제작진: {0}", crew) : null,
-        Rec.FitRatio is { } ratio && Rec.AnalyzedTracks is { } count
+        (TasteGate.FitRatio(Rec, TasteThresholds.For(Rec)) ?? Rec.FitRatio) is { } ratio && Rec.AnalyzedTracks is { } count
             ? L.F("분석한 {0}곡 중 취향 기준 이상 {1:P0} (분석 가능한 곡 기준)", count, ratio) : null
     }.Where(s => s != null));
     // BecauseOf는 아티스트 이름 또는 "웹진"·"AI 제안" → 표시할 때만 번역. 웹진·AI 제안은 배지가 이미 말해 줘서 뺀다

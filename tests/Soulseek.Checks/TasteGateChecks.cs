@@ -21,6 +21,17 @@ static class TasteGateChecks
         if (TasteGate.Assess(bad, threshold: .5) != TasteDecision.Recommended || TasteGate.Assess(album, threshold: .65) != TasteDecision.BelowThreshold
             || TasteGate.Assess(bad with { FromPlaylist = FollowList.Tag }, id => id == 12, .5) != TasteDecision.BelowThreshold)
             throw new Exception("Current threshold was not applied to stored track scores.");
+        // 기준선은 소리 모델별: 모델 기록이 없는 예전 결과는 LegacyModel 기준선, 다른 모델 결과는 그 모델 기준선, 모르는 모델은 계산 당시 판정
+        TasteThresholds.Set(TasteThresholds.LegacyModel, .5);
+        TasteThresholds.Set("emb_other", .65);
+        var other = bad with { Evidence = bad.Evidence! with { SoundModel = "emb_other" } };
+        if (TasteThresholds.For(bad) != .5 || TasteThresholds.For(other) != .65
+            || TasteThresholds.For(bad with { Evidence = bad.Evidence! with { SoundModel = "emb_unknown" } }) != null
+            || TasteGate.Assess(bad, threshold: TasteThresholds.For(bad)) != TasteDecision.Recommended
+            || TasteGate.Assess(other, threshold: TasteThresholds.For(other)) != TasteDecision.BelowThreshold)
+            throw new Exception("Threshold of another sound model was applied.");
+        if (TasteGate.FitRatio(bad, .5) is not { } ratio || Math.Abs(ratio - 2.0 / 3) > 1e-9 || TasteGate.FitRatio(bad, null) is not { } stored || Math.Abs(stored - 1.0 / 3) > 1e-9)
+            throw new Exception("Evidence fit ratio did not follow the current threshold.");
         if (TasteGate.Assess(album, id => id == 12) != TasteDecision.BelowThreshold)
             throw new Exception("Explicitly disliked track still counted as a match.");
         var negative = album with { Evidence = evidence with { Tracks = [new(11, "One", .6, true), new(12, "Two", .61, true, true), new(13, "Three", .3, false)] } };

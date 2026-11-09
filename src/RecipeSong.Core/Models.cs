@@ -126,8 +126,10 @@ public sealed record ReleaseRecommendation(
 /// <summary>계산 당시 실제로 더한 점수. Kind는 저장용 식별자이며 화면에서만 번역한다.</summary>
 public sealed record ScoreContribution(string Kind, double Value);
 public sealed record ScoredTrack(long Id, string? Title, double Taste, bool? MeetsThreshold = null, bool? MatchesDislike = null);
+/// <summary>SoundModel: 곡 점수를 낸 소리 모델 (임베딩 폴더 이름, 예전 기록은 null = TasteThresholds.LegacyModel)</summary>
 public sealed record RankingEvidence(IReadOnlyList<ScoreContribution> Contributions, double? MeanTaste,
-    double? TopTaste, double? FitThreshold, bool HitsOnly, IReadOnlyList<ScoredTrack>? Tracks = null, int? TotalTracks = null)
+    double? TopTaste, double? FitThreshold, bool HitsOnly, IReadOnlyList<ScoredTrack>? Tracks = null, int? TotalTracks = null,
+    string? SoundModel = null)
 {
     public double Total => Math.Round(Contributions.Sum(c => c.Value), 3);
 }
@@ -163,7 +165,7 @@ public sealed record AlbumSound(
     double? Taste, IReadOnlyList<string> Near, string? Label, string? Genre,
     double? Fav = null, string? FavNear = null, double? Dis = null, IReadOnlyList<string>? With = null,
     IReadOnlyList<TrackPair>? Pairs = null, double? FitRatio = null, int? AnalyzedTracks = null,
-    double? MeanTaste = null, double? TopTaste = null, double? FitThreshold = null, IReadOnlyList<ScoredTrack>? ScoredTracks = null, int? TotalTracks = null)
+    double? MeanTaste = null, double? TopTaste = null, double? FitThreshold = null, IReadOnlyList<ScoredTrack>? ScoredTracks = null, int? TotalTracks = null, string? Model = null)
 {
     /// <summary>Fav: 저장함 앨범과 닮은 정도, FavNear: 가장 닮은 저장 앨범 ("아티스트 – 앨범")</summary>
     public bool Heard => Taste != null;

@@ -31,11 +31,22 @@ public static class TasteGate
     {
         if (album.Evidence?.Tracks is not { } tracks) return 0;
         // 싱글은 한 곡으로 갈려 기준선 0.003 아래(오차 수준)에서도 빠졌다 → 기준선 아래 SingleMargin 까지는 맞는 곡으로 본다
+        return Scored(tracks).Count(t => TrackFits(album, t, threshold) && t.MatchesDislike != true && dislikedTrack?.Invoke(t.Id) != true);
+    }
+
+    /// <summary>곡 하나가 기준선을 넘는지 (불호 판정은 따로). threshold 가 없으면 계산 당시 판정</summary>
+    public static bool TrackFits(ReleaseRecommendation album, ScoredTrack t, double? threshold)
+    {
         double margin = IsSingle(album) ? SingleMargin : 0;
-        double? stored = album.Evidence.FitThreshold;
-        bool Fits(ScoredTrack t) => threshold is { } th ? t.Taste >= th - margin
-            : t.MeetsThreshold == true || (margin > 0 && t.Taste >= stored - margin);
-        return Scored(tracks).Count(t => Fits(t) && t.MatchesDislike != true && dislikedTrack?.Invoke(t.Id) != true);
+        return threshold is { } th ? t.Taste >= th - margin
+            : t.MeetsThreshold == true || (margin > 0 && t.Taste >= album.Evidence?.FitThreshold - margin);
+    }
+
+    /// <summary>분석한 곡 중 기준선을 넘은 비율 (곡별 기록이 없으면 null)</summary>
+    public static double? FitRatio(ReleaseRecommendation album, double? threshold)
+    {
+        var scored = Scored(album.Evidence?.Tracks ?? []);
+        return scored.Length == 0 ? null : (double)scored.Count(t => TrackFits(album, t, threshold) && t.MatchesDislike != true) / scored.Length;
     }
 
     /// <summary>판정에 쓰는 곡: 점수와 계산 당시 판정이 있는 곡</summary>

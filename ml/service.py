@@ -258,6 +258,7 @@ class Service:
             "compared": int((self.lib_w > 0).sum()),
             "fit_threshold": self.track_fit_threshold,
             "fit_threshold_source": self.threshold_source,
+            "embeddings": self.model["embeddings"],
         }
 
     # ---- 임베딩 -----------------------------------------------------------
@@ -466,7 +467,7 @@ class Service:
                 description["scored_tracks"] = [{"id": int(tid), "title": info.get("track_titles", {}).get(str(tid)),
                                                   "taste": round(float(value), 4), "fits": bool(value >= self.track_fit_threshold and not bad),
                                                   "matches_dislike": bool(bad)} for tid, value, bad in zip(ids, scores, rejected)]
-            results.append({"id": a["id"], "ok": True, **info, **description})
+            results.append({"id": a["id"], "ok": True, **info, **description, "embeddings": self.model["embeddings"]})
         if self.fav_x is not None:
             log(f"[service] 점수 {len(results)}장 (저장함 {len(self.fav_keys)}장과 비교)")
         return {"albums": results}

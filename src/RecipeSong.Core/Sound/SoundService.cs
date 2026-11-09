@@ -124,17 +124,14 @@ public sealed class SoundService : IAsyncDisposable
 
     public bool IsRunning => _proc is { HasExited: false } && _ready.Task.IsCompletedSuccessfully;
 
-    /// <summary>서비스가 지금 쓰는 곡별 취향 기준선 (미리듣기 기준, 못 만들면 라이브러리 기준). 바뀌면 FitThresholdChanged</summary>
-    public double? FitThreshold { get; private set; }
-    public event Action<double>? FitThresholdChanged;
+    /// <summary>서비스가 정한 곡별 취향 기준선이 바뀌었다 (TasteThresholds 에 소리 모델별로 저장한 뒤 부른다)</summary>
+    public event Action? FitThresholdChanged;
 
     private void SeeThreshold(JsonElement e)
     {
-        if (!e.TryGetProperty("fit_threshold", out var v) || v.ValueKind != JsonValueKind.Number) return;
-        var t = Math.Round(v.GetDouble(), 4);  // 앨범 결과에는 반올림해 온다 — 같은 값을 두 번 바뀐 것으로 보지 않게
-        if (FitThreshold is { } old && Math.Abs(old - t) < 1e-6) return;
-        FitThreshold = t;
-        FitThresholdChanged?.Invoke(t);
+        if (!e.TryGetProperty("fit_threshold", out var v) || v.ValueKind != JsonValueKind.Number || Str(e, "embeddings") is not { } model) return;
+        // 앨범 결과에는 반올림해 온다 — 같은 값을 두 번 바뀐 것으로 보지 않게
+        if (TasteThresholds.Set(model, Math.Round(v.GetDouble(), 4))) FitThresholdChanged?.Invoke();
     }
 
     public async Task<SoundStatus> StatusAsync(CancellationToken ct = default)
@@ -186,7 +183,8 @@ public sealed class SoundService : IAsyncDisposable
                     new ScoredTrack(t.GetProperty("id").GetInt64(), Str(t, "title"), t.GetProperty("taste").GetDouble(),
                         t.TryGetProperty("fits", out var fits) ? fits.GetBoolean() : null,
                         t.TryGetProperty("matches_dislike", out var bad) ? bad.GetBoolean() : null))] : null,
-                a.TryGetProperty("total_tracks", out var total) && total.ValueKind == JsonValueKind.Number ? total.GetInt32() : null);
+                a.TryGetProperty("total_tracks", out var total) && total.ValueKind == JsonValueKind.Number ? total.GetInt32() : null,
+                Str(a, "embeddings"));
         }
         return map;
     }
