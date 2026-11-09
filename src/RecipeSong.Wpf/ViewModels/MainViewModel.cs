@@ -1861,7 +1861,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _mineSyncText;
 
     // ---- 추천 결과 저장: 한 번 계산한 기간은 다음에 바로 꺼낸다 ----
-    private readonly JsonCache<List<ReleaseRecommendation>> _recResults = new("rec-results", TimeSpan.FromDays(90));
+    // 만료 없음: 지난 기간은 몇 년 치를 미리 계산해 두고 계속 쓴다. 끝난 지 7일 안 된 기간의 짧은 유효 시간은 TryGetSavedRecs(FreshFor)가 따로 본다
+    private readonly JsonCache<List<ReleaseRecommendation>> _recResults = new("rec-results", TimeSpan.FromDays(36500));
 
     // ---- Apple Music: iTunes 검색으로 앨범 주소를 찾아 iTunes 앱에서 연다 (못 찾으면 Apple Music 검색) ----
     private ITunesSearchClient _itunes = null!;
@@ -2185,8 +2186,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             await LoadAsync();  // 이제 저장 결과가 새것이라 그대로 다시 그린다
             if (CurrentPeriod.Label == period.Label) _ = CheckDislikeMatchesAsync(period, key);
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { BusyText = L.F("새로 계산하지 못했어요: {0}", ex.Message); }
+        // 멈추기·기간 변경으로 취소된 것만 조용히 끝낸다. 다른 취소 예외(시간 초과 등)는 실패로 보이고 기록에 남긴다
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            BusyText = L.F("새로 계산하지 못했어요: {0}", ex.Message);
+            (progress as StageProgress)?.Finish(BusyText);
+        }
         finally { if (!ct.IsCancellationRequested) IsRefreshing = false; Stopped(progress); }
     }
 

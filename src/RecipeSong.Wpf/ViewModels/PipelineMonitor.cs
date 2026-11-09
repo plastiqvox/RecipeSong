@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -419,6 +420,28 @@ public sealed partial class PipelineMonitor : ObservableObject
         var tag = run == Primary ? "" : $"[{run.KindLabel}] ";
         Log.Insert(0, $"{DateTime.Now:HH:mm:ss}  {tag}{line}");
         while (Log.Count > 300) Log.RemoveAt(Log.Count - 1);
+        // 파일에는 모든 줄에 계산 번호·종류·시작부터 걸린 시간을 붙인다 (여러 계산이 섞여도 단계별 시간을 따라갈 수 있게)
+        WriteFile($"#{run.Id} {run.KindLabel} +{Clock(run.Total.Elapsed)}  {line}");
+    }
+
+    private static readonly Lock FileGate = new();
+
+    /// <summary>
+    /// 진행 기록 파일(캐시 폴더 pipeline.log). 창의 기록은 300줄·이번 실행뿐이라, 오래 걸리거나 멈춘 계산을 나중에 보려고 남긴다.
+    /// 2MB 를 넘으면 pipeline.log.old 로 하나만 남긴다.
+    /// </summary>
+    private static void WriteFile(string line)
+    {
+        lock (FileGate)
+        {
+            try
+            {
+                var path = Path.Combine(JsonCache<object>.Dir, "pipeline.log");
+                if (File.Exists(path) && new FileInfo(path).Length > 2_000_000) File.Move(path, path + ".old", overwrite: true);
+                File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {line}{Environment.NewLine}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }  // 진단 기록 실패는 무시
+        }
     }
 
     /// <summary>재사용 칸에 쓰는 '얼마 전에 만든 것인가'</summary>

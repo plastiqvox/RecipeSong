@@ -131,7 +131,7 @@ dotnet run --project src/RecipeSong.Cli -- status
 dotnet run --project src/RecipeSong.Cli -- recommend 2026-W43 --crate 인디·록 --type album --top 5
 ```
 
-캐시와 로그: `%LOCALAPPDATA%\RecipeSong\` (`sound-service.log`는 소리 분석 서비스 로그).
+캐시와 로그: `%LOCALAPPDATA%\RecipeSong\` (`sound-service.log`는 소리 분석 서비스 로그, `pipeline.log`는 추천 계산의 단계별 진행 기록 — 줄마다 계산 번호와 시작부터 걸린 시간).
 
 ## 한계
 
