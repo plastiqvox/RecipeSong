@@ -2057,12 +2057,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         latest = default;
         if (parts.Count == 0) return false;
         var all = new List<ReleaseRecommendation>();
+        int found = 0;
         foreach (var part in parts)
         {
-            if (!TryGetSavedRecs(RecKey(part), part, out var got, out var at)) return false;
+            if (!TryGetSavedRecs(RecKey(part), part, out var got, out var at))
+            {
+                // 앞 해에서 시작하는 첫 주(예: 2023년 보기의 12.26–1.1 주)는 이 기간에 하루이틀만 걸친다.
+                // 몇 년 치를 미리 계산할 때 그 주가 빠지기 쉬워, 그 주 하나 때문에 연 전체를 새로 계산하지 않게 건너뛴다
+                if (part.Start < period.Start) continue;
+                return false;
+            }
             all.AddRange(got);
+            found++;
             if (at > latest) latest = at;
         }
+        if (found == 0) return false;
         recs = [.. all.Where(r => period.Contains(r.ReleaseDate)).DistinctBy(r => r.DeezerAlbumId)
             .OrderByDescending(r => r.FromPlaylist != null).ThenByDescending(r => r.Score)];
         return true;
@@ -2256,12 +2265,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         RecSavedNote = "";
         _ = LoadLibraryAsync(period, ct);
 
-        // 저장된 AI 결과는 계산을 기다리지 않고 먼저 보여 준다
-        if (aiRecs.Count > 0)
-        {
-            _all = [.. aiRecs.Select(r => MakeItem(r))];
-            ApplyFilters();
-        }
+        // 저장된 AI 결과는 계산을 기다리지 않고 먼저 보여 준다. 없어도 비운다: 새로 계산하는 몇 분 동안 앞 기간 카드가 남아 있었다
+        _all = [.. aiRecs.Select(r => MakeItem(r))];
+        ApplyFilters();
         try
         {
             List<ReleaseRecommendation> releases;
