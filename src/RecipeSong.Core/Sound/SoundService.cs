@@ -124,9 +124,23 @@ public sealed class SoundService : IAsyncDisposable
 
     public bool IsRunning => _proc is { HasExited: false } && _ready.Task.IsCompletedSuccessfully;
 
+    /// <summary>서비스가 지금 쓰는 곡별 취향 기준선 (미리듣기 기준, 못 만들면 라이브러리 기준). 바뀌면 FitThresholdChanged</summary>
+    public double? FitThreshold { get; private set; }
+    public event Action<double>? FitThresholdChanged;
+
+    private void SeeThreshold(JsonElement e)
+    {
+        if (!e.TryGetProperty("fit_threshold", out var v) || v.ValueKind != JsonValueKind.Number) return;
+        var t = Math.Round(v.GetDouble(), 4);  // 앨범 결과에는 반올림해 온다 — 같은 값을 두 번 바뀐 것으로 보지 않게
+        if (FitThreshold is { } old && Math.Abs(old - t) < 1e-6) return;
+        FitThreshold = t;
+        FitThresholdChanged?.Invoke(t);
+    }
+
     public async Task<SoundStatus> StatusAsync(CancellationToken ct = default)
     {
         var r = await CallAsync("status", null, null, ct);
+        SeeThreshold(r);
         if (r.TryGetProperty("trained", out var tr) && !tr.GetBoolean())
             return new SoundStatus(r.GetProperty("device").GetString()!, r.GetProperty("gpu").GetString(), default, 0,
                 r.GetProperty("embedded").GetInt32(), r.GetProperty("new_tracks").GetInt32(),
@@ -151,6 +165,7 @@ public sealed class SoundService : IAsyncDisposable
         var map = new Dictionary<long, AlbumSound>();
         foreach (var a in r.GetProperty("albums").EnumerateArray())
         {
+            SeeThreshold(a);
             bool ok = a.GetProperty("ok").GetBoolean();
             map[a.GetProperty("id").GetInt64()] = new AlbumSound(
                 ok ? a.GetProperty("taste").GetDouble() : null,

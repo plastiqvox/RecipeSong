@@ -532,6 +532,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshAiStatus();
         // AI를 쓸 때마다 사이드바 사용액을 갱신 (기록은 백그라운드 스레드에서 올 수 있다)
         _aiLedger.Changed += () => Application.Current?.Dispatcher.BeginInvoke(RefreshAiStatus);
+        // 취향 기준선: 서비스가 새로 정하면 저장해 두고 저장된 추천을 그 값으로 다시 판정한다 (서비스가 아직 안 떠도 지난 값으로)
+        if (_fitThresholdStore.TryGet("value", out var threshold)) _fitThreshold = threshold;
+        if (_sound != null)
+            _sound.FitThresholdChanged += t => Application.Current?.Dispatcher.BeginInvoke(() =>
+            {
+                _fitThreshold = t;
+                _fitThresholdStore.Set("value", t);
+                _fitThresholdStore.Save();
+                ApplyFilters();
+            });
         _ = CheckKeysAsync();
         Player.OpenNowRequested = () => _ = GoToNowPlayingAsync();
         Player.Listened += OnListened;
@@ -1570,7 +1580,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return _all.Where(i => !_blocked.IsBlocked(i.Rec) && !RedundantInstrumental(i) && _owned?.HasArchiveAlbum(i.Artist, i.Album) != true)
             .Where(i => !(live && AlbumVariants.IsLive(i.Album)) && !(remix && AlbumVariants.IsRemix(i.Album)))
             .Where(i => !i.IsDisliked)
-            .Where(i => decision == null || TasteGate.Assess(i.Rec, _dislikedTracks.Contains) == decision)
+            .Where(i => decision == null || TasteGate.Assess(i.Rec, _dislikedTracks.Contains, _fitThreshold) == decision)
             .Where(i => _types.Count == 0 || _types.Contains(i.Rec.RecordType));
     }
 
@@ -1579,6 +1589,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private const string ReviewChip = "확인 필요";
     /// <summary>"기준 미달" 칩: 충분히 들었지만 취향 기준에 못 미쳐 숨긴 것. 기준은 그대로 두고 빠진 것을 직접 들어 볼 수 있게</summary>
     private const string BelowChip = "기준 미달";
+    /// <summary>지금 곡별 취향 기준선 (소리 서비스가 정한 값을 저장해 둔 것). 저장된 추천도 이 값으로 다시 판정한다</summary>
+    private readonly JsonCache<double> _fitThresholdStore = new("fit-threshold", TimeSpan.FromDays(36500));
+    private double? _fitThreshold;
     [ObservableProperty] private string _tasteFilterSummary = "";
     /// <summary>"웹진" 칩: 웹진 RSS에서 가져온 것만</summary>
     private const string WebzineChip = "웹진";
@@ -1652,11 +1665,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>기준 미달 카드에 붙이는 한 줄: 기준선을 넘은 곡 수</summary>
-    private static string BelowReason(ReleaseRecommendation r)
-    {
-        var tracks = r.Evidence?.Tracks?.Where(t => t.Id > 0 && t.MeetsThreshold != null).DistinctBy(t => t.Id).ToList() ?? [];
-        return L.F("기준 미달: 취향 기준을 넘은 곡 {0}/{1}", tracks.Count(t => t.MeetsThreshold == true && t.MatchesDislike != true), tracks.Count);
-    }
+    private string BelowReason(ReleaseRecommendation r) =>
+        L.F("기준 미달: 취향 기준을 넘은 곡 {0}/{1}", TasteGate.FitCount(r, _fitThreshold, _dislikedTracks.Contains),
+            TasteGate.Scored(r.Evidence?.Tracks ?? []).Length);
 
     private void ApplyFilters()
     {
@@ -1667,7 +1678,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var below = new List<ReleaseItem>();
         foreach (var item in pool)
         {
-            var decision = TasteGate.Assess(item.Rec, _dislikedTracks.Contains);
+            var decision = TasteGate.Assess(item.Rec, _dislikedTracks.Contains, _fitThreshold);
             item.TasteReviewReason = decision switch
             {
                 TasteDecision.NeedsReview => L.T("곡별 분석 기록이 없거나 분석한 곡이 적어 확인이 필요해요."),

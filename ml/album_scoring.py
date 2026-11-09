@@ -29,6 +29,21 @@ def fit_threshold(lib: np.ndarray, weights: np.ndarray, neighbors: int = 20) -> 
     return float(np.quantile(scores, 0.25))
 
 
+def reference_threshold(refs: np.ndarray, lib: np.ndarray, weights: np.ndarray, exclude: np.ndarray,
+                        neighbors: int = 20, quantile: float = 0.25) -> float | None:
+    """기준 곡들(내 곡의 미리듣기)을 신보와 같은 방식으로 점수 매긴 분포의 하위 quantile. exclude[i, j]: i 의 비교에서 뺄 라이브러리 곡."""
+    active = weights > 0
+    if active.sum() < 2 or not len(refs):
+        return None
+    sims = (refs @ lib.T) * weights
+    sims[:, ~active] = -np.inf
+    sims[exclude] = -np.inf
+    count = min(neighbors, int(active.sum()) - 1)
+    scores = np.partition(sims, -count, axis=1)[:, -count:].mean(axis=1)
+    scores = scores[np.isfinite(scores)]
+    return float(np.quantile(scores, quantile)) if len(scores) else None
+
+
 def negative_feedback(embeddings: np.ndarray, positives: np.ndarray | None, negatives: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
     if positives is None or negatives is None or not len(positives) or not len(negatives):
         return np.zeros(len(embeddings)), np.zeros(len(embeddings), dtype=bool)

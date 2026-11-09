@@ -48,6 +48,11 @@ KNN = 20
 MAX_TRACKS = 20      # 전곡 모드에서 미리듣기를 들을 최대 곡 수
 HIT_TRACKS = 3       # 인기곡 모드: Deezer 인기(rank) 상위 곡 수
 GROUP_KNN = 15  # 장르를 모르는 앨범: 장르를 아는 앨범 중 소리가 가장 닮은 이만큼의 칸을 본다
+# 미리듣기 기준선: 내 곡 일부의 실제 Deezer 미리듣기. 이만큼 찾으면 멈추고, 이보다 적게 찾으면 라이브러리 기준선을 쓴다
+PREVIEW_REFS = 200
+PREVIEW_REFS_TRY = 450
+PREVIEW_REFS_MIN = 60
+PREVIEW_REFS_DAYS = 90
 
 
 def send(obj: dict) -> None:
@@ -81,6 +86,10 @@ class Service:
         self.dis_x: np.ndarray | None = None
         self.dis_track_x: np.ndarray | None = None
         self.disliked_track_names: set[tuple[str, str]] = set()
+        # 내 곡의 미리듣기 소리 (키, 임베딩) — 기준선을 신보와 같은 조건(미리듣기)에서 정한다. 소리 모델마다 따로
+        self.preview_refs: tuple[list[str], np.ndarray] | None = None
+        self._preview_refs_for: str | None = None
+        self.threshold_source = "library"
         self.reload()
 
     # ---- 상태 -------------------------------------------------------------
@@ -141,9 +150,89 @@ class Service:
         for i, (artist, title) in enumerate(self.meta):
             if (self.feedback_name(artist), self.feedback_name(title)) in self.disliked_track_names:
                 self.feedback_w[i] = 0
-        self.track_fit_threshold = album_scoring.fit_threshold(self.lib, self.feedback_w, KNN)
+        self.track_fit_threshold = self.preview_threshold()
+        self.threshold_source = "preview" if self.track_fit_threshold is not None else "library"
+        if self.track_fit_threshold is None:
+            self.track_fit_threshold = album_scoring.fit_threshold(self.lib, self.feedback_w, KNN)
         refs = self.lib[self.feedback_w >= 0.8] if np.any(self.feedback_w >= 0.8) else self.lib[self.feedback_w > 0]
         self.positive_track_x = np.concatenate([refs, self.fav_x]) if self.fav_x is not None else refs
+
+    # ---- 미리듣기 기준선 ------------------------------------------------------
+    # 신보는 30초 미리듣기로만 듣는데, 라이브러리 기준선은 전곡의 세 지점을 평균한 내 곡끼리 비교해 정했다.
+    # 같은 곡도 미리듣기로 들으면 평균 0.08 낮게 나와(내 곡 119곡 실험), 좋아하는 곡의 58%가 기준선 아래였다.
+    # → 내 곡 일부의 실제 미리듣기를 한 번 받아 두고, 그 점수의 하위 25%를 기준선으로 쓴다 (원래 뜻: 내 곡의 하위 25%).
+    def preview_refs_file(self) -> Path:
+        return DATA / f"preview_refs_{self.model['embeddings']}.npz"
+
+    def preview_threshold(self) -> float | None:
+        if self.model is None:
+            return None
+        emb_name = self.model["embeddings"]
+        if self._preview_refs_for != emb_name:
+            self.preview_refs, self._preview_refs_for = None, emb_name
+            f = self.preview_refs_file()
+            if f.exists() and time.time() - os.path.getmtime(f) < PREVIEW_REFS_DAYS * 86400:
+                d = np.load(f, allow_pickle=False)
+                self.preview_refs = (d["keys"].tolist(), d["emb"].astype(np.float32))
+        if self.preview_refs is None:
+            return None
+        index = {k: i for i, k in enumerate(self.keys)}
+        pairs = [(index[k], e) for k, e in zip(*self.preview_refs) if k in index]
+        if len(pairs) < PREVIEW_REFS_MIN:
+            return None
+        rows = np.array([i for i, _ in pairs])
+        artists = np.array([self.feedback_name(a) for a, _ in self.meta])
+        # 같은 아티스트 곡은 비교에서 뺀다: 처음 보는 아티스트의 신보와 같은 조건
+        exclude = artists[rows][:, None] == artists[None, :]
+        x = train.preprocess(np.stack([e for _, e in pairs]), self.mean).astype(np.float32)
+        return album_scoring.reference_threshold(x, self.lib, self.feedback_w, exclude, KNN)
+
+    def ensure_preview_refs(self, rid) -> None:
+        """미리듣기 기준선이 없으면 내 곡 일부의 미리듣기를 받아 만든다 (처음 한 번 2~3분, 소리 모델이 바뀌거나 90일 지나면 다시)."""
+        if self.model is None or self.preview_refs is not None or getattr(self, "_preview_refs_failed", None) == self.model["embeddings"]:
+            return
+        import random
+        weights = getattr(self, "feedback_w", self.lib_w)
+        order = [i for i in range(len(self.keys)) if weights[i] >= 0.8 and self.meta[i][0] != "?"]
+        random.Random(0).shuffle(order)
+        picked, artists = [], set()
+        for i in order:
+            a = self.feedback_name(self.meta[i][0])
+            if a and a not in artists:
+                artists.add(a)
+                picked.append(i)
+            if len(picked) >= PREVIEW_REFS_TRY:
+                break
+        found_keys, groups = [], []
+        for n, i in enumerate(picked, 1):
+            artist, title = self.meta[i]
+            hits = self.deezer("/search?q=" + requests.utils.quote(f"{artist} {title}") + "&limit=10").get("data") or []
+            hit = next((h for h in hits if h.get("preview") and self.feedback_name((h.get("artist") or {}).get("name", "")) == self.feedback_name(artist)
+                        and self.feedback_name(h.get("title", "")).startswith(self.feedback_name(title)[:12])), None)
+            if hit:
+                try:
+                    clips = decode_preview(self._http.get(hit["preview"], timeout=20).content, self.sr)
+                except requests.RequestException:
+                    clips = []
+                if clips:
+                    found_keys.append(self.keys[i])
+                    groups.append(clips)
+            if n % 25 == 0:
+                send({"id": rid, "event": "progress", "message": f"취향 기준선 맞추는 중 (내 곡 미리듣기 {len(groups)}곡)",
+                      "done": n, "total": len(picked)})
+            if len(groups) >= PREVIEW_REFS:
+                break
+        if len(groups) < PREVIEW_REFS_MIN:
+            # 오프라인 등: 이번 실행에서는 라이브러리 기준선을 쓰고 다시 묻지 않는다
+            self._preview_refs_failed = self.model["embeddings"]
+            log(f"[service] 미리듣기 기준선을 만들지 못함 ({len(groups)}곡) → 라이브러리 기준선 사용")
+            return
+        embs = [e for s in range(0, len(groups), 24) for e in self.embed_clips(groups[s:s + 24])]
+        keep = [(k, e) for k, e in zip(found_keys, embs) if e is not None]
+        np.savez(self.preview_refs_file(), keys=np.array([k for k, _ in keep]), emb=np.stack([e for _, e in keep]).astype(np.float16))
+        self._preview_refs_for = None  # 파일을 다시 읽게
+        self.refresh_feedback_weights()
+        log(f"[service] 미리듣기 기준선 {self.track_fit_threshold:.4f} (내 곡 미리듣기 {len(keep)}곡)")
 
     def new_tracks(self, include_failed: bool = False) -> list:
         skip = self.keyset if include_failed else self.keyset | self.failed()
@@ -167,6 +256,8 @@ class Service:
             "embedded": len(self.keys),
             "new_tracks": len(self.new_tracks()),
             "compared": int((self.lib_w > 0).sum()),
+            "fit_threshold": self.track_fit_threshold,
+            "fit_threshold_source": self.threshold_source,
         }
 
     # ---- 임베딩 -----------------------------------------------------------
@@ -352,6 +443,7 @@ class Service:
             return {"albums": []}
         albums = args["albums"]
         self.track_mode = "top" if args.get("tracks") == "top" else "all"
+        self.ensure_preview_refs(rid)
         self.ensure_embedded(albums, rid)
         results = []
         for a in albums:

@@ -17,6 +17,10 @@ static class TasteGateChecks
         if (TasteGate.Assess(bad with { FromPlaylist = TasteProfile.LibraryTag }) != TasteDecision.Recommended
             || TasteGate.Assess(album with { FromPlaylist = TasteProfile.LibraryTag, Taste = null }) != TasteDecision.Recommended)
             throw new Exception("Library artist release was cut by the taste gate.");
+        // 지금 기준선을 주면 저장된 통과 표시 대신 곡 점수로 다시 판정한다 (기준선이 계산마다 움직여도 같은 점수는 같은 판정)
+        if (TasteGate.Assess(bad, threshold: .5) != TasteDecision.Recommended || TasteGate.Assess(album, threshold: .65) != TasteDecision.BelowThreshold
+            || TasteGate.Assess(bad with { FromPlaylist = FollowList.Tag }, id => id == 12, .5) != TasteDecision.BelowThreshold)
+            throw new Exception("Current threshold was not applied to stored track scores.");
         if (TasteGate.Assess(album, id => id == 12) != TasteDecision.BelowThreshold)
             throw new Exception("Explicitly disliked track still counted as a match.");
         var negative = album with { Evidence = evidence with { Tracks = [new(11, "One", .6, true), new(12, "Two", .61, true, true), new(13, "Three", .3, false)] } };
