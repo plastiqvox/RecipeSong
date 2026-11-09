@@ -448,7 +448,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public void MoveCrateTo(string key, string target, bool after)
     {
         if (key == target) return;
-        var order = CrateChips.Select(c => c.Key).Where(k => k != Labels.All && k != AiChip && k != WebzineChip && k != ReviewChip && k != Labels.Unsorted)
+        var order = CrateChips.Select(c => c.Key).Where(k => k != Labels.All && k != AiChip && k != WebzineChip && k != ReviewChip && k != BelowChip && k != Labels.Unsorted)
             .Concat(CrateOrder).Distinct().ToList();
         if (!order.Remove(key)) return;
         int t = order.IndexOf(target);
@@ -467,7 +467,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (where == "reset") _userOrder = [];
         else
         {
-            var order = CrateChips.Select(c => c.Key).Where(k => k != Labels.All && k != AiChip && k != WebzineChip && k != ReviewChip && k != Labels.Unsorted)
+            var order = CrateChips.Select(c => c.Key).Where(k => k != Labels.All && k != AiChip && k != WebzineChip && k != ReviewChip && k != BelowChip && k != Labels.Unsorted)
                 .Concat(CrateOrder).Distinct().ToList();
             int i = order.IndexOf(key);
             if (i < 0) return;
@@ -1577,6 +1577,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>크레이트 칩 옆 "AI 제안" 칩: AI 커넥터가 찾은 것만 모아 본다</summary>
     private const string AiChip = "AI 제안";
     private const string ReviewChip = "확인 필요";
+    /// <summary>"기준 미달" 칩: 충분히 들었지만 취향 기준에 못 미쳐 숨긴 것. 기준은 그대로 두고 빠진 것을 직접 들어 볼 수 있게</summary>
+    private const string BelowChip = "기준 미달";
     [ObservableProperty] private string _tasteFilterSummary = "";
     /// <summary>"웹진" 칩: 웹진 RSS에서 가져온 것만</summary>
     private const string WebzineChip = "웹진";
@@ -1649,21 +1651,34 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         finally { Stopped(progress); }
     }
 
+    /// <summary>기준 미달 카드에 붙이는 한 줄: 기준선을 넘은 곡 수</summary>
+    private static string BelowReason(ReleaseRecommendation r)
+    {
+        var tracks = r.Evidence?.Tracks?.Where(t => t.Id > 0 && t.MeetsThreshold != null).DistinctBy(t => t.Id).ToList() ?? [];
+        return L.F("기준 미달: 취향 기준을 넘은 곡 {0}/{1}", tracks.Count(t => t.MeetsThreshold == true && t.MatchesDislike != true), tracks.Count);
+    }
+
     private void ApplyFilters()
     {
         Player.StopIfExcluded(IsPlaybackExcluded);
         var pool = FilteredBase(null).ToList();
         var recommended = new List<ReleaseItem>();
         var review = new List<ReleaseItem>();
+        var below = new List<ReleaseItem>();
         foreach (var item in pool)
         {
             var decision = TasteGate.Assess(item.Rec, _dislikedTracks.Contains);
-            item.TasteReviewReason = decision == TasteDecision.NeedsReview
-                ? L.T("곡별 분석 기록이 없거나 분석한 곡이 적어 확인이 필요해요.") : null;
+            item.TasteReviewReason = decision switch
+            {
+                TasteDecision.NeedsReview => L.T("곡별 분석 기록이 없거나 분석한 곡이 적어 확인이 필요해요."),
+                TasteDecision.BelowThreshold => BelowReason(item.Rec),
+                _ => null,
+            };
             if (decision == TasteDecision.Recommended) recommended.Add(item);
             else if (decision == TasteDecision.NeedsReview) review.Add(item);
+            else below.Add(item);
         }
-        TasteFilterSummary = L.F("취향 기준 통과 {0}장 · 확인 필요 {1}장 · 기준 미달 {2}장", recommended.Count, review.Count, pool.Count - recommended.Count - review.Count);
+        TasteFilterSummary = L.F("취향 기준 통과 {0}장 · 확인 필요 {1}장 · 기준 미달 {2}장", recommended.Count, review.Count, below.Count);
         int aiCount = recommended.Count(i => i.IsAiConnector);
         int webzineCount = recommended.Count(i => i.IsWebzine);
 
@@ -1673,30 +1688,32 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (aiCount > 0) keys.Add(AiChip);
         if (webzineCount > 0) keys.Add(WebzineChip);
         if (review.Count > 0) keys.Add(ReviewChip);
+        if (below.Count > 0) keys.Add(BelowChip);
         keys.AddRange(names);
         if (!CrateChips.Select(c => c.Key).SequenceEqual(keys))
         {
             CrateChips.Clear();
             // 키(크레이트 이름·칩 이름)는 순서 저장·비교에 쓰니 그대로, 보이는 이름만 번역
             foreach (var k in keys)
-                CrateChips.Add(new FilterChip(k, k == ReviewChip ? L.T("확인 필요") : L.T(k), SelectCrate) { Mover = k == Labels.All || k == AiChip || k == WebzineChip || k == ReviewChip || k == Labels.Unsorted ? null : MoveCrate });
+                CrateChips.Add(new FilterChip(k, k == ReviewChip ? L.T("확인 필요") : k == BelowChip ? L.T("기준 미달") : L.T(k), SelectCrate) { Mover = k == Labels.All || k == AiChip || k == WebzineChip || k == ReviewChip || k == BelowChip || k == Labels.Unsorted ? null : MoveCrate });
         }
         if (!keys.Contains(_crate)) _crate = Labels.All;
         foreach (var c in CrateChips)
             c.Count = c.Key == Labels.All ? recommended.Count : c.Key == AiChip ? aiCount : c.Key == WebzineChip ? webzineCount
-                : c.Key == ReviewChip ? review.Count : recommended.Count(i => i.CrateName == c.Key);
+                : c.Key == ReviewChip ? review.Count : c.Key == BelowChip ? below.Count : recommended.Count(i => i.CrateName == c.Key);
         SyncChips();
 
         bool aiOnly = _crate == AiChip;
         bool webzineOnly = _crate == WebzineChip;
         bool all = _crate == Labels.All;
         bool reviewOnly = _crate == ReviewChip;
-        var items = reviewOnly ? review : recommended;
+        bool belowOnly = _crate == BelowChip;
+        var items = reviewOnly ? review : belowOnly ? below : recommended;
         Sections.Clear();
         foreach (var g in items.Where(i => (!aiOnly || i.IsAiConnector) && (!webzineOnly || i.IsWebzine)).GroupBy(i => i.CrateName)
                      .OrderBy(g => g.Key == Labels.Unsorted ? 99 : names.IndexOf(g.Key)))
         {
-            if (!all && !aiOnly && !webzineOnly && !reviewOnly && g.Key != _crate) continue;
+            if (!all && !aiOnly && !webzineOnly && !reviewOnly && !belowOnly && g.Key != _crate) continue;
             // 라이브러리 뮤지션 → AI 제안 → 추가 제안 순
             var list = g.OrderBy(i => i.IsMine ? 0 : i.IsAi ? 1 : 2).ToList();
             int mine = list.Count(i => i.IsMine);
@@ -1710,7 +1727,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
             // 고르는 건 위 순서(점수), 보여 주는 건 발매일 최신순. 레시피 하나만 볼 때는 전부 최신순이라 60장씩도 최신부터
             // (같은 날이면 위 순서 그대로 — 정렬이 안정적이다)
-            shown = [.. shown.OrderByDescending(i => i.Rec.ReleaseDate)];
+            // 기준 미달은 기준선에 가까운 것(아깝게 빠진 것)부터
+            shown = belowOnly ? [.. shown.OrderByDescending(i => i.Rec.Taste ?? double.MinValue)] : [.. shown.OrderByDescending(i => i.Rec.ReleaseDate)];
             int hidden = 0;
             if (!all && shown.Count > _pageSize)
             {

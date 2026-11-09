@@ -974,6 +974,8 @@
  "그 밖의 점수": "Other contribution",
  "기준 미만": "Below threshold",
  "기준 이상": "Meets threshold",
+ "기준 미달": "Below threshold",
+ "기준 미달: 취향 기준을 넘은 곡 {0}/{1}": "Below threshold: {0}/{1} tracks fit your taste",
  "내 라이브러리 적합 기준": "Your library's fit threshold",
  "닮은 내 곡": "Similar tracks in your library",
  "레이블 취향": "Label affinity",
