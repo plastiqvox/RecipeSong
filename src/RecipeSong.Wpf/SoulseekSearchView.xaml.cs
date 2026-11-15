@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -21,6 +20,10 @@ public partial class SoulseekSearchView : UserControl
     private bool _disposed;
     private string _format = "";
     private int? _albumTrackCount;
+    /// <summary>Deezer 앨범(곡수·주 아티스트)을 한 번 확인했다</summary>
+    private bool _albumChecked;
+    /// <summary>앱이 만든 검색어. 검색창이 이대로면 주 아티스트로 바꿔도 된다 (사용자가 고쳐 쓴 검색어는 건드리지 않는다)</summary>
+    private string _autoQuery = "";
     private readonly Guid? _replaceJobId;
     private readonly string? _excludedPeer;
     public event Action? BackRequested;
@@ -43,8 +46,8 @@ public partial class SoulseekSearchView : UserControl
             ExcludedPeerText.Visibility = Visibility.Visible;
         }
         AlbumText.Text = $"{album.Artist} — {album.Album}";
-        // 자동 검색어의 기호 표기 차이를 줄인다. 사용자가 입력한 제외 조건은 전송할 때 바꾸지 않는다.
-        QueryBox.Text = Regex.Replace(Regex.Replace($"{album.Artist} {album.Album}", @"[&'\u2018\u2019\u02BC\uFF07\p{Pd}]+", " "), @"\s+", " ").Trim();
+        // 자동 검색어의 기호 표기 차이를 줄인다(아포스트로피 단어는 뺀다 — SoulseekQuery). 사용자가 입력한 제외 조건은 전송할 때 바꾸지 않는다.
+        QueryBox.Text = _autoQuery = SoulseekQuery.ForAlbum(album.Artist, album.Album);
         Groups.ItemsSource = _groups;
         Groups.Items.Filter = item => item is SoulseekFolder group && _albumTrackCount is > 0 && group.Files.Count == _albumTrackCount;
         _groups.CollectionChanged += (_, _) => RefreshFilterCount();
@@ -108,14 +111,25 @@ public partial class SoulseekSearchView : UserControl
         var seen = new HashSet<(string, string)>();
         try
         {
-            if (_albumTrackCount is not > 0)
+            if (_albumTrackCount is not > 0 || !_albumChecked && _album.DeezerAlbumId > 0)
             {
                 StatusText.Text = L.T("앨범 곡수를 확인 중…");
-                using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-                var album = _album.DeezerAlbumId > 0
-                    ? await new DeezerClient(http).AlbumAsync(_album.DeezerAlbumId, cancel.Token) : null;
+                DzAlbum? album = null;
+                try
+                {
+                    using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                    album = _album.DeezerAlbumId > 0 ? await new DeezerClient(http).AlbumAsync(_album.DeezerAlbumId, cancel.Token) : null;
+                }
+                // 곡수를 이미 알면(다시 찾기) Deezer 확인이 실패해도 예전처럼 검색한다
+                catch (Exception ex) when (ex is not OperationCanceledException && _albumTrackCount is > 0) { }
                 cancel.Token.ThrowIfCancellationRequested();
-                _albumTrackCount = album?.TrackCount;
+                _albumChecked = album != null;
+                if (album?.TrackCount is > 0) _albumTrackCount = album.TrackCount;
+                // 협업 프로젝트 앨범(예: Megasound = Bad Bad Hats + Party Nails): 카드는 디스코그래피에서 찾은 참여 아티스트 이름이라
+                // 공유 폴더 이름(주 아티스트 "Megasound - Megasound")과 달라 검색에 안 걸렸다 → 앱이 만든 검색어면 주 아티스트로 바꾼다
+                if (album?.Artist?.Name is { Length: > 0 } main && QueryBox.Text.Trim() == _autoQuery
+                    && ListeningAnalyzer.NormalizeArtist(main) != ListeningAnalyzer.NormalizeArtist(_album.Artist))
+                    QueryBox.Text = _autoQuery = SoulseekQuery.ForAlbum(main, _album.Album);
                 if (_albumTrackCount is not > 0)
                     throw new InvalidOperationException(L.T("앨범 곡수를 확인하지 못해 검색 결과를 표시할 수 없어요. 다시 검색해 주세요."));
                 Groups.Items.Refresh();
