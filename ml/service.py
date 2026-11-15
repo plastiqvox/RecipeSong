@@ -48,6 +48,9 @@ KNN = 20
 MAX_TRACKS = 20      # 전곡 모드에서 미리듣기를 들을 최대 곡 수
 HIT_TRACKS = 3       # 인기곡 모드: Deezer 인기(rank) 상위 곡 수
 GROUP_KNN = 15  # 장르를 모르는 앨범: 장르를 아는 앨범 중 소리가 가장 닮은 이만큼의 칸을 본다
+# '비슷한 내 곡' 허브 보정: 들어 둔 신보 앨범 중 이만큼을 참고로 내 곡마다 허브 점수를 낸다 (적으면 보정 없음)
+HUB_REFS = 4000
+HUB_MIN = 200
 # 미리듣기 기준선: 내 곡 일부의 실제 Deezer 미리듣기. 이만큼 찾으면 멈추고, 이보다 적게 찾으면 라이브러리 기준선을 쓴다
 PREVIEW_REFS = 200
 PREVIEW_REFS_TRY = 450
@@ -132,6 +135,7 @@ class Service:
         # 곡 가중치: 많이 듣고 좋아한 곡과 닮을수록 더 쳐준다 (0.3~1배, 하트는 1). 오래 안 들은 곡은 0 → 비교에서 빠진다.
         # 라이브러리에서 지운 곡도 0
         self.lib_w = np.array([self.tracks[k].taste_weight() if k in self.tracks else 0.0 for k in keys], np.float32)
+        self.lib_hub = self.hub_scores()
         # 내 곡을 자기 자신을 제외한 이웃과 비교한 분포로 적합 기준을 정한다.
         self.refresh_feedback_weights()
         self.xml_mtime = os.path.getmtime(self.xml)
@@ -357,16 +361,48 @@ class Service:
                 out.append((tid, title, clips))
         return out
 
+    def hub_scores(self) -> np.ndarray:
+        """내 곡마다 허브 점수 (들어 둔 신보 앨범 전반과 얼마나 닮게 나오는지). 앨범을 아직 적게 들었으면 0."""
+        refs = [e for k, e in self.album_cache.items() if not k.startswith("t")]
+        if len(refs) < HUB_MIN:
+            return np.zeros(len(self.lib), np.float32)
+        refs = refs[::max(1, len(refs) // HUB_REFS)][:HUB_REFS]
+        x = train.preprocess(np.stack(refs).astype(np.float32), self.mean).astype(np.float32)
+        return album_scoring.hub_scores(self.lib, x, KNN)
+
     def nearest(self, e: np.ndarray) -> tuple[str, float]:
-        """곡(앨범) 임베딩 하나 → 가장 닮은 내 곡 ("아티스트 – 곡명", 곡 가중치를 곱한 유사도)"""
+        """곡(앨범) 임베딩 하나 → 가장 닮은 내 곡 ("아티스트 – 곡명", 유사도). 고르는 기준은 album_scoring.closest_tracks."""
         x = train.preprocess(e[None, :], self.mean)[0]
         weights = getattr(self, "feedback_w", self.lib_w)
-        active = np.flatnonzero(weights > 0)
-        if not len(active):
+        idx = album_scoring.closest_tracks(x, self.lib, weights, getattr(self, "lib_hub", None))
+        if not idx:
             return "", 0.0
-        sims = (self.lib @ x) * weights
-        j = int(active[np.argmax(sims[active])])
-        return f"{self.meta[j][0]} – {self.meta[j][1]}", round(float(sims[j]), 4)
+        j = idx[0]
+        return f"{self.meta[j][0]} – {self.meta[j][1]}", round(float(self.lib[j] @ x), 4)
+
+    def track_pairs(self, items: list) -> list:
+        """곡 짝 (이 앨범 곡 ≈ 내 곡): 가장 닮은 곡과 0.03 이내, 최대 3곡, 내 곡 중복 없이. items: [(곡 id, 제목, 임베딩)]"""
+        pairs = sorted(({"track": title, "near": near, "sim": sim} for _, title, e in items for near, sim in [self.nearest(e)]),
+                       key=lambda x: -x["sim"])
+        top, seen = [], set()
+        for p in pairs:
+            if p["sim"] < pairs[0]["sim"] - 0.03 or len(top) == 3:
+                break
+            if p["near"] not in seen:
+                seen.add(p["near"])
+                top.append(p)
+        return top
+
+    def refresh_pairs(self, key: str) -> None:
+        """저장한 곡 짝을 지금 기준으로 다시 고른다 (곡 임베딩은 캐시에 있어 다시 듣지 않는다).
+        짝은 처음 분석할 때만 만들어 '다시 계산'해도 예전 짝이 남았다."""
+        info = self.album_info.get(key)
+        if not info or "track_ids" not in info:
+            return
+        titles = info.get("track_titles", {})
+        items = [(tid, titles.get(str(tid)), self.album_cache[f"t{tid}"]) for tid in info["track_ids"] if f"t{tid}" in self.album_cache]
+        if items:
+            info["pairs"] = self.track_pairs(items)
 
     def analyze_albums(self, ids: list[str], pool: ThreadPoolExecutor) -> None:
         """수록곡 미리듣기를 곡별로 들어 곡 임베딩("t곡id")·앨범 임베딩(곡 평균)·곡 짝(이 앨범 곡 ≈ 내 곡)을 만든다.
@@ -391,17 +427,8 @@ class Service:
             m = np.mean([e for *_, e in items], axis=0)
             self.album_cache[aid] = (m / (np.linalg.norm(m) + 1e-8)).astype(np.float32)
             if items[0][0] is not None:
-                pairs = sorted(({"track": title, "near": near, "sim": sim} for tid, title, e in items for near, sim in [self.nearest(e)]),
-                               key=lambda x: -x["sim"])
-                top, seen = [], set()
-                for p in pairs:
-                    if p["sim"] < pairs[0]["sim"] - 0.03 or len(top) == 3:
-                        break
-                    if p["near"] not in seen:
-                        seen.add(p["near"])
-                        top.append(p)
                 info = self.album_info.setdefault(aid, {})
-                info["pairs"] = top
+                info["pairs"] = self.track_pairs(items)
                 info["tracks_mode"] = self.track_mode
                 info["track_ids"] = [str(tid) for tid, _, _ in items if tid is not None]
                 info["track_titles"] = {str(tid): title for tid, title, _ in items if tid is not None}
@@ -455,6 +482,8 @@ class Service:
                 results.append({"id": a["id"], "ok": False, **info})
                 continue
             description = self.describe(e, key)
+            if not key.startswith("t"):
+                self.refresh_pairs(key)
             if not key.startswith("t") and self.track_fit_threshold is not None:
                 ids = [tid for tid in info.get("track_ids", []) if f"t{tid}" in self.album_cache]
                 tracks = [self.album_cache[f"t{tid}"] for tid in ids]
@@ -506,6 +535,9 @@ class Service:
                 self.analyze_albums(need, pool)
             self.save_album_cache()
             ALBUM_INFO.write_text(json.dumps(self.album_info, ensure_ascii=False), encoding="utf-8")
+        for i in ids:
+            if i not in need:
+                self.refresh_pairs(i)
         return {"albums": [{"id": int(i), "pairs": self.album_info.get(i, {}).get("pairs", [])} for i in ids]}
 
     # ---- 별로·차단한 앨범과 아주 닮은 추천 (그 자리에서 같이 숨길지 묻는다) ----
@@ -609,7 +641,9 @@ class Service:
         near = active[np.argpartition(-sims[active], count - 1)[:count]] if count else active
         near = near[np.argsort(-sims[near])]
         res["taste"] = round(float(sims[near].mean()), 4) if count else 0.0
-        res["near"] = [f"{self.meta[j][0]} – {self.meta[j][1]}" for j in near[:3]]
+        # 카드의 '비슷한 내 곡'은 취향 점수(가중치를 곱한 이웃)와 따로 고른다: album_scoring.closest_tracks
+        res["near"] = [f"{self.meta[j][0]} – {self.meta[j][1]}"
+                       for j in album_scoring.closest_tracks(x, self.lib, weights, getattr(self, "lib_hub", None), 3)]
         # 저장한 앨범과 닮은 정도: 가장 닮은 3장 평균 (자기 자신은 뺀다)
         if self.fav_x is not None:
             fs = self.fav_x @ x
