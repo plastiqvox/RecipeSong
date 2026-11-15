@@ -155,6 +155,8 @@ public sealed record RecommendationResult(
 {
     /// <summary>소리 분석을 완료했거나 후보가 없어 정상 종료한 결과만 재사용한다.</summary>
     public bool CanCache { get; init; } = SoundScored;
+    /// <summary>계산에 넣은 라이브러리 뮤지션 수 (CandidatePool.MineCovered). 저장해 두고 나중에 덜 모은 결과인지 비교한다</summary>
+    public int MineCovered { get; init; }
 }
 
 /// <summary>

@@ -72,7 +72,8 @@ public sealed record RecommendOptions
 
 /// <summary>후보 아티스트와 디스코그래피. 기간과 상관없으므로 한 번 모아 두고 여러 기간에 쓴다.</summary>
 /// <param name="MinePending">라이브러리 뮤지션 중 아직 Deezer에서 받지 않았거나 디스코그래피가 오래된 수 (RefreshMineAsync로 채운다)</param>
-public sealed record CandidatePool(IReadOnlyList<PoolArtist> Artists, DateTime BuiltAt, int MinePending = 0);
+/// <param name="MineCovered">후보에 넣은 라이브러리 뮤지션 수 (ID 와 디스코그래피가 있는 사람). 저장 결과가 덜 모은 채 계산됐는지 비교하는 데 쓴다</param>
+public sealed record CandidatePool(IReadOnlyList<PoolArtist> Artists, DateTime BuiltAt, int MinePending = 0, int MineCovered = 0);
 
 /// <param name="Mine">라이브러리 뮤지션이면 그 정보 (신보를 항상 보여준다)</param>
 /// <param name="ViaLastFm">Deezer 연관으로는 안 들어오고 Last.fm 비슷한 아티스트로만 이어졌다 (카드의 Last.fm 배지)</param>
@@ -147,7 +148,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         if (mine is not { Count: > 0 }) return new CandidatePool(suggestions, DateTime.Now);
 
         var byId = suggestions.ToDictionary(a => a.Id);
-        int pending = 0;
+        int pending = 0, covered = 0;
         foreach (var m in mine)
         {
             var identity = KnownIdentity(m.Artist);
@@ -155,12 +156,20 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             var artistId = identity.ArtistId;
             if (!_discography.TryGetStale(artistId.ToString(), out var albums, out var fresh)) { pending++; continue; }
             if (!fresh) pending++;
+            covered++;
             byId[artistId] = byId.TryGetValue(artistId, out var s)
                 ? s with { Mine = m }
                 : new PoolArtist(artistId, m.Artist, 0, [m.Playlist], albums, m);
         }
-        return new CandidatePool([.. byId.Values], DateTime.Now, pending);
+        return new CandidatePool([.. byId.Values], DateTime.Now, pending, covered);
     }
+
+    /// <summary>
+    /// 지금 후보에 넣을 수 있는 라이브러리 뮤지션 수 (BuildPoolAsync 의 MineCovered 와 같은 기준 — 후보 목록을 만들지 않고 센다).
+    /// 저장 결과의 MineCovered 보다 크면 그 결과는 라이브러리 뮤지션을 덜 모은 채 계산된 것이다.
+    /// </summary>
+    public int MineCoverage(IReadOnlyList<PlaylistArtist> mine) =>
+        mine.Count(m => KnownIdentity(m.Artist) is { } identity && _discography.TryGetStale(identity.ArtistId.ToString(), out _, out _));
 
     /// <summary>
     /// 라이브러리 뮤지션을 Deezer에서 찾고 디스코그래피를 새로 받는다 (요청 제한 때문에 처음엔 10분 이상).
@@ -295,7 +304,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         if (hits.Count == 0)
         {
             Step(progress, RecStage.Done);
-            return new RecommendationResult(period, [], false) { CanCache = pool.MinePending == 0 };
+            return new RecommendationResult(period, [], false) { CanCache = pool.MinePending == 0, MineCovered = pool.MineCovered };
         }
 
         // 연·월 단위면 라이브러리 뮤지션 발매작이 수백 장이라 앞쪽만 소리를 듣는다
@@ -309,7 +318,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         Step(progress, RecStage.Done);
         return new RecommendationResult(period,
             [.. recs.OrderByDescending(r => r.FromPlaylist != null).ThenByDescending(r => r.Score)],
-            heardAny);
+            heardAny) { MineCovered = pool.MineCovered };
     }
 
     /// <summary>

@@ -1825,8 +1825,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var tracks = await _library.GetTracksAsync(ct);
             _recommender.SetIdentityLibrary(tracks, await ReadArchivesAsync(ct));
             var identityVersion = _recommender.IdentityVersion;
+            // 그 뒤 라이브러리 뮤지션을 더 모았으면(MineCoverageAsync) 다시 만든다: 덜 모은 후보로 다시 계산하면 또 덜 모은 결과가 저장된다
             if (_pools.TryGetValue(key, out var p) && DateTime.Now - p.BuiltAt < TimeSpan.FromHours(12)
-                && _poolFavVersion.GetValueOrDefault(key) == FavoritesVersion && _poolIdentityVersion.GetValueOrDefault(key) == identityVersion)
+                && _poolFavVersion.GetValueOrDefault(key) == FavoritesVersion && _poolIdentityVersion.GetValueOrDefault(key) == identityVersion
+                && !(_mineCoverage is { } coverage && coverage - p.MineCovered >= MineStaleMargin))
             {
                 // 작업 현황 창: 시드·비슷한 아티스트·라이브러리 뮤지션 칸은 앞 계산이 만든 후보를 그대로 쓴다
                 (progress as StageProgress)?.Reused(p.BuiltAt);
@@ -1846,6 +1848,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             _likedArtists.UnionWith(_mine.Select(m => ListeningAnalyzer.NormalizeArtist(m.Artist)));  // 피처링 가산점용
             p = await _recommender.BuildPoolAsync(seeds, _mine, options, progress, ct);
             _pools[key] = p;
+            _mineCoverage = p.MineCovered;
             _poolFavVersion[key] = FavoritesVersion;
             _poolIdentityVersion[key] = identityVersion;
             if (p.MinePending > 0 && _mineRefresh == null) _mineRefresh = RefreshMineAsync(_mine);
@@ -1867,8 +1870,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             SyncText = "";
             _mineSyncText = false;
             await _poolLock.WaitAsync(_life.Token);
-            try { _pools.Clear(); } finally { _poolLock.Release(); }
-            if (!IsBusy) await LoadAsync(force: true);  // 새로 모은 라이브러리 뮤지션 신보 반영
+            try { _pools.Clear(); _mineCoverage = null; } finally { _poolLock.Release(); }
+            if (!IsBusy) await LoadAsync(force: true);  // 새로 모은 라이브러리 뮤지션 신보 반영 (다른 저장된 주는 열 때 MineStale 로 다시 계산)
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { SyncText = L.F("아카이브 뮤지션 발매작을 모으지 못했어요: {0}", ex.Message); }
@@ -1957,7 +1960,38 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (IsCustomPeriod) await PreciseAsync();
         else await LoadAsync(force: true);
     }
-    public sealed record RecHistory(PeriodKind Kind, DateTime Start, DateTime End, DateTime At, int Count);
+    /// <param name="MineCovered">계산에 넣은 라이브러리 뮤지션 수. 없으면(이 값을 남기기 전 결과) 얼마나 모았는지 모른다</param>
+    public sealed record RecHistory(PeriodKind Kind, DateTime Start, DateTime End, DateTime At, int Count, int? MineCovered = null);
+
+    /// <summary>
+    /// 지금 후보에 넣을 수 있는 라이브러리 뮤지션 수. 후보 목록을 만들 때 그 값으로, 아직 안 만들었으면 따로 센다(MineCoverageAsync).
+    /// 라이브러리 뮤지션은 ID·디스코그래피를 받아 둔 사람만 후보에 들어가서, 덜 모은 채 계산한 결과가 신보를 빠뜨린 채 저장됐다
+    /// (11월 7일 한꺼번에 계산한 200주에서 주당 2.6장). 이 수가 저장 결과보다 MineStaleMargin 이상 크면 그 결과를 뒤에서 새로 계산한다.
+    /// </summary>
+    private int? _mineCoverage;
+    /// <summary>ID 를 새로 정한 아티스트 한두 명 때문에 여는 주마다 다시 계산하지 않게 둔 여유</summary>
+    private const int MineStaleMargin = 5;
+
+    private async Task<int> MineCoverageAsync(CancellationToken ct)
+    {
+        if (_mineCoverage is { } known) return known;
+        await _poolLock.WaitAsync(ct);
+        try
+        {
+            if (_mineCoverage is { } again) return again;
+            var tracks = await _library.GetTracksAsync(ct);
+            _recommender.SetIdentityLibrary(tracks, await ReadArchivesAsync(ct));
+            var mine = _mine ??= TasteProfile.LibraryArtists(tracks);
+            var count = await Task.Run(() => _recommender.MineCoverage(mine), ct);
+            _mineCoverage = count;
+            return count;
+        }
+        finally { _poolLock.Release(); }
+    }
+
+    /// <summary>저장 결과가 라이브러리 뮤지션을 지금보다 덜 모은 채 계산됐다 (모은 수를 남기지 않은 예전 결과도 여기에 든다)</summary>
+    private bool MineStale(Period period, int coverage) =>
+        !_recHistory.TryGet(period.Label, out var h) || h.MineCovered is not { } saved || coverage - saved >= MineStaleMargin;
     [ObservableProperty] private string _recSavedNote = "";
     public bool HasRecSaved => RecSavedNote.Length > 0;
     partial void OnRecSavedNoteChanged(string value)
@@ -2111,7 +2145,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 if (result.CanCache)
                 {
                     _recResults.Set(key, [.. result.Releases]);
-                    _recHistory.Set(part.Label, new RecHistory(part.Kind, part.Start, part.End, DateTime.Now, result.Releases.Count));
+                    _recHistory.Set(part.Label, new RecHistory(part.Kind, part.Start, part.End, DateTime.Now, result.Releases.Count, result.MineCovered));
                     _recResults.Save();
                     _recHistory.Save();
                     done++;
@@ -2205,7 +2239,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 return;
             }
             _recResults.Set(key, [.. result.Releases]);
-            _recHistory.Set(period.Label, new RecHistory(period.Kind, period.Start, period.End, DateTime.Now, result.Releases.Count));
+            _recHistory.Set(period.Label, new RecHistory(period.Kind, period.Start, period.End, DateTime.Now, result.Releases.Count, result.MineCovered));
             _recHistory.Save();
             _recResults.Save();
             IsRefreshing = false;
@@ -2279,6 +2313,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 releases = precise;
                 RecSavedNote = L.F(byMonth ? "월별 계산을 합침 · {0:M.d HH:mm}" : "주별 계산을 합침 · {0:M.d HH:mm}", preciseAt);
+                // 합친 주 가운데 라이브러리 뮤지션을 덜 모은 채 계산한 주는 알리기만 한다 (주를 열면 뒤에서, 전부는 '다시 계산'으로)
+                if (!byMonth)
+                {
+                    var coverage = await MineCoverageAsync(ct);
+                    int lagging = PartsOf(period).Count(part => _recResults.TryGetAt(RecKey(part), out _, out _) && MineStale(part, coverage));
+                    if (lagging > 0) RecSavedNote += " · " + L.F("아카이브 뮤지션을 덜 모은 채 계산한 주 {0}개 · 다시 계산하면 채워져요", lagging);
+                }
             }
             else if (!force && TryGetWiderRecs(period, out var wider, out var widerAt, out var widerLabel)
                 && !TryGetSavedRecs(key, period, out _, out _))
@@ -2291,6 +2332,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 releases = saved;
                 RecSavedNote = L.F("{0:M.d HH:mm}에 계산한 추천", savedAt);
+                // 라이브러리 뮤지션을 덜 모은 채 계산한 결과면 먼저 보여 주고 뒤에서 새로 계산한다
+                if (MineStale(period, await MineCoverageAsync(ct))) stale = true;
                 // 이력 기능 전에 저장한 결과도 달력에 표시되게
                 if (!_recHistory.TryGet(period.Label, out _))
                 {
@@ -2325,7 +2368,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 if (result.CanCache)
                 {
                     _recResults.Set(key, releases);
-                    _recHistory.Set(period.Label, new RecHistory(period.Kind, period.Start, period.End, DateTime.Now, releases.Count));
+                    _recHistory.Set(period.Label, new RecHistory(period.Kind, period.Start, period.End, DateTime.Now, releases.Count, result.MineCovered));
                     _recHistory.Save();
                     _recResults.Save();
                     RecSavedNote = L.F("방금 계산 · {0:M.d HH:mm}", DateTime.Now);

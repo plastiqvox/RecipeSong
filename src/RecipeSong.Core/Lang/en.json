@@ -462,6 +462,7 @@
  "아카이브 곡을 모두 들어 내 소리 기준을 만들어요. 처음 한 번, {0:N0}곡 · GPU가 없어 오래 걸려요": "Listens to every song in your archive to learn your sound. Once, {0:N0} songs · slow without a GPU",
  "아카이브 곡을 모두 들어 내 소리 기준을 만들어요. 처음 한 번, {0:N0}곡 · GPU로 {1}분 안팎": "Listens to every song in your archive to learn your sound. Once, {0:N0} songs · about {1} min on GPU",
  "아카이브 뮤지션 ": "Archive artists ",
+ "아카이브 뮤지션을 덜 모은 채 계산한 주 {0}개 · 다시 계산하면 채워져요": "{0} weeks were calculated before all archive artists were collected · Recalculate to fill them in",
  "아카이브 뮤지션 {0}/{1}": "Archive artists {0}/{1}",
  "아카이브 뮤지션 발매작을 모으지 못했어요: {0}": "Couldn't collect archive artists' releases: {0}",
  "아카이브 읽는 중…": "Reading archive…",
