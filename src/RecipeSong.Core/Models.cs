@@ -126,8 +126,10 @@ public sealed record ReleaseRecommendation(
 /// <summary>계산 당시 실제로 더한 점수. Kind는 저장용 식별자이며 화면에서만 번역한다.</summary>
 public sealed record ScoreContribution(string Kind, double Value);
 public sealed record ScoredTrack(long Id, string? Title, double Taste, bool? MeetsThreshold = null, bool? MatchesDislike = null);
+/// <summary>SoundModel: 곡 점수를 낸 소리 모델 (임베딩 폴더 이름, 예전 기록은 null = TasteThresholds.LegacyModel)</summary>
 public sealed record RankingEvidence(IReadOnlyList<ScoreContribution> Contributions, double? MeanTaste,
-    double? TopTaste, double? FitThreshold, bool HitsOnly, IReadOnlyList<ScoredTrack>? Tracks = null, int? TotalTracks = null)
+    double? TopTaste, double? FitThreshold, bool HitsOnly, IReadOnlyList<ScoredTrack>? Tracks = null, int? TotalTracks = null,
+    string? SoundModel = null)
 {
     public double Total => Math.Round(Contributions.Sum(c => c.Value), 3);
 }
@@ -153,6 +155,8 @@ public sealed record RecommendationResult(
 {
     /// <summary>소리 분석을 완료했거나 후보가 없어 정상 종료한 결과만 재사용한다.</summary>
     public bool CanCache { get; init; } = SoundScored;
+    /// <summary>계산에 넣은 라이브러리 뮤지션 수 (CandidatePool.MineCovered). 저장해 두고 나중에 덜 모은 결과인지 비교한다</summary>
+    public int MineCovered { get; init; }
 }
 
 /// <summary>
@@ -163,7 +167,7 @@ public sealed record AlbumSound(
     double? Taste, IReadOnlyList<string> Near, string? Label, string? Genre,
     double? Fav = null, string? FavNear = null, double? Dis = null, IReadOnlyList<string>? With = null,
     IReadOnlyList<TrackPair>? Pairs = null, double? FitRatio = null, int? AnalyzedTracks = null,
-    double? MeanTaste = null, double? TopTaste = null, double? FitThreshold = null, IReadOnlyList<ScoredTrack>? ScoredTracks = null, int? TotalTracks = null)
+    double? MeanTaste = null, double? TopTaste = null, double? FitThreshold = null, IReadOnlyList<ScoredTrack>? ScoredTracks = null, int? TotalTracks = null, string? Model = null)
 {
     /// <summary>Fav: 저장함 앨범과 닮은 정도, FavNear: 가장 닮은 저장 앨범 ("아티스트 – 앨범")</summary>
     public bool Heard => Taste != null;

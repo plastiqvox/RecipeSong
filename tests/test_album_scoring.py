@@ -55,18 +55,35 @@ class AlbumScoringChecks(unittest.TestCase):
         self.assertEqual(result["analyzed_tracks"], 1)
         self.assertLess(result["taste"], album_scoring.aggregate(.5, [.8] * 3, .6)["taste"])
 
+    def test_closest_track_ignores_weight_and_hubs(self):
+        x = np.array([1., 0.])
+        lib = np.array([[.9, .436], [.6, .8], [1., 0.]])
+        # 가중치가 큰(하트) 곡이 덜 닮았다고 이기지 않는다. 가중치 0(비교 제외)은 고르지 않는다.
+        self.assertEqual(album_scoring.closest_tracks(x, lib, np.array([.3, 1., 0.]), None), [0])
+        self.assertEqual(album_scoring.closest_tracks(x, lib, np.array([.3, 1., .5]), None, 3), [2, 0, 1])
+        # 무엇과도 닮게 나오는 곡(허브)은 그만큼 깎인다
+        self.assertEqual(album_scoring.closest_tracks(x, lib, np.ones(3), np.array([0., 0., .5])), [0])
+        self.assertEqual(album_scoring.closest_tracks(x, lib, np.zeros(3), None), [])
+
+    def test_hub_scores_average_top_neighbors_across_chunks(self):
+        lib = np.array([[1., 0.], [0., 1.]])
+        refs = np.array([[1., 0.]] * 3 + [[0., 1.]])
+        np.testing.assert_allclose(album_scoring.hub_scores(lib, refs, 2, chunk=1), [1., .5])
+        np.testing.assert_allclose(album_scoring.hub_scores(lib, refs[:1], 2), [0., 0.])
+
     def test_service_returns_new_score_using_cached_tracks(self):
         # 서비스 생성자는 모델·캐시를 저장할 수 있어 호출하지 않는다. 실제 두 메서드만 격리 실행.
         tree = ast.parse((ROOT / "ml/service.py").read_text(encoding="utf-8"))
         methods = [n for c in tree.body if isinstance(c, ast.ClassDef) for n in c.body
-                   if isinstance(n, ast.FunctionDef) and n.name in ("describe", "score_albums", "embed_clips", "favorites", "stack", "feedback_name", "refresh_feedback_weights")]
+                   if isinstance(n, ast.FunctionDef) and n.name in ("describe", "score_albums", "embed_clips", "favorites", "stack", "feedback_name", "refresh_feedback_weights",
+                                                                    "nearest", "track_pairs", "refresh_pairs")]
         module = ast.Module(body=[ast.ClassDef(name="Scorer", bases=[], keywords=[], body=methods, decorator_list=[])], type_ignores=[])
         namespace = {"np": np, "re": __import__("re"), "KNN": 20, "album_scoring": album_scoring, "log": lambda *_: None,
                      "train": SimpleNamespace(preprocess=lambda x, mean: x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-8))}
         exec(compile(ast.fix_missing_locations(module), "service-scoring", "exec"), namespace)
         scorer = namespace["Scorer"]()
         self.assertEqual(scorer.embed_clips([]), [])
-        scorer.model = {}
+        scorer.model = {"embeddings": "fixture"}
         scorer.mean = np.zeros(2)
         scorer.lib = np.tile([1., 0.], (2, 1))
         scorer.lib_w = np.ones(2)
@@ -74,6 +91,8 @@ class AlbumScoringChecks(unittest.TestCase):
         scorer.fav_x = scorer.dis_x = None
         scorer.track_fit_threshold = .6
         scorer.ensure_embedded = lambda *_: None
+        scorer.ensure_preview_refs = lambda *_: None
+        scorer.preview_threshold = lambda: None
         scorer.album_cache = {"1": np.array([0., 1.]), **{f"t{i}": np.array([1., 0.]) for i in range(3)}}
         scorer.album_info = {"1": {"track_ids": ["0", "1", "2", "missing"]}}
         result = scorer.score_albums({"albums": [{"id": 1}]}, 1)["albums"][0]
@@ -81,6 +100,8 @@ class AlbumScoringChecks(unittest.TestCase):
         self.assertEqual(result["fit_ratio"], 1)
         self.assertEqual(result["analyzed_tracks"], 3)
         self.assertEqual([t["id"] for t in result["scored_tracks"]], [0, 1, 2])
+        # 저장한 짝이 없어도 캐시한 곡 임베딩으로 지금 기준의 짝을 다시 고른다
+        self.assertEqual([p["near"] for p in result["pairs"]], ["Fixture – One"])
         scorer.track_fit_threshold = 1.0
         boundary = scorer.score_albums({"albums": [{"id": 1}]}, 1)["albums"][0]
         self.assertEqual(boundary["scored_tracks"][0]["taste"], 1.0)

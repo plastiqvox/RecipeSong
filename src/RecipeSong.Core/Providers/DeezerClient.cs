@@ -145,6 +145,8 @@ public sealed class DeezerClient(HttpClient http)
                 return System.Text.Json.JsonSerializer.Deserialize<T>(body);
             }
             catch (HttpRequestException) { return null; }
+            // HttpClient 시간 초과는 취소가 아니라 실패 — 그대로 올리면 부른 쪽이 '사용자가 멈춤'으로 알고 계산을 조용히 끝낸다
+            catch (TaskCanceledException) when (!ct.IsCancellationRequested) { continue; }
         }
         return null;
     }

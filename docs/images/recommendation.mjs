@@ -22,7 +22,7 @@ export default (k) => {
   const ladder = C(X.l, 6, "장르 정하는 순서", "Last.fm → Discogs → Deezer …", "focus");
   const crate = C(X.c, 6, "장르 칸", "국적과 상관없이 6칸", "focus");
   const screen = C(X.c, 7, "화면", "인디·록 · 일렉트로닉 · 힙합·R&B …");
-  const gate = C(X.r, 7, "공통 취향 기준", "모든 출처 · 적합 곡수로 판정", "focus");
+  const gate = C(X.r, 7, "공통 취향 기준", "라이브러리 뮤지션 외 · 적합 곡수", "focus");
   const review = C(X.r, 6, "확인 필요", "미분석 · 곡별 근거 부족", "focus");
 
   const A = (pts, label, o = {}) => k.arrow(pts, { width: 3, head: 15, label, labelSize: 17, ...o });
