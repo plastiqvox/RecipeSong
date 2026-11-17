@@ -32,8 +32,9 @@ public static class TasteProfile
     /// <summary>
     /// 내 라이브러리 뮤지션: 곡 가중치 합 상위 top 명 (곡이 2곡 이상이거나 하트를 준 곡이 있는 사람만).
     /// 신보는 점수와 상관없이 앞에 나온다. Titles 는 Deezer 동명이인 확인용 (내 곡·앨범 제목).
+    /// 1000명: 500명일 땐 잘 듣던 뮤지션(Still Blank 508위·Kate Davis 618위)이 비슷한 아티스트 연결이 없어 신보가 아예 안 나왔다.
     /// </summary>
-    public static IReadOnlyList<PlaylistArtist> LibraryArtists(IEnumerable<TrackRecord> tracks, int top = 500) =>
+    public static IReadOnlyList<PlaylistArtist> LibraryArtists(IEnumerable<TrackRecord> tracks, int top = 1000) =>
         [.. Ranked(tracks).Where(x => x.Tracks.Count >= 2 || x.Tracks.Any(t => t.Loved)).Take(top)
             .Select(x => new PlaylistArtist(x.Artist, LibraryTag, null, "", x.Tracks.Count,
                 x.Tracks.SelectMany(t => new[] { TitleKey(t.Title), TitleKey(t.Album) }).ToHashSet()))];

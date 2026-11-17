@@ -394,7 +394,7 @@
  "삭제할 앨범 기록을 선택하세요.": "Select an album history entry to remove.",
  "상대 사용자: {0}": "Peer: {0}",
  "상세 닫기": "Close details",
- "상위 500명 · 신보 항상 앞": "Top 500 · new releases always first",
+ "상위 1000명 · 신보 항상 앞": "Top 1000 · new releases always first",
  "상태 확인": "Status",
  "새 곡 {0}곡 반영": "Added {0} new songs",
  "새 곡 디코딩 · CLAP · 평균": "Decode new tracks · CLAP · mean",

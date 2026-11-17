@@ -154,7 +154,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             var identity = KnownIdentity(m.Artist);
             if (identity == null) { pending++; continue; }
             var artistId = identity.ArtistId;
-            if (!_discography.TryGetStale(artistId.ToString(), out var albums, out var fresh)) { pending++; continue; }
+            if (!HasDiscography(artistId, out var albums, out var fresh)) { pending++; continue; }
             if (!fresh) pending++;
             covered++;
             byId[artistId] = byId.TryGetValue(artistId, out var s)
@@ -169,7 +169,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
     /// 저장 결과의 MineCovered 보다 크면 그 결과는 라이브러리 뮤지션을 덜 모은 채 계산된 것이다.
     /// </summary>
     public int MineCoverage(IReadOnlyList<PlaylistArtist> mine) =>
-        mine.Count(m => KnownIdentity(m.Artist) is { } identity && _discography.TryGetStale(identity.ArtistId.ToString(), out _, out _));
+        mine.Count(m => KnownIdentity(m.Artist) is { } identity && HasDiscography(identity.ArtistId, out _, out _));
 
     /// <summary>
     /// 라이브러리 뮤지션을 Deezer에서 찾고 디스코그래피를 새로 받는다 (요청 제한 때문에 처음엔 10분 이상).
@@ -181,7 +181,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         var todo = mine.Where(m =>
         {
             var identity = KnownIdentity(m.Artist);
-            return identity == null || !_discography.TryGet(identity.ArtistId.ToString(), out _);
+            return identity == null || !HasDiscography(identity.ArtistId, out _, out var fresh) || !fresh;
         }).ToList();
         int done = 0;
         // 동시에 8명씩: 요청이 한꺼번에 줄 서지 않아 진행률이 고르게 오르고, 중간에 꺼져도 받은 만큼 남는다
@@ -265,7 +265,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         int done = 0;
         var discos = await Task.WhenAll(pool.Select(async c =>
         {
-            var albums = await _discography.GetOrAddAsync(c.Id.ToString(), async () => [.. await deezer.ArtistAlbumsAsync(c.Id, ct)]);
+            var albums = await DiscographyAsync(c.Id, ct);
             int d = Interlocked.Increment(ref done);
             if (d % 25 == 0) progress?.Report(L.F("디스코그래피 확인 중… {0}/{1}", d, pool.Count));
             return (c, albums);
@@ -440,7 +440,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         // 2) 아티스트 디스코그래피
         var artist = (await deezer.SearchArtistsAsync(p.Artist, ct)).FirstOrDefault(a => SameArtist(a.Name));
         if (artist == null) return (null, "Deezer에 아티스트 없음", false);
-        var albums = await _discography.GetOrAddAsync(artist.Id.ToString(), async () => [.. await deezer.ArtistAlbumsAsync(artist.Id, ct)]);
+        var albums = await DiscographyAsync(artist.Id, ct);
         if (albums.FirstOrDefault(a => SameTitle(a.Title)) is { } byTitle)
             return await Check(byTitle.Id, "디스코그래피 제목 일치");
         if (period != null && albums.Where(a => a.Released is { } d && period.Value.Contains(d) && a.RecordType != "compile")
@@ -477,9 +477,28 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         return recs;
     }
 
-    public async Task<List<DzAlbum>> FollowedDiscographyAsync(long artistId, CancellationToken ct = default) =>
-        _discography.TryGet(artistId.ToString(), out var cached) ? cached
-            : await _discography.GetOrAddAsync(artistId.ToString(), async () => [.. await deezer.ArtistAlbumsAsync(artistId, ct)]);
+    public Task<List<DzAlbum>> FollowedDiscographyAsync(long artistId, CancellationToken ct = default) => DiscographyAsync(artistId, ct);
+
+    /// <summary>
+    /// 디스코그래피 (캐시 → Deezer). 받지 못하면 캐시하지 않고 옛 값(없으면 빈 목록)을 쓴다.
+    /// 예전엔 할당량 초과로 받지 못한 것도 빈 목록으로 3일 캐시해, 한 번에 수천 명을 받던 날 568명의 신보가 통째로 빠졌다.
+    /// 그때 저장된 빈 목록과 구분할 수 없어 빈 목록은 캐시에 없는 것으로 보고 다시 받는다 (진짜 앨범이 없는 아티스트는 드물다).
+    /// </summary>
+    private async Task<List<DzAlbum>> DiscographyAsync(long artistId, CancellationToken ct)
+    {
+        var key = artistId.ToString();
+        if (_discography.TryGet(key, out var cached) && cached.Count > 0) return cached;
+        if (await deezer.ArtistAlbumsAsync(artistId, ct) is { } albums)
+        {
+            _discography.Set(key, [.. albums]);
+            return [.. albums];
+        }
+        return _discography.TryGetStale(key, out var stale, out _) ? stale : [];
+    }
+
+    /// <summary>캐시에 쓸 만한 디스코그래피가 있는지 (빈 목록은 받지 못한 것으로 본다 — DiscographyAsync)</summary>
+    private bool HasDiscography(long artistId, out List<DzAlbum> albums, out bool fresh) =>
+        _discography.TryGetStale(artistId.ToString(), out albums, out fresh) && albums.Count > 0;
 
     /// <summary>캐시에 있는 디스코그래피만 (달력 표시용, 요청 없음)</summary>
     public IReadOnlyList<DzAlbum> CachedDiscography(long artistId) =>

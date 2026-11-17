@@ -32,9 +32,9 @@ public sealed class DeezerClient(HttpClient http)
     public async Task<IReadOnlyList<DzArtist>> RelatedArtistsAsync(long artistId, int limit = 20, CancellationToken ct = default) =>
         (await GetAsync<DzList<DzArtist>>($"/artist/{artistId}/related?limit={limit}", ct))?.Data ?? [];
 
-    /// <summary>아티스트의 앨범/EP/싱글 목록 (발매일 포함).</summary>
-    public async Task<IReadOnlyList<DzAlbum>> ArtistAlbumsAsync(long artistId, CancellationToken ct = default) =>
-        (await GetAsync<DzList<DzAlbum>>($"/artist/{artistId}/albums?limit=200", ct))?.Data ?? [];
+    /// <summary>아티스트의 앨범/EP/싱글 목록 (발매일 포함). 받지 못하면(할당량 초과·네트워크) null — 빈 디스코그래피와 구분한다.</summary>
+    public async Task<IReadOnlyList<DzAlbum>?> ArtistAlbumsAsync(long artistId, CancellationToken ct = default) =>
+        (await GetAsync<DzList<DzAlbum>>($"/artist/{artistId}/albums?limit=200", ct))?.Data;
 
     /// <summary>과거 앨범 탐색용 전체 페이지. 실패한 페이지를 빈 디스코그래피로 취급하지 않는다.</summary>
     public async Task<IReadOnlyList<DzAlbum>> ArtistAlbumsAllAsync(long artistId, CancellationToken ct = default)

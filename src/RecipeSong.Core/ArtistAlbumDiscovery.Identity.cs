@@ -96,14 +96,13 @@ public sealed partial class ArtistAlbumDiscovery
             }
         }
         ct.ThrowIfCancellationRequested();
-        var verified = matches.Where(m => m.Verified).ToArray();
-        long? selected = complete && verified.Length == 1 ? verified[0].Artist.Id : null;
+        long? selected = complete ? Select(matches, musician.Name)?.Artist.Id : null;
         var result = new ArtistIdentityResult(matches.OrderByDescending(m => m.Verified).ThenByDescending(m => m.AlbumMatches)
             .ThenByDescending(m => m.TrackMatches).ThenBy(m => m.Artist.Id).ToArray(), selected);
         if (selected is { } selectedId)
         {
             ct.ThrowIfCancellationRequested();
-            var chosen = verified.Single(m => m.Artist.Id == selectedId);
+            var chosen = matches.First(m => m.Artist.Id == selectedId);
             var saved = _identities.Save(new(musician.Name, chosen.Artist.Name, selectedId, ArtistIdentitySource.Automatic,
                 EvidenceHash(musician.Name)!, chosen.Evidence ?? [], chosen.AlbumMatches, chosen.TrackMatches, DateTimeOffset.UtcNow), generation);
             if (!saved)
@@ -116,6 +115,26 @@ public sealed partial class ArtistAlbumDiscovery
         }
         if (complete) _identityResults[cacheKey] = result;
         return result;
+    }
+
+    /// <summary>
+    /// 같은 뮤지션으로 정할 후보. 검증(보유 앨범 2장 또는 한 앨범의 곡 2개)을 통과한 후보가 하나면 그것.
+    /// 여럿이어도 1위 앨범 일치가 2위의 2배 이상이고 2장 넘게 차이 나면 1위 (WONK 5장 vs 동명 WoNK 1장 — 예전엔 둘 다 버려 신보가 안 나왔다).
+    /// 아무도 검증을 못 넘었으면, 증거(앨범 제목·곡)가 있는 후보가 하나뿐일 때 그것 (보유 앨범이 한 장뿐이거나 Deezer에 일부만 있는 뮤지션).
+    /// 이름이 같으면 증거 하나로, 다르면(옥상달빛 → Okdal, 김뜻돌 → Meaningful Stone: Deezer 영문 표기) 앨범·곡 증거 둘 이상으로.
+    /// 동명이인이 그 앨범 제목까지 같을 가능성은 낮고, 다른 후보에도 증거가 있으면 고르지 않는다.
+    /// </summary>
+    private static ArtistIdentityMatch? Select(IReadOnlyList<ArtistIdentityMatch> matches, string name)
+    {
+        var verified = matches.Where(m => m.Verified).OrderByDescending(m => m.AlbumMatches).ToArray();
+        if (verified.Length == 1) return verified[0];
+        if (verified.Length > 1)
+            return verified[0].AlbumMatches >= 2 * verified[1].AlbumMatches && verified[0].AlbumMatches - verified[1].AlbumMatches >= 2 ? verified[0] : null;
+        var evidenced = matches.Where(m => m.AlbumMatches > 0 || m.TrackMatches > 0).ToArray();
+        if (evidenced is not [var only]) return null;
+        bool strongAlbum = only.Evidence?.Any(e => e.StartsWith("album:") && IsIdentityTitle(e[6..]) && e[6..] != Key(name)) == true;
+        return Key(only.Artist.Name) == Key(name) ? (only.TrackMatches > 0 || strongAlbum ? only : null)
+            : strongAlbum && only.AlbumMatches + (only.TrackMatches ?? 0) >= 2 ? only : null;
     }
 
     private static bool IsIdentityTitle(string title) => title.Length >= 4 && title is not

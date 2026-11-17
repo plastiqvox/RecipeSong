@@ -25,6 +25,11 @@ if (args.FirstOrDefault() == "--soulseek-query")
     SoulseekQueryChecks.Run();
     return;
 }
+if (args.FirstOrDefault() == "--discography-cache")
+{
+    await DiscographyCacheChecks.RunAsync();
+    return;
+}
 if (args.FirstOrDefault() == "--period-range")
 {
     await PeriodRangeChecks.RunAsync();

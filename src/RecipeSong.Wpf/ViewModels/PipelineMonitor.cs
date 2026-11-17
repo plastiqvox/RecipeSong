@@ -143,7 +143,7 @@ public sealed partial class PipelineMonitor : ObservableObject
         new("lib", 1, 0, L.T("내 라이브러리 전체"), L.T("iTunes·플리 · ZIP 보유와 분리"), kind: NodeKind.Data),
         new("base", 0, 1, L.T("내 곡 소리 기준"), L.T("새 곡 디코딩 · CLAP · 평균"), RecStage.Analyze, kind: NodeKind.Data),
         new("seed", 1, 1, L.T("시드 아티스트"), L.T("많이 듣고 좋아한 80명 + 하트·팔로우"), RecStage.Seeds),
-        new("mine", 2, 1, L.T("내 라이브러리 뮤지션"), L.T("상위 500명 · 신보 항상 앞"), RecStage.Mine),
+        new("mine", 2, 1, L.T("내 라이브러리 뮤지션"), L.T("상위 1000명 · 신보 항상 앞"), RecStage.Mine),
         new("follow", 3, 1, L.T("팔로우 뮤지션"), L.T("☆ 누른 아티스트 · 신보 항상 앞"), RecStage.Follow),
         new("related", 1, 2, L.T("비슷한 아티스트 2단계"), L.T("Deezer 연관 + Last.fm 비슷한"), RecStage.Related),
         new("identity", 0, 2, L.T("뮤지션 ID · SQLite"), L.T("수동 우선 · 라이브러리·ZIP 대조"), kind: NodeKind.Data),
