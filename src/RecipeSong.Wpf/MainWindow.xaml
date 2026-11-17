@@ -27,7 +27,6 @@
                 <ColumnDefinition/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <!-- 곡 하트: 학습에 반영 -->
             <Button Grid.Column="1" Style="{StaticResource Bare}" BorderThickness="0" Padding="5,4" VerticalAlignment="Center"
@@ -36,18 +35,12 @@
                 <Path x:Name="heart" Data="{StaticResource HeartIcon}" Width="12" Height="11" Stretch="Uniform"
                       Stroke="{StaticResource Muted}" StrokeThickness="1.4" Fill="Transparent"/>
             </Button>
-            <!-- YouTube: 미리듣기가 없는 곡도 누를 수 있게 줄 버튼 바깥에 둔다. 평소엔 회색(Line3 은 꺼진 버튼처럼 보여서 Muted), 줄에 올리면 빨강 -->
             <Button x:Name="trackDislikeButton" Grid.Column="2" Style="{StaticResource Bare}" BorderThickness="0" Padding="5,4" VerticalAlignment="Center"
                     Command="{Binding ToggleDislikeCommand}" ToolTip="{Binding DislikeTip}"
                     Visibility="{Binding CanLike, Converter={StaticResource BoolVis}}"
                     AutomationProperties.Name="{Binding Title, Converter={StaticResource TrFmt}, ConverterParameter='곡 별로: {0}'}">
                 <Path x:Name="trackDislike" Data="{StaticResource ThumbDownIcon}" Width="12" Height="11" Stretch="Uniform"
                       Stroke="{StaticResource Muted}" StrokeThickness="1.4" Fill="Transparent"/>
-            </Button>
-            <Button Grid.Column="3" Style="{StaticResource Bare}" BorderThickness="0" Padding="6,4" VerticalAlignment="Center"
-                    Command="{Binding OpenYouTubeCommand}" ToolTip="{local:Tr 'YouTube에서 이 곡 찾기 (전곡)'}"
-                    AutomationProperties.Name="{Binding Title, Converter={StaticResource TrFmt}, ConverterParameter='YouTube 곡: {0}'}">
-                <Path x:Name="yt" Data="{StaticResource YouTubeIcon}" Fill="{StaticResource Muted}" Width="14" Height="10" Stretch="Uniform"/>
             </Button>
             <Button x:Name="row" Command="{Binding PlayCommand}" IsEnabled="{Binding HasPreview}" Cursor="Hand"
                     Background="Transparent" BorderThickness="0" Padding="4,5" HorizontalContentAlignment="Stretch" Focusable="True"
@@ -115,7 +108,6 @@
                     <Setter TargetName="near" Property="Foreground" Value="{StaticResource AccentText}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsMouseOver, ElementName=line}" Value="True">
-                    <Setter TargetName="yt" Property="Fill" Value="#FF3D3D"/>
                     <Setter TargetName="heart" Property="Stroke" Value="{StaticResource Text2}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsLiked}" Value="True">
@@ -137,7 +129,7 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding HasPreview}" Value="False">
                     <Setter TargetName="title" Property="Foreground" Value="{StaticResource Muted}"/>
-                    <Setter TargetName="title" Property="ToolTip" Value="{local:Tr '미리듣기 없음 · 발매 전이거나 Deezer에서 막힌 곡이에요. 오른쪽 YouTube로 들을 수 있어요'}"/>
+                    <Setter TargetName="title" Property="ToolTip" Value="{local:Tr '미리듣기 없음 · 발매 전이거나 Deezer에서 막힌 곡이에요'}"/>
                     <Setter TargetName="title" Property="ToolTipService.ShowOnDisabled" Value="True"/>
                 </DataTrigger>
             </DataTemplate.Triggers>
@@ -200,9 +192,6 @@
                         </Button>
                         <Button Style="{StaticResource Bare}" Command="{Binding OpenAppleMusicCommand}" Padding="9,5" ToolTip="{local:Tr 'Apple Music에서 열기 (iTunes)'}">
                             <Path Data="{StaticResource AppleMusicIcon}" Fill="#FA2D48" Width="13" Height="13" Stretch="Uniform"/>
-                        </Button>
-                        <Button Style="{StaticResource Bare}" Command="{Binding OpenYouTubeCommand}" Padding="9,5" Margin="6,0,0,0" ToolTip="{local:Tr 'YouTube에서 앨범 찾기 (전곡)'}">
-                            <Path Data="{StaticResource YouTubeIcon}" Fill="#FF3D3D" Width="17" Height="12" Stretch="Uniform"/>
                         </Button>
                         <Button Style="{StaticResource Bare}" Click="Soulseek_Click" Width="36" Height="32" Padding="8,6" Margin="0,0,6,0"
                                 ToolTip="{local:Tr 'Soulseek 검색·다운로드'}" AutomationProperties.Name="{local:Tr 'Soulseek 검색·다운로드'}">
@@ -448,13 +437,9 @@
                                     <Path Data="{StaticResource InfoIcon}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource Text2}"
                                           StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" VerticalAlignment="Center"/>
                                 </Button>
-                                <Button Style="{StaticResource Bare}" Command="{Binding OpenAppleMusicCommand}" Padding="9,5" Margin="0,0,6,4" ToolTip="{local:Tr 'Apple Music에서 열기 (iTunes)'}"
+                                <Button Style="{StaticResource Bare}" Command="{Binding OpenAppleMusicCommand}" Padding="9,5" Margin="0,0,0,4" ToolTip="{local:Tr 'Apple Music에서 열기 (iTunes)'}"
                                         AutomationProperties.Name="{Binding Album, StringFormat=Apple Music: {0}}">
                                     <Path Data="{StaticResource AppleMusicIcon}" Fill="#FA2D48" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"/>
-                                </Button>
-                                <Button Style="{StaticResource Bare}" Command="{Binding OpenYouTubeCommand}" Padding="9,5" Margin="0,0,0,4" ToolTip="{local:Tr 'YouTube에서 앨범 찾기 (전곡)'}"
-                                        AutomationProperties.Name="{Binding Album, StringFormat=YouTube: {0}}">
-                                    <Path Data="{StaticResource YouTubeIcon}" Fill="#FF3D3D" Width="17" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
                                 </Button>
                             </WrapPanel>
                         </StackPanel>

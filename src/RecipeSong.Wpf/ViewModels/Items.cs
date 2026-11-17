@@ -203,10 +203,6 @@ public sealed partial class ReleaseItem : ObservableObject
     [RelayCommand]
     private Task OpenAppleMusic() => OpenAppleMusicAction?.Invoke(this) ?? Task.CompletedTask;
 
-    /// <summary>YouTube에서 "아티스트 앨범" 검색 (공식 음원·뮤직비디오가 보통 맨 위)</summary>
-    [RelayCommand]
-    private void OpenYouTube() => YouTube.Search($"{Artist} {Album}");
-
     // 컴필레이션 곡은 아티스트 목록이 아주 길다 → 앞부분만
     private static string Shorten(string s)
     {
@@ -230,12 +226,6 @@ public static class AppleMusic
         try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
         catch (System.ComponentModel.Win32Exception) { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
     }
-}
-
-public static class YouTube
-{
-    public static void Search(string query) =>
-        Process.Start(new ProcessStartInfo("https://www.youtube.com/results?search_query=" + Uri.EscapeDataString(query)) { UseShellExecute = true });
 }
 
 /// <summary>AI 커넥터 배지: "Claude Sonnet 5.5", "GPT gpt-5" (예전 기록은 "Claude"/"GPT"만)</summary>
@@ -315,10 +305,6 @@ public sealed partial class TrackItem : ObservableObject
     public string PopTip { get; }
     public string DurationText { get; }
     public IAsyncRelayCommand PlayCommand { get; }
-
-    /// <summary>YouTube에서 "아티스트 곡명" 검색 — 미리듣기가 없는 곡도 전곡을 들어 볼 수 있게</summary>
-    [RelayCommand]
-    private void OpenYouTube() => YouTube.Search($"{Artist} {Title}");
 
     /// <summary>이 곡과 가장 닮은 내 곡 ("아티스트 – 곡명", 수록곡을 펼치면 소리 서비스가 채운다)</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NearText))] private string? _near;
