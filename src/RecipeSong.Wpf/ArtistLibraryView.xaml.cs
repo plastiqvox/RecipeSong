@@ -19,6 +19,8 @@ public partial class ArtistLibraryView : UserControl, IDisposable
     private int _activeRequests;
     public bool IsSearching => _activeRequests > 0;
     private ReleaseRecommendation? _selected;
+    // Deezer ID 가 없는 Apple 앨범은 Soulseek 화면이 곡 수를 직접 확인할 수 없어 여기서 넘긴다
+    private int? _selectedTrackCount;
     private bool _disposed;
     private bool _updating;
     private bool _applyingIdentity;
@@ -26,7 +28,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
     private CancellationTokenSource _coverRequests = new();
     private readonly SemaphoreSlim _coverSlot = new(1, 1);
     private readonly Dictionary<string, Task<string?>> _coverTasks = [];
-    public event Action<ReleaseRecommendation>? SearchRequested;
+    public event Action<ReleaseRecommendation, int?>? SearchRequested;
     private sealed record Source(string Name, Playlist? Playlist)
     {
         public override string ToString() => Name;
@@ -285,6 +287,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         Albums.ItemsSource = null;
         _updating = false;
         _selected = null;
+        _selectedTrackCount = null;
         SearchButton.IsEnabled = false;
         AlbumSongs.ItemsSource = null;
     }
@@ -339,6 +342,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         if (_updating) return;
         var token = BeginRequest();
         _selected = null;
+        _selectedTrackCount = null;
         SearchButton.IsEnabled = false;
         AlbumSongs.ItemsSource = null;
         if (_discovery == null || Albums.SelectedItem is not DiscoveredAlbum album) return;
@@ -350,6 +354,7 @@ public partial class ArtistLibraryView : UserControl, IDisposable
             var detail = await _discovery.DetailsAsync(album, token);
             if (token.IsCancellationRequested) return;
             _selected = detail.Recommendation;
+            _selectedTrackCount = album.Apple != null ? detail.Tracks.Count : null;
             AlbumSongs.ItemsSource = detail.Tracks.Select((t, i) => $"{i + 1:00}  {t.Title}").ToArray();
             SearchButton.IsEnabled = detail.Tracks.Count > 0;
             StatusText.Text = album.Summary;
@@ -359,6 +364,6 @@ public partial class ArtistLibraryView : UserControl, IDisposable
         finally { _activeRequests--; }
     }
 
-    private void Search_Click(object sender, RoutedEventArgs e) { if (_selected != null) SearchRequested?.Invoke(_selected); }
+    private void Search_Click(object sender, RoutedEventArgs e) { if (_selected != null) SearchRequested?.Invoke(_selected, _selectedTrackCount); }
     public void Dispose() { _disposed = true; _request?.Cancel(); _request?.Dispose(); _coverRequests.Cancel(); _coverRequests.Dispose(); }
 }

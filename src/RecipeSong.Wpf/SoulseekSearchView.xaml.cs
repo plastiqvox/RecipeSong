@@ -119,6 +119,10 @@ public partial class SoulseekSearchView : UserControl
                 {
                     using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(15) };
                     album = _album.DeezerAlbumId > 0 ? await new DeezerClient(http).AlbumAsync(_album.DeezerAlbumId, cancel.Token) : null;
+                    // Apple 에만 있는 앨범(음수 ID): 곡 수는 Apple 수록곡으로
+                    if (AppleAlbumId.Is(_album.DeezerAlbumId)
+                        && (await new ITunesSearchClient(http).AlbumTracksAsync(AppleAlbumId.Collection(_album.DeezerAlbumId), cancel.Token)).Count is > 0 and var songs)
+                        _albumTrackCount = songs;
                 }
                 // 곡수를 이미 알면(다시 찾기) Deezer 확인이 실패해도 예전처럼 검색한다
                 catch (Exception ex) when (ex is not OperationCanceledException && _albumTrackCount is > 0) { }

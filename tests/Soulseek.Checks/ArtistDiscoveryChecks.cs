@@ -8,6 +8,7 @@ static class ArtistDiscoveryChecks
     {
         await ArtistIdentityChecks.RunAsync();
         await ArtistIdentityStoreChecks.RunAsync();
+        await AppleCatalogChecks.RunAsync();
         static void Check(bool value, string reason) { if (!value) throw new Exception(reason); }
         static TrackRecord Song(string artist, string album, string title) => new() { Artist = artist, Album = album, Title = title };
         var loved = Song("Artist", "Partial", "One");

@@ -35,11 +35,13 @@ public sealed class PlaylistMusician(string name, IReadOnlyList<TrackRecord> tra
         + (Followed ? " · " + L.T("팔로우") : "");
 }
 
-public sealed record DiscoveredAlbum(DzAlbum Album, string Artist, CatalogOwnership Ownership, int OwnedTracks)
+/// <summary>Apple 이 null 이 아니면 Deezer 에 없고 Apple 카탈로그에서만 찾은 발매작이다 (Album.Id 는 0).</summary>
+public sealed record DiscoveredAlbum(DzAlbum Album, string Artist, CatalogOwnership Ownership, int OwnedTracks, AppleAlbum? Apple = null)
 {
     public string Title => Album.Title;
     public string Metadata => (Album.Released is { } date ? L.F("{0:yyyy.MM.dd}", date) : L.T("발매일 미상"))
-        + " · " + (Album.RecordType switch { "album" => L.T("정규"), "ep" => "EP", "single" => L.T("싱글"), _ => Album.RecordType ?? "?" });
+        + " · " + (Album.RecordType switch { "album" => L.T("정규"), "ep" => "EP", "single" => L.T("싱글"), _ => Album.RecordType ?? "?" })
+        + (Apple != null ? " · " + L.T("Apple Music에만 있음") : "");
     public string OwnershipLabel => Ownership switch
     {
         CatalogOwnership.Partial => L.F("일부 보유 · {0}/{1}곡", OwnedTracks, Album.TrackCount),
@@ -53,14 +55,14 @@ public sealed record DiscoveredAlbum(DzAlbum Album, string Artist, CatalogOwners
         CatalogOwnership.PossibleEdition => L.T("보유 가능성 있음 · 다른 판본"),
         CatalogOwnership.InLibrary => L.T("라이브러리에 있음"),
         _ => L.T("미보유"),
-    });
+    }) + (Apple != null ? " · " + L.T("Deezer에 없어 Apple Music 목록에서 찾음") : "");
 }
 
 /// <summary>플리는 취향 아티스트의 출처다. 보유 판정에는 플리가 아닌 전체 라이브러리를 사용한다.</summary>
 public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyList<TrackRecord> tracks,
     IReadOnlyList<Playlist> playlists, IReadOnlyList<FollowList.Followed> follows,
     Func<AlbumSummary, CancellationToken, Task<string?>>? artwork = null, ArtistIdentityStore? identityStore = null,
-    IReadOnlyList<Library.ArchiveAlbum>? archives = null)
+    IReadOnlyList<Library.ArchiveAlbum>? archives = null, ITunesSearchClient? apple = null)
 {
     private static IEnumerable<TrackRecord> ArchiveEvidence(IEnumerable<Library.ArchiveAlbum>? albums) =>
         (albums ?? []).Select(a => new TrackRecord { Artist = a.Artist, AlbumArtist = a.Artist, Album = a.Album, Title = "" });
@@ -146,7 +148,8 @@ public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyL
     public async Task<IReadOnlyList<DiscoveredAlbum>> AlbumsAsync(DzArtist artist, CancellationToken ct, string? libraryArtist = null, bool includeOwned = false)
     {
         var result = new List<DiscoveredAlbum>();
-        foreach (var item in await IdentityDiscographyAsync(artist.Id, ct))
+        var discography = await IdentityDiscographyAsync(artist.Id, ct);
+        foreach (var item in discography)
         {
             ct.ThrowIfCancellationRequested();
             if (item.Released is { } date && date > DateOnly.FromDateTime(DateTime.Today)) continue;
@@ -160,11 +163,44 @@ public sealed partial class ArtistAlbumDiscovery(DeezerClient client, IReadOnlyL
             state = Ownership(libraryArtist ?? artist.Name, album, out var count);
             if (includeOwned || state != CatalogOwnership.InLibrary) result.Add(new(album, artist.Name, state, count));
         }
+        foreach (var extra in await AppleOnlyAsync(artist, discography, ct))
+        {
+            if (extra.Released is { } date && date > DateOnly.FromDateTime(DateTime.Today)) continue;
+            var album = new DzAlbum(0, extra.Title, extra.Cover, extra.ReleaseDate, extra.Compilation ? "compile" : extra.RecordType,
+                extra.Link, TrackCount: extra.TrackCount);
+            var state = Ownership(libraryArtist ?? artist.Name, album, out var count);
+            if (includeOwned || state != CatalogOwnership.InLibrary) result.Add(new(album, artist.Name, state, count, extra));
+        }
         return [.. result.OrderByDescending(a => a.Album.Released).ThenBy(a => a.Title)];
+    }
+
+    /// <summary>
+    /// 이 지역 Deezer 에 없는 발매작을 Apple 카탈로그에서 보충한다 (예: Ashe "The Girl Of Your Dreams").
+    /// 보조 자료라 Apple 조회가 실패해도 Deezer 목록은 그대로 보여 준다.
+    /// </summary>
+    private async Task<IReadOnlyList<AppleAlbum>> AppleOnlyAsync(DzArtist artist, IReadOnlyList<DzAlbum> discography, CancellationToken ct)
+    {
+        if (apple == null) return [];
+        try { return await apple.MissingAlbumsAsync(artist.Id, artist.Name, discography, ct); }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            System.Diagnostics.Trace.WriteLine(ex);
+            return [];
+        }
     }
 
     public async Task<(ReleaseRecommendation Recommendation, IReadOnlyList<DzTrack> Tracks)> DetailsAsync(DiscoveredAlbum album, CancellationToken ct)
     {
+        if (album.Apple is { } extra && apple != null)
+        {
+            var released = album.Album.Released ?? throw new HttpRequestException(L.T("앨범 정보를 불러오지 못했어요."));
+            var tracks = await apple.AlbumTracksAsync(extra.Id, ct);
+            if (tracks.Count == 0 || extra.TrackCount is > 0 && tracks.Count != extra.TrackCount)
+                throw new HttpRequestException(L.T("수록곡 전체를 불러오지 못했어요. 다시 선택해 주세요."));
+            // Deezer 앨범 ID 가 없으므로 0. Soulseek 검색은 곡 수를 따로 넘겨 받는다.
+            return (new ReleaseRecommendation(album.Artist, extra.Title, album.Album.RecordType ?? "album", released,
+                null, extra.Cover, 0, extra.Link, null, Region.Unknown, null, null, null, [], [], true, 0), tracks);
+        }
         var detail = await client.AlbumAsync(album.Album.Id, ct);
         if (detail?.Released == null) throw new HttpRequestException(L.T("앨범 정보를 불러오지 못했어요."));
         var songs = await client.AlbumTracksAllAsync(detail.Id, ct);

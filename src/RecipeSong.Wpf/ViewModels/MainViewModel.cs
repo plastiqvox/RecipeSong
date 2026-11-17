@@ -39,7 +39,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var cover = await _artwork.GetAsync(album, token);
             _artwork.Save();
             return cover.ArtworkUrl;
-        }, archives: await ReadArchivesAsync(ct, refresh: true));
+        }, archives: await ReadArchivesAsync(ct, refresh: true), apple: _itunes);
     }
 
     private async Task<OwnedLibrary> LoadOwnedAsync(CancellationToken ct) =>
@@ -514,7 +514,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _sound = SoundService.TryCreate(settings);
         PipelineMonitor.Instance.SoundQueue = () => _sound?.Queue ?? [];
         _genres = new GenreSources(new HttpClient { Timeout = TimeSpan.FromSeconds(20) }, GenreSourceSettings.Load());
-        _recommender = new ReleaseRecommender(_deezer, _genres, _sound);
+        _recommender = new ReleaseRecommender(_deezer, _genres, _sound, apple: itunes);
         _libraryReleases = new LibraryReleases(_deezer);
         _artwork = new ArtworkService(_deezer, itunes);
 
@@ -1362,7 +1362,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             // 기준은 직접 별로·'소리 때문' 차단한 앨범만 (바로 넘긴 앨범까지 넣으면 거의 다 걸린다)
-            var refs = _disliked.All.Select(d => d.Rec.DeezerAlbumId).Concat(_blocked.AlbumIds).Distinct();
+            var refs = _disliked.All.Select(d => d.Rec.DeezerAlbumId).Concat(_blocked.AlbumIds).Where(id => !AppleAlbumId.Is(id)).Distinct();
             var hits = await SideAsync(L.T("별로·차단과 아주 닮은 추천 확인"), RunKind.Similar, RecStage.Score,
                 () => _sound.DislikeMatchesAsync(candidates, refs, ct: _life.Token));
             if (hits.Count == 0 || CurrentPeriod.Label != period.Label) return;
@@ -1389,7 +1389,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task OfferSimilarAsync(ReleaseItem item)
     {
-        if (_sound == null) return;
+        if (_sound == null || AppleAlbumId.Is(item.Rec.DeezerAlbumId)) return;
         // 내 라이브러리 뮤지션·팔로우·좋아요·저장한 앨범은 묻지 않는다 (그 자체로 원하는 앨범)
         var candidates = FilteredBase().Where(i => i != item && !i.IsMine && !i.IsLiked && !i.IsSaved && !i.IsDisliked)
             .Select(i => i.Rec.DeezerAlbumId).Distinct().ToList();
@@ -1468,7 +1468,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             // 학습: 앨범 하트 + 곡 하트 (저장함은 위시리스트라 쓰지 않는다) / 별로: 별로 + 바로 넘긴 앨범 + 차단할 때 본 앨범
-            var favs = _likedAlbums.All.Select(s => (s.Rec.DeezerAlbumId.ToString(), $"{s.Rec.Artist} – {s.Rec.Album}"))
+            // Apple 에만 있는 앨범(음수 ID)은 소리 서비스가 들을 미리듣기가 없어 보내지 않는다
+            var favs = _likedAlbums.All.Where(s => !AppleAlbumId.Is(s.Rec.DeezerAlbumId))
+                .Select(s => (s.Rec.DeezerAlbumId.ToString(), $"{s.Rec.Artist} – {s.Rec.Album}"))
                 .Concat(_likedTracks.All.Select(t => ($"t{t.TrackId}", $"{t.Artist} – {t.Title}")))
                 .Concat(ImplicitLikes().Where(x => !_disliked.Contains(x.Id)).Select(x => (x.Id.ToString(), x.Name)))
                 .DistinctBy(x => x.Item1).ToList();
@@ -1477,7 +1479,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 await _sound.SetFavoritesAsync(favs, _life.Token,
                     _disliked.All.Select(d => d.Rec.DeezerAlbumId).Concat(_blocked.AlbumIds)
-                        .Concat(ImplicitSkips().Where(id => !_likedAlbums.Contains(id))).Distinct(), _dislikedTracks.All);
+                        .Concat(ImplicitSkips().Where(id => !_likedAlbums.Contains(id))).Where(id => !AppleAlbumId.Is(id)).Distinct(), _dislikedTracks.All);
             }
             finally { side?.Stage(RecStage.Done); }
         }
@@ -1852,6 +1854,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             _poolFavVersion[key] = FavoritesVersion;
             _poolIdentityVersion[key] = identityVersion;
             if (p.MinePending > 0 && _mineRefresh == null) _mineRefresh = RefreshMineAsync(_mine);
+            // Apple 카탈로그는 Deezer 디스코그래피가 다 모인 뒤에 (Deezer 앨범 제목으로 같은 사람인지 확인한다)
+            else if (p.MinePending == 0 && p.ApplePending > 0 && _appleRefresh == null) _appleRefresh = RefreshAppleAsync(_mine);
             return p;
         }
         finally { _poolLock.Release(); }
@@ -1878,6 +1882,29 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         finally { _mineRefresh = null; }
     }
 
+    private Task? _appleRefresh;
+
+    /// <summary>
+    /// 아카이브 뮤지션 중 이 지역 Deezer 에 없는 발매작을 Apple 카탈로그에서 뒤에서 모은다 (분당 약 20회라 1000명이면 한 시간 넘게).
+    /// 최근 발매작을 새로 찾았을 때만 지금 보는 기간을 다시 불러온다. 다른 저장된 주는 '다시 계산'해야 들어간다.
+    /// </summary>
+    private async Task RefreshAppleAsync(IReadOnlyList<PlaylistArtist> mine)
+    {
+        var progress = Tracked(L.T("Apple Music에만 있는 발매작 확인"), m => SyncText = m, RunKind.Mine, primary: false);
+        try
+        {
+            int found = await Task.Run(() => _recommender.RefreshAppleAsync(mine, progress, _life.Token));
+            if (!_mineSyncText) SyncText = "";
+            if (found == 0) return;
+            await _poolLock.WaitAsync(_life.Token);
+            try { _pools.Clear(); } finally { _poolLock.Release(); }
+            if (!IsBusy) await LoadAsync(force: true);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { SyncText = L.F("Apple Music 발매작을 확인하지 못했어요: {0}", ex.Message); }
+        finally { _appleRefresh = null; }
+    }
+
     /// <summary>SyncText에 지금 라이브러리 뮤지션 수집 문구(또는 그 오류)가 떠 있다 → 레이블 진행 문구로 덮지 않는다</summary>
     private bool _mineSyncText;
 
@@ -1891,6 +1918,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task OpenAppleMusicAsync(ReleaseItem item)
     {
+        // Apple 에만 있는 앨범은 카드에 Apple 주소가 이미 있다
+        if (AppleAlbumId.Is(item.Rec.DeezerAlbumId) && item.Rec.Link is { } own) { AppleMusic.Open(own); return; }
         var key = item.Rec.DeezerAlbumId.ToString();
         if (!_appleLinks.TryGet(key, out var url))
         {
@@ -2604,7 +2633,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             _ = LoadTrackNearAsync(item);
             return tracks.Count > 0;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
             item.TracksStatus = L.T("수록곡을 불러오지 못했어요");
             return !first;

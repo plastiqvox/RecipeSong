@@ -506,6 +506,12 @@
                                     Visibility="{Binding ViaLastFm, Converter={StaticResource BoolVis}}" ToolTip="{Binding LastFmTip}">
                                 <TextBlock Text="Last.fm" FontSize="11" FontWeight="Medium" Foreground="#F0565A"/>
                             </Border>
+                            <!-- Apple 배지: Deezer 에 없어 Apple 카탈로그에서 찾은 아카이브 뮤지션 발매작 (미리듣기·소리 점수 없음) -->
+                            <Border Margin="6,0,0,0" Padding="7,1" CornerRadius="10" BorderThickness="1" BorderBrush="#FA2D48" VerticalAlignment="Center"
+                                    Visibility="{Binding AppleOnly, Converter={StaticResource BoolVis}}"
+                                    ToolTip="{local:Tr 'Deezer에 없어 Apple Music 목록에서 찾은 발매작이에요. 미리듣기와 소리 점수가 없어요'}">
+                                <TextBlock Text="{local:Tr 'Apple Music에만 있음'}" FontSize="11" FontWeight="Medium" Foreground="#FA2D48"/>
+                            </Border>
                             <Border Margin="6,0,0,0" Padding="6,1" CornerRadius="9" BorderThickness="1" BorderBrush="{StaticResource Accent}" VerticalAlignment="Center"
                                     Visibility="{Binding IsNew, Converter={StaticResource BoolVis}}" ToolTip="{local:Tr '이번에 처음 나온 앨범'}">
                                 <TextBlock Text="NEW" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentText}"/>

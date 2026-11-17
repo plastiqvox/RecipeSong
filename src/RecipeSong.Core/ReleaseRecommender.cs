@@ -73,7 +73,8 @@ public sealed record RecommendOptions
 /// <summary>후보 아티스트와 디스코그래피. 기간과 상관없으므로 한 번 모아 두고 여러 기간에 쓴다.</summary>
 /// <param name="MinePending">라이브러리 뮤지션 중 아직 Deezer에서 받지 않았거나 디스코그래피가 오래된 수 (RefreshMineAsync로 채운다)</param>
 /// <param name="MineCovered">후보에 넣은 라이브러리 뮤지션 수 (ID 와 디스코그래피가 있는 사람). 저장 결과가 덜 모은 채 계산됐는지 비교하는 데 쓴다</param>
-public sealed record CandidatePool(IReadOnlyList<PoolArtist> Artists, DateTime BuiltAt, int MinePending = 0, int MineCovered = 0);
+/// <param name="ApplePending">후보에 넣은 라이브러리 뮤지션 중 Apple 카탈로그를 아직 받지 않았거나 오래된 수 (RefreshAppleAsync로 채운다)</param>
+public sealed record CandidatePool(IReadOnlyList<PoolArtist> Artists, DateTime BuiltAt, int MinePending = 0, int MineCovered = 0, int ApplePending = 0);
 
 /// <param name="Mine">라이브러리 뮤지션이면 그 정보 (신보를 항상 보여준다)</param>
 /// <param name="ViaLastFm">Deezer 연관으로는 안 들어오고 Last.fm 비슷한 아티스트로만 이어졌다 (카드의 Last.fm 배지)</param>
@@ -88,7 +89,8 @@ public sealed record PoolArtist(long Id, string Name, double Score, IReadOnlyLis
 /// 4) 점수 = 1.5 × 취향 유사도(z) + 0.5 × 아티스트 연결(z) + 저장·좋아요 닮음 − 별로 닮음 + 레이블·참여·형식
 /// 5) 칸: 장르 DB(Last.fm → Discogs) → Deezer 장르 → 소리가 닮은 앨범의 칸 (국적은 나누지 않는다)
 /// </summary>
-public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres = null, SoundService? sound = null, ArtistIdentityStore? identityStore = null)
+public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres = null, SoundService? sound = null, ArtistIdentityStore? identityStore = null,
+    ITunesSearchClient? apple = null)
 {
     private readonly ArtistIdentityStore _identities = identityStore ?? new();
     private readonly MetadataAffinity _metadata = new(genres);
@@ -148,7 +150,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         if (mine is not { Count: > 0 }) return new CandidatePool(suggestions, DateTime.Now);
 
         var byId = suggestions.ToDictionary(a => a.Id);
-        int pending = 0, covered = 0;
+        int pending = 0, covered = 0, applePending = 0;
         foreach (var m in mine)
         {
             var identity = KnownIdentity(m.Artist);
@@ -157,11 +159,72 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             if (!HasDiscography(artistId, out var albums, out var fresh)) { pending++; continue; }
             if (!fresh) pending++;
             covered++;
+            var extra = AppleOnlyAlbums(artistId, albums, out var appleFresh);
+            if (!appleFresh) applePending++;
+            if (extra.Count > 0) albums = [.. albums, .. extra];
             byId[artistId] = byId.TryGetValue(artistId, out var s)
-                ? s with { Mine = m }
+                ? s with { Mine = m, Albums = albums }
                 : new PoolArtist(artistId, m.Artist, 0, [m.Playlist], albums, m);
         }
-        return new CandidatePool([.. byId.Values], DateTime.Now, pending, covered);
+        return new CandidatePool([.. byId.Values], DateTime.Now, pending, covered, applePending);
+    }
+
+    /// <summary>
+    /// 아카이브 뮤지션의 발매작 중 이 지역 Deezer 에 없고 Apple 카탈로그에만 있는 것 (캐시만, 요청 없음).
+    /// 미리듣기·소리 점수 없이 카드로만 나온다. ID 는 음수 (AppleAlbumId).
+    /// </summary>
+    private List<DzAlbum> AppleOnlyAlbums(long artistId, IReadOnlyList<DzAlbum> deezerAlbums, out bool fresh)
+    {
+        fresh = true;
+        if (apple == null) return [];
+        return [.. apple.CachedMissingAlbums(artistId, deezerAlbums, out fresh).Select(a =>
+            new DzAlbum(AppleAlbumId.ToCard(a.Id), a.Title, a.Cover, a.ReleaseDate, a.Compilation ? "compile" : a.RecordType, a.Link,
+                TrackCount: a.TrackCount))];
+    }
+
+    /// <summary>
+    /// 아카이브 뮤지션의 Apple 카탈로그를 뒤에서 모은다. Apple 검색 API 는 분당 약 20회라 아주 천천히(요청 사이 3.2초)
+    /// 많이 듣는 순으로 받고, 거절(403·429)이나 네트워크 실패가 나면 이번엔 멈추고 다음에 이어서 받는다.
+    /// </summary>
+    /// <returns>새로 받은 아티스트 중 Deezer 에 없는 최근 60일 발매작이 있는 수 (화면을 다시 불러올지 정할 때)</returns>
+    public async Task<int> RefreshAppleAsync(IReadOnlyList<PlaylistArtist> mine, IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        if (apple == null) return 0;
+        Step(progress, RecStage.Mine);
+        var todo = mine.Select(m => (m, identity: KnownIdentity(m.Artist)))
+            .Where(x => x.identity != null && HasDiscography(x.identity.ArtistId, out var albums, out _)
+                && !AppleFresh(x.identity.ArtistId, albums))
+            .ToList();
+        var recent = DateOnly.FromDateTime(DateTime.Today.AddDays(-60));
+        int done = 0, found = 0;
+        try
+        {
+            foreach (var (m, identity) in todo)
+            {
+                HasDiscography(identity!.ArtistId, out var albums, out _);
+                IReadOnlyList<AppleAlbum> extra;
+                try { extra = await apple.MissingAlbumsAsync(identity.ArtistId, m.Artist, albums, ct, paced: true); }
+                catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException && !ct.IsCancellationRequested)
+                {
+                    progress?.Report(L.F("Apple Music 확인을 멈춤 · 다음에 이어서 받아요 ({0}/{1})", done, todo.Count));
+                    break;
+                }
+                if (extra.Any(a => a.Released is { } d && d >= recent)) found++;
+                if (++done % 10 == 0)
+                {
+                    apple.SaveCaches();
+                    progress?.Report(L.F("Apple Music 확인 {0}/{1}", done, todo.Count));
+                }
+            }
+        }
+        finally { apple.SaveCaches(); Step(progress, RecStage.Done); }
+        return found;
+    }
+
+    private bool AppleFresh(long artistId, IReadOnlyList<DzAlbum> albums)
+    {
+        apple!.CachedMissingAlbums(artistId, albums, out var fresh);
+        return fresh;
     }
 
     /// <summary>
@@ -307,8 +370,9 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
             return new RecommendationResult(period, [], false) { CanCache = pool.MinePending == 0, MineCovered = pool.MineCovered };
         }
 
-        // 연·월 단위면 라이브러리 뮤지션 발매작이 수백 장이라 앞쪽만 소리를 듣는다
-        var toScore = mineHits.Take(options.MaxMineScored).Concat(others).Select(h => h.a.Id).ToList();
+        // 연·월 단위면 라이브러리 뮤지션 발매작이 수백 장이라 앞쪽만 소리를 듣는다.
+        // Apple 에만 있는 앨범(음수 ID)은 Deezer 미리듣기가 없어 듣지 않는다 (소리를 못 들은 앨범으로 점수, 아카이브 뮤지션이라 취향 기준은 건너뛴다)
+        var toScore = mineHits.Take(options.MaxMineScored).Concat(others).Select(h => h.a.Id).Where(id => !AppleAlbumId.Is(id)).ToList();
         progress?.Report(L.F("그 기간 발매작 {0}장 · 소리를 들을 {1}장 (아카이브 뮤지션 + 연결 점수 상위)", inPeriod.Count, toScore.Count));
         var (recs, heardAny) = await ScoreHitsAsync(hits, toScore, owned, options, progress, ct);
         // 차단 레이블은 레이블을 알게 된 뒤에 뺀다
@@ -778,6 +842,13 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
     /// </summary>
     public async Task<IReadOnlyList<AlbumTrack>> AlbumTracksAsync(long deezerAlbumId, CancellationToken ct = default)
     {
+        if (AppleAlbumId.Is(deezerAlbumId))
+        {
+            // Apple 에만 있는 앨범: 곡 목록만. 미리듣기·곡 ID 는 넣지 않는다 (재생·곡 하트·비슷한 내 곡은 Deezer 곡 ID 를 열쇠로 쓴다)
+            if (apple == null) return [];
+            var songs = await apple.AlbumTracksAsync(AppleAlbumId.Collection(deezerAlbumId), ct);
+            return [.. songs.Select((t, i) => new AlbumTrack(i + 1, t.Title, null, TimeSpan.FromSeconds(t.Duration), null, 0, 0))];
+        }
         var tracks = await deezer.AlbumTracksAsync(deezerAlbumId, 200, ct);
         var previews = await Task.WhenAll(tracks.Select(async t =>
         {

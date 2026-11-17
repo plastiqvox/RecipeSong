@@ -1099,5 +1099,12 @@
  "추천 계산 준비 중…": "Preparing to calculate recommendations…",
  "추천을 불러오는 중…": "Loading recommendations…",
  "Last.fm 청취자 수 확인 중… {0}/{1}": "Checking Last.fm listeners… {0}/{1}",
- "Last.fm 청취자 수 {0}/{1}": "Last.fm listeners {0}/{1}"
+ "Last.fm 청취자 수 {0}/{1}": "Last.fm listeners {0}/{1}",
+ "Apple Music에만 있음": "Apple Music only",
+ "Deezer에 없어 Apple Music 목록에서 찾음": "Not on Deezer · found in the Apple Music catalog",
+ "Apple Music 확인을 멈춤 · 다음에 이어서 받아요 ({0}/{1})": "Paused Apple Music check · will continue later ({0}/{1})",
+ "Apple Music 확인 {0}/{1}": "Checking Apple Music {0}/{1}",
+ "Apple Music에만 있는 발매작 확인": "Check releases only on Apple Music",
+ "Apple Music 발매작을 확인하지 못했어요: {0}": "Could not check Apple Music releases: {0}",
+ "Deezer에 없어 Apple Music 목록에서 찾은 발매작이에요. 미리듣기와 소리 점수가 없어요": "Not on Deezer · found in the Apple Music catalog. No preview or sound score"
 }

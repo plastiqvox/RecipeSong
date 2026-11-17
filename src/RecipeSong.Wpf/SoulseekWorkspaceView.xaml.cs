@@ -56,14 +56,15 @@ public partial class SoulseekWorkspaceView : UserControl, IDisposable
         RefreshStatus();
     }
 
-    public void ShowAlbum(ReleaseRecommendation album, Guid? replaceJobId = null, string? excludedPeer = null)
+    /// <param name="albumTrackCount">Deezer 앨범 ID 가 없을 때(Apple 에서만 찾은 앨범) 결과 폴더를 거를 곡 수</param>
+    public void ShowAlbum(ReleaseRecommendation album, Guid? replaceJobId = null, string? excludedPeer = null, int? albumTrackCount = null)
     {
         if (_album != album || _replacementId != replaceJobId || replaceJobId != null)
         {
             _search?.Stop();
             _album = album;
             _replacementId = replaceJobId;
-            _search = new SoulseekSearchView(album, _downloads, replaceJobId, excludedPeer);
+            _search = new SoulseekSearchView(album, _downloads, replaceJobId, excludedPeer, albumTrackCount);
             _search.SetReturnTarget(_returnTarget);
             _search.BackRequested += () => RecommendationsRequested?.Invoke();
             _search.SettingsRequested += () => ShowSection("settings");

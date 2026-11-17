@@ -38,10 +38,10 @@ public partial class MainWindow : Window
                 if (_artistLibrary == null)
                 {
                     _artistLibrary = new ArtistLibraryView(_vm.CreateArtistDiscoveryAsync);
-                    _artistLibrary.SearchRequested += album =>
+                    _artistLibrary.SearchRequested += (album, trackCount) =>
                     {
                         _navigation.BeginSearch(WorkspacePage.Artists);
-                        GetSoulseekWorkspace().ShowAlbum(album);
+                        GetSoulseekWorkspace().ShowAlbum(album, albumTrackCount: trackCount);
                         WorkspaceTabs.SelectedIndex = (int)WorkspacePage.Soulseek;
                     };
                     ArtistLibraryHost.Content = _artistLibrary;
