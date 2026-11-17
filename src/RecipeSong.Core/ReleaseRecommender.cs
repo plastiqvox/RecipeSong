@@ -258,7 +258,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
                 if (id is { } i) _discography.Set(i.ToString(), [.. await deezer.ArtistAlbumsAllAsync(i, ct)]);
     
                 int d = Interlocked.Increment(ref done);
-                if (d % 25 == 0) progress?.Report(L.F("아카이브 뮤지션 {0}/{1}", d, todo.Count));
+                if (d % 25 == 0) progress?.Report(L.F("즐겨 듣는 아티스트 {0}/{1}", d, todo.Count));
                 if (d % 250 == 0) SaveCaches();
             });
         }
@@ -373,7 +373,7 @@ public sealed class ReleaseRecommender(DeezerClient deezer, GenreSources? genres
         // 연·월 단위면 라이브러리 뮤지션 발매작이 수백 장이라 앞쪽만 소리를 듣는다.
         // Apple 에만 있는 앨범(음수 ID)은 Deezer 미리듣기가 없어 듣지 않는다 (소리를 못 들은 앨범으로 점수, 아카이브 뮤지션이라 취향 기준은 건너뛴다)
         var toScore = mineHits.Take(options.MaxMineScored).Concat(others).Select(h => h.a.Id).Where(id => !AppleAlbumId.Is(id)).ToList();
-        progress?.Report(L.F("그 기간 발매작 {0}장 · 소리를 들을 {1}장 (아카이브 뮤지션 + 연결 점수 상위)", inPeriod.Count, toScore.Count));
+        progress?.Report(L.F("그 기간 발매작 {0}장 · 소리를 들을 {1}장 (즐겨 듣는 아티스트 + 연결 점수 상위)", inPeriod.Count, toScore.Count));
         var (recs, heardAny) = await ScoreHitsAsync(hits, toScore, owned, options, progress, ct);
         // 차단 레이블은 레이블을 알게 된 뒤에 뺀다
         if (options.BlockedLabels.Count > 0)

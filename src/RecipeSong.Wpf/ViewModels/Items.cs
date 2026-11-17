@@ -84,13 +84,17 @@ public sealed partial class ReleaseItem : ObservableObject
     public bool HasAiReason => AiReason != null;
     /// <summary>제안한 AI 커넥터 ("Claude", "GPT") — 커넥터마다 배지 하나</summary>
     public IReadOnlyList<AiBadge> AiBy => [.. (Rec.AiBy ?? (IsAi ? ["AI"] : [])).Select(b => new AiBadge(b))];
-    // 내 라이브러리 뮤지션 배지는 '내 라이브러리' (예전에 저장한 결과는 플레이리스트 이름). 앞의 아이콘이 '내 것'을 뜻한다
+    /// <summary>즐겨 듣는 아티스트의 발매작인데 그 앨범이 실제로 내 아카이브(iTunes·플리·ZIP)에 있다</summary>
+    public bool InArchive { get; init; }
+    // 라이브러리 뮤지션(데이터 키 "내 라이브러리")의 발매작: 그 앨범을 가지고 있으면 '내 아카이브', 아니면 '즐겨 듣는 아티스트'.
+    // 예전엔 모두 '내 아카이브'라 아직 없는 신보도 가진 앨범처럼 보였다. 앞의 아이콘은 '내가 가진 것'에만 붙는다
     public string Badge => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우")
-        : Rec.FromPlaylist == TasteProfile.LibraryTag ? L.T("내 아카이브")  // 데이터 키는 "내 라이브러리" 그대로, 보일 때만
+        : Rec.FromPlaylist == TasteProfile.LibraryTag ? InArchive ? L.T("내 아카이브") : L.T("즐겨 듣는 아티스트")
         : IsMine ? L.T(Rec.FromPlaylist ?? "") : IsAi ? "" : Known ? L.T("아는 아티스트") : "";
-    public bool BadgeIsPlaylist => IsMine && Rec.FromPlaylist != FollowList.Tag;
+    public bool BadgeIsPlaylist => IsMine && Rec.FromPlaylist != FollowList.Tag && (Rec.FromPlaylist != TasteProfile.LibraryTag || InArchive);
     public string BadgeTip => Rec.FromPlaylist == FollowList.Tag ? L.T("팔로우한 아티스트의 발매작")
-        : Rec.FromPlaylist == TasteProfile.LibraryTag ? L.T("내 아카이브에서 많이 듣는 뮤지션의 발매작")
+        : Rec.FromPlaylist == TasteProfile.LibraryTag ? InArchive ? L.T("내 아카이브(파일·플리)에 있는 앨범이에요")
+            : L.T("내 아카이브에서 즐겨 듣는 아티스트의 발매작 · 이 앨범은 아직 아카이브에 없어요")
         : IsMine ? L.F("{0} 플레이리스트에 있는 뮤지션의 발매작", L.T(Rec.FromPlaylist ?? ""))
         : IsAi ? L.T("AI 커넥터가 웹에서 찾고 Deezer에서 확인한 발매작") : L.T("내 아카이브에 있는 아티스트");
     public System.Windows.Thickness BadgeMargin => HasFit ? new(8, 0, 0, 0) : new(0);
@@ -338,7 +342,7 @@ public sealed partial class CrateSection(string name, IReadOnlyList<ReleaseItem>
     public IReadOnlyList<ReleaseItem> Items { get; } = items;
     /// <summary>전체 보기에서 일부만 그렸으면 "30장 중 6장"으로 (전에는 "30장"만 있어 다 보이는 줄 알았다)</summary>
     public string Meta => (CanMore ? L.F("{0}장 중 {1}장", total, Items.Count) : L.F("{0}장", total)) + " · "
-        + (mine > 0 && mine < total ? L.F("내 아카이브 {0} · 추가 제안 {1}", mine, total - mine) : mine == total ? L.T("모두 내 아카이브") : L.T("추가 제안"));
+        + (mine > 0 && mine < total ? L.F("즐겨 듣는 아티스트 {0} · 추가 제안 {1}", mine, total - mine) : mine == total ? L.T("모두 즐겨 듣는 아티스트") : L.T("추가 제안"));
     public bool CanMore { get; } = canMore;
     public string MoreText => L.F("전체 {0}장 보기", total);
     /// <summary>레시피 카드 아래: 남은 장수를 그 자리에서 알린다</summary>

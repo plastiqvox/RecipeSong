@@ -491,9 +491,14 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <!-- 내 라이브러리 뮤지션 배지: 외곽선만 (주황 칠은 섹션 안 모든 카드에 같은 값이 반복돼 시끄러웠다) -->
-                            <Border Margin="{Binding BadgeMargin}" Padding="8,1" CornerRadius="10" BorderThickness="1" BorderBrush="{StaticResource Line3}"
+                            <!-- 즐겨 듣는 아티스트·팔로우 배지: 외곽선만 (주황 칠은 섹션 안 모든 카드에 같은 값이 반복돼 시끄러웠다).
+                                 그 앨범을 실제로 가지고 있으면 '내 아카이브'로 강조색 외곽선 -->
+                            <Border Margin="{Binding BadgeMargin}" Padding="8,1" CornerRadius="10" BorderThickness="1"
                                     Visibility="{Binding Badge, Converter={StaticResource EmptyCollapsed}}" ToolTip="{Binding BadgeTip}">
+                                <Border.Style><Style TargetType="Border">
+                                    <Setter Property="BorderBrush" Value="{StaticResource Line3}"/>
+                                    <Style.Triggers><DataTrigger Binding="{Binding InArchive}" Value="True"><Setter Property="BorderBrush" Value="{StaticResource Accent}"/></DataTrigger></Style.Triggers>
+                                </Style></Border.Style>
                                 <StackPanel Orientation="Horizontal">
                                     <Path Data="{StaticResource PlaylistIcon}" Width="11" Height="10" Stretch="Uniform" Margin="0,0,4,0" VerticalAlignment="Center"
                                           Stroke="{StaticResource Text2}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"

@@ -1231,6 +1231,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 .Select(n => new NearTrackItem(n, FindLocalFile(n), PlayNear))],
             ToggleDislikeAction = item => KeepPlace(item, () => ToggleDislike(item)),
             IsDisliked = _disliked.Contains(r.DeezerAlbumId),
+            InArchive = r.FromPlaylist == TasteProfile.LibraryTag && _owned?.HasAlbum(r.Artist, r.Album) == true,
             IsNew = _newThisRun.Contains(r.DeezerAlbumId),
             IsFollowed = IsFollowedRec(r),
             ToggleFollowAction = ToggleFollowAsync,
@@ -1864,12 +1865,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>라이브러리 뮤지션 디스코그래피를 뒤에서 모으고, 끝나면 지금 보는 기간을 다시 불러온다.</summary>
     private async Task RefreshMineAsync(IReadOnlyList<PlaylistArtist> mine)
     {
-        var progress = Tracked(L.T("내 아카이브 뮤지션 발매작 모으기"), m => SyncText = L.F("내 아카이브 뮤지션 발매작 모으는 중… {0}",
-            m.Replace("아카이브 뮤지션 ", "").Replace(L.T("아카이브 뮤지션 "), "")), RunKind.Mine, primary: false);
+        var progress = Tracked(L.T("즐겨 듣는 아티스트 발매작 모으기"), m => SyncText = L.F("즐겨 듣는 아티스트 발매작 모으는 중… {0}",
+            m.Replace("즐겨 듣는 아티스트 ", "").Replace(L.T("즐겨 듣는 아티스트 "), "")), RunKind.Mine, primary: false);
         try
         {
             _mineSyncText = true;
-            SyncText = L.F("내 아카이브 뮤지션 {0:N0}명의 발매작 모으는 중…", mine.Count);
+            SyncText = L.F("즐겨 듣는 아티스트 {0:N0}명의 발매작 모으는 중…", mine.Count);
             await Task.Run(() => _recommender.RefreshMineAsync(mine, progress, _life.Token));
             SyncText = "";
             _mineSyncText = false;
@@ -1878,7 +1879,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (!IsBusy) await LoadAsync(force: true);  // 새로 모은 라이브러리 뮤지션 신보 반영 (다른 저장된 주는 열 때 MineStale 로 다시 계산)
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { SyncText = L.F("아카이브 뮤지션 발매작을 모으지 못했어요: {0}", ex.Message); }
+        catch (Exception ex) { SyncText = L.F("즐겨 듣는 아티스트 발매작을 모으지 못했어요: {0}", ex.Message); }
         finally { _mineRefresh = null; }
     }
 
@@ -2347,7 +2348,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 {
                     var coverage = await MineCoverageAsync(ct);
                     int lagging = PartsOf(period).Count(part => _recResults.TryGetAt(RecKey(part), out _, out _) && MineStale(part, coverage));
-                    if (lagging > 0) RecSavedNote += " · " + L.F("아카이브 뮤지션을 덜 모은 채 계산한 주 {0}개 · 다시 계산하면 채워져요", lagging);
+                    if (lagging > 0) RecSavedNote += " · " + L.F("즐겨 듣는 아티스트를 덜 모은 채 계산한 주 {0}개 · 다시 계산하면 채워져요", lagging);
                 }
             }
             else if (!force && TryGetWiderRecs(period, out var wider, out var widerAt, out var widerLabel)
